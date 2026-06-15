@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie Seat Finder</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --border: #d7dce2;
+      --ink: #15202b;
+      --muted: #5f6b7a;
+      --panel: #f7f9fb;
+      --accent: #1769aa;
+      --accent-dark: #0f4f82;
+      --good: #0f6b43;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: white;
+      color: var(--ink);
+      font-family: Arial, sans-serif;
+      line-height: 1.4;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 22px;
+      background: var(--panel);
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+    }
+
+    h2 {
+      margin: 24px 0 10px;
+      font-size: 20px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .steps {
+      display: grid;
+      gap: 14px;
+    }
+
+    fieldset {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      background: white;
+    }
+
+    legend {
+      padding: 0 6px;
+      font-weight: bold;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px 16px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      margin-top: 5px;
+      padding: 9px 10px;
+      border: 1px solid #b9c1cc;
+      border-radius: 6px;
+      background: white;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    button {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    .secondary {
+      background: white;
+      color: var(--accent);
+    }
+
+    .secondary:hover {
+      background: #eef6fc;
+    }
+
+    .status {
+      margin-top: 8px;
+      min-height: 20px;
+    }
+
+    .combo {
+      position: relative;
+    }
+
+    .combo-menu {
+      position: absolute;
+      z-index: 10;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: white;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+    }
+
+    .combo-menu[hidden] {
+      display: none;
+    }
+
+    .combo-option {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #eef1f4;
+      border-radius: 0;
+      background: white;
+      color: var(--ink);
+      text-align: left;
+      font-weight: normal;
+    }
+
+    .combo-option:hover,
+    .combo-option:focus {
+      background: #eef6fc;
+      color: var(--ink);
+    }
+
+    .result {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin: 12px 0;
+      background: white;
+    }
+
+    .result h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .result dl {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 4px 10px;
+      margin: 0;
+    }
+
+    .result dt {
+      color: var(--muted);
+      font-weight: bold;
+    }
+
+    .result dd {
+      margin: 0;
+    }
+
+    .seat-blocks {
+      margin-top: 10px;
+      color: var(--good);
+      font-weight: bold;
+    }
+
+    .real-seat-map {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .real-seat-map-title {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .real-seat-map-stage {
+      position: relative;
+      width: 100%;
+      max-width: 680px;
+      overflow: hidden;
+      border: 1px solid #cbd3dc;
+      border-radius: 8px;
+      background: #f2f5f8;
+    }
+
+    .real-screen {
+      width: min(520px, 76%);
+      height: 8px;
+      margin: 6px auto 10px;
+      border-radius: 999px;
+      background: #9aa7b5;
+    }
+
+    .real-seat {
+      position: absolute;
+      border: 1px solid #7c8998;
+      border-radius: 4px 4px 8px 8px;
+      background: white;
+      color: transparent;
+      overflow: hidden;
+    }
+
+    .real-seat.available {
+      background: #ffffff;
+      border-color: #678097;
+    }
+
+    .real-seat.unavailable {
+      background: #d2d8df;
+      border-color: #b8c0ca;
+    }
+
+    .real-seat.accessible {
+      border-color: #6f58a8;
+      background: #efeaff;
+    }
+
+    .real-seat.matched {
+      background: #1769aa;
+      border-color: #0f4f82;
+      box-shadow: 0 0 0 2px rgba(23, 105, 170, 0.22);
+    }
+
+    .seat-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #7c8998;
+      border-radius: 3px 3px 6px 6px;
+      background: white;
+    }
+
+    .legend-swatch.unavailable {
+      background: #d2d8df;
+      border-color: #b8c0ca;
+    }
+
+    .legend-swatch.matched {
+      background: #1769aa;
+      border-color: #0f4f82;
+    }
+
+    .seat-picker {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .seat-grid {
+      display: grid;
+      grid-template-columns: repeat(15, minmax(18px, 1fr));
+      gap: 3px;
+      max-width: 560px;
+      margin-top: 8px;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .seat-cell {
+      aspect-ratio: 1;
+      min-width: 0;
+      border: 1px solid #b9c1cc;
+      border-radius: 3px;
+      background: white;
+      color: transparent;
+      padding: 0;
+    }
+
+    .seat-cell:hover {
+      background: #dceeff;
+    }
+
+    .seat-cell.selected {
+      background: var(--accent);
+      border-color: var(--accent-dark);
+    }
+
+    .screen-label {
+      width: min(560px, 100%);
+      margin-top: 8px;
+      padding: 5px;
+      border-radius: 999px;
+      background: #dfe5ec;
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      max-width: 560px;
+    }
+
+    .inline-actions button {
+      width: auto;
+      min-width: 120px;
+    }
+
+    .results-bar {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    @media (max-width: 640px) {
+      main {
+        padding: 14px;
+      }
+
+      .result dl {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Movie Seat Finder</h1>
+    <p class="muted">Real Fandango theatres, dates, movies, formats, showtimes, seat maps, and ticket links when available.</p>
+  </header>
+
+  <main>
+    <div class="steps">
+      <fieldset>
+        <legend>1. Where and when</legend>
+        <div class="grid">
+          <label>
+            ZIP code
+            <input id="zipInput" type="text" value="10001" inputmode="numeric" maxlength="10">
+          </label>
+
+          <label>
+            Radius in miles
+            <input id="radiusInput" type="number" min="1" max="100" value="5">
+          </label>
+
+          <label>
+            Start date
+            <input id="startDateInput" type="date">
+          </label>
+
+          <label>
+            End date
+            <input id="endDateInput" type="date">
+          </label>
+
+          <div>
+            <button id="loadTheatresButton" type="button">Load theatres</button>
+          </div>
+        </div>
+        <div id="theatreStatus" class="status muted"></div>
+
+        <div class="grid">
+          <label class="combo">
+            Theatre search
+            <input id="theatreInput" type="text" autocomplete="off" placeholder="Type a theatre name">
+            <div id="theatreMenu" class="combo-menu" hidden></div>
+          </label>
+
+          <div>
+            <button id="loadMoviesButton" type="button">Load movies for dates</button>
+          </div>
+        </div>
+        <div id="movieStatus" class="status muted"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>2. Movie, format, seats</legend>
+        <div class="grid">
+          <label class="combo">
+            Movie search
+            <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title">
+            <div id="movieMenu" class="combo-menu" hidden></div>
+          </label>
+
+          <label>
+            Available format
+            <select id="formatSelect">
+              <option value="any">Any available format</option>
+            </select>
+          </label>
+
+          <div>
+            <button id="loadFormatsButton" type="button">Load formats</button>
+          </div>
+        </div>
+        <div id="formatStatus" class="status muted"></div>
+
+        <div class="grid">
+          <label>
+            Earliest time
+            <input id="startTimeInput" type="time" value="17:00">
+          </label>
+
+          <label>
+            Latest time
+            <input id="endTimeInput" type="time" value="23:30">
+          </label>
+
+          <label>
+            Minimum adjacent seats
+            <input id="adjacentSeatsInput" type="number" min="1" max="10" value="2">
+          </label>
+
+          <label>
+            Seat zone
+            <select id="seatAreaSelect">
+              <option value="any">Any</option>
+              <optgroup label="Exact grid zones">
+                <option value="very-front-far-left">Very front far left</option>
+                <option value="very-front-left">Very front left</option>
+                <option value="very-front-center">Very front center</option>
+                <option value="very-front-right">Very front right</option>
+                <option value="very-front-far-right">Very front far right</option>
+                <option value="front-far-left">Front far left</option>
+                <option value="front-left">Front left</option>
+                <option value="front-center">Front center</option>
+                <option value="front-right">Front right</option>
+                <option value="front-far-right">Front far right</option>
+                <option value="middle-far-left">Middle far left</option>
+                <option value="middle-left">Middle left</option>
+                <option value="middle-center">Middle center</option>
+                <option value="center-middle">Center middle</option>
+                <option value="middle-right">Middle right</option>
+                <option value="middle-far-right">Middle far right</option>
+                <option value="back-far-left">Back far left</option>
+                <option value="back-left">Back left</option>
+                <option value="back-center">Back center</option>
+                <option value="back-right">Back right</option>
+                <option value="back-far-right">Back far right</option>
+                <option value="very-back-far-left">Very back far left</option>
+                <option value="very-back-left">Very back left</option>
+                <option value="very-back-center">Very back center</option>
+                <option value="very-back-right">Very back right</option>
+                <option value="very-back-far-right">Very back far right</option>
+              </optgroup>
+              <optgroup label="Broad zones">
+                <option value="very-front">Very front rows</option>
+                <option value="front">Front rows</option>
+                <option value="middle">Middle rows</option>
+                <option value="back">Back rows</option>
+                <option value="very-back">Very back rows</option>
+                <option value="far-left">Far left column</option>
+                <option value="left">Left column</option>
+                <option value="center">Center column</option>
+                <option value="right">Right column</option>
+                <option value="far-right">Far right column</option>
+              </optgroup>
+              <optgroup label="Special seats">
+                <option value="aisle">Any aisle edge</option>
+                <option value="left-aisle">Left aisle edge</option>
+                <option value="right-aisle">Right aisle edge</option>
+                <option value="accessible">Accessible</option>
+                <option value="wheelchair">Wheelchair space</option>
+                <option value="companion">Companion seat</option>
+              </optgroup>
+            </select>
+          </label>
+
+          <div>
+            <button id="searchButton" type="button">Find matching seats</button>
+          </div>
+        </div>
+
+        <div class="seat-picker">
+          <strong>Seat preference grid</strong>
+          <p class="muted">Click one cell or drag a box over the region where you want seats. Hold Shift, Ctrl, or Alt while dragging to erase a box. Top is screen/front, bottom is back. Grid selection overrides the dropdown.</p>
+          <div class="screen-label">SCREEN / FRONT</div>
+          <div id="seatPreferenceGrid" class="seat-grid" aria-label="15 by 15 seat preference grid"></div>
+          <div class="inline-actions">
+            <button id="selectCenterGridButton" class="secondary" type="button">Select center</button>
+            <button id="selectBackCenterGridButton" class="secondary" type="button">Select back center</button>
+            <button id="clearGridButton" class="secondary" type="button">Clear grid</button>
+          </div>
+          <div id="gridStatus" class="status muted"></div>
+        </div>
+      </fieldset>
+    </div>
+
+    <h2>Results</h2>
+    <div id="summary" class="results-bar muted">Choose a ZIP, date range, movie, and seats.</div>
+    <div id="results"></div>
+  </main>
+
+  <script>
+    const zipInput = document.getElementById("zipInput");
+    const radiusInput = document.getElementById("radiusInput");
+    const startDateInput = document.getElementById("startDateInput");
+    const endDateInput = document.getElementById("endDateInput");
+    const loadTheatresButton = document.getElementById("loadTheatresButton");
+    const theatreStatus = document.getElementById("theatreStatus");
+    const theatreInput = document.getElementById("theatreInput");
+    const theatreMenu = document.getElementById("theatreMenu");
+    const loadMoviesButton = document.getElementById("loadMoviesButton");
+    const movieStatus = document.getElementById("movieStatus");
+    const movieInput = document.getElementById("movieInput");
+    const movieMenu = document.getElementById("movieMenu");
+    const formatSelect = document.getElementById("formatSelect");
+    const loadFormatsButton = document.getElementById("loadFormatsButton");
+    const formatStatus = document.getElementById("formatStatus");
+    const startTimeInput = document.getElementById("startTimeInput");
+    const endTimeInput = document.getElementById("endTimeInput");
+    const adjacentSeatsInput = document.getElementById("adjacentSeatsInput");
+    const seatAreaSelect = document.getElementById("seatAreaSelect");
+    const seatPreferenceGrid = document.getElementById("seatPreferenceGrid");
+    const selectCenterGridButton = document.getElementById("selectCenterGridButton");
+    const selectBackCenterGridButton = document.getElementById("selectBackCenterGridButton");
+    const clearGridButton = document.getElementById("clearGridButton");
+    const gridStatus = document.getElementById("gridStatus");
+    const searchButton = document.getElementById("searchButton");
+    const summary = document.getElementById("summary");
+    const results = document.getElementById("results");
+
+    let theatres = [];
+    let movies = [];
+    const selectedGridCells = new Set();
+    let isPaintingGrid = false;
+    let gridPaintMode = true;
+    let gridDragStart = null;
+    let gridSelectionBeforeDrag = new Set();
+    let gridDragMoved = false;
+
+    function todayString() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function addDays(dateString, days) {
+      const date = new Date(dateString + "T00:00:00");
+      date.setDate(date.getDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+
+    async function getJson(url) {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Request failed.");
+      return data;
+    }
+
+    function setStatus(element, text) {
+      element.textContent = text;
+    }
+
+    function setFormatOptions(formats) {
+      formatSelect.innerHTML = "";
+      const anyOption = document.createElement("option");
+      anyOption.value = "any";
+      anyOption.textContent = "Any available format";
+      formatSelect.appendChild(anyOption);
+
+      formats.forEach(format => {
+        const option = document.createElement("option");
+        option.value = format;
+        option.textContent = format;
+        formatSelect.appendChild(option);
+      });
+    }
+
+    function cellKey(row, col) {
+      return row + ":" + col;
+    }
+
+    function updateGridStatus() {
+      const count = selectedGridCells.size;
+      gridStatus.textContent = count
+        ? count + " grid cell" + (count === 1 ? "" : "s") + " selected. Search will use the grid."
+        : "No grid cells selected. Search will use the seat-zone dropdown.";
+    }
+
+    function setGridCell(row, col, selected) {
+      const key = cellKey(row, col);
+      const cell = seatPreferenceGrid.querySelector("[data-cell='" + key + "']");
+      if (selected) {
+        selectedGridCells.add(key);
+        if (cell) cell.classList.add("selected");
+      } else {
+        selectedGridCells.delete(key);
+        if (cell) cell.classList.remove("selected");
+      }
+    }
+
+    function clearGrid() {
+      [...selectedGridCells].forEach(key => {
+        const [row, col] = key.split(":").map(Number);
+        setGridCell(row, col, false);
+      });
+      updateGridStatus();
+    }
+
+    function selectGridBox(rowStart, rowEnd, colStart, colEnd) {
+      clearGrid();
+      for (let row = rowStart; row <= rowEnd; row += 1) {
+        for (let col = colStart; col <= colEnd; col += 1) {
+          setGridCell(row, col, true);
+        }
+      }
+      updateGridStatus();
+    }
+
+    function buildSeatGrid() {
+      seatPreferenceGrid.innerHTML = "";
+      for (let row = 0; row < 15; row += 1) {
+        for (let col = 0; col < 15; col += 1) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "seat-cell";
+          button.dataset.cell = cellKey(row, col);
+          button.dataset.row = row;
+          button.dataset.col = col;
+          button.title = "Row band " + (row + 1) + ", column band " + (col + 1);
+          button.setAttribute("aria-label", button.title);
+          button.addEventListener("click", event => {
+            if (event.detail !== 0) return;
+            if (isPaintingGrid) return;
+            setGridCell(row, col, !selectedGridCells.has(cellKey(row, col)));
+            updateGridStatus();
+          });
+          seatPreferenceGrid.appendChild(button);
+        }
+      }
+      updateGridStatus();
+    }
+
+    function gridCellFromEvent(event) {
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      return element && element.closest ? element.closest(".seat-cell") : null;
+    }
+
+    function restoreGridSelection(snapshot) {
+      for (let row = 0; row < 15; row += 1) {
+        for (let col = 0; col < 15; col += 1) {
+          setGridCell(row, col, snapshot.has(cellKey(row, col)));
+        }
+      }
+    }
+
+    function applyGridRectangle(cell) {
+      if (!cell || !seatPreferenceGrid.contains(cell)) return;
+      const current = {
+        row: Number(cell.dataset.row),
+        col: Number(cell.dataset.col),
+      };
+      const rowStart = Math.min(gridDragStart.row, current.row);
+      const rowEnd = Math.max(gridDragStart.row, current.row);
+      const colStart = Math.min(gridDragStart.col, current.col);
+      const colEnd = Math.max(gridDragStart.col, current.col);
+
+      restoreGridSelection(gridSelectionBeforeDrag);
+      for (let row = rowStart; row <= rowEnd; row += 1) {
+        for (let col = colStart; col <= colEnd; col += 1) {
+          setGridCell(row, col, gridPaintMode);
+        }
+      }
+      updateGridStatus();
+    }
+
+    function renderCombo(menu, items, input, getLabel, onPick) {
+      menu.innerHTML = "";
+      if (!items.length) {
+        menu.hidden = true;
+        return;
+      }
+
+      items.forEach(item => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "combo-option";
+        button.textContent = getLabel(item);
+        button.addEventListener("mousedown", event => {
+          event.preventDefault();
+          input.value = getLabel(item);
+          menu.hidden = true;
+          onPick(item);
+        });
+        menu.appendChild(button);
+      });
+      menu.hidden = false;
+    }
+
+    function setupCombo(input, menu, source, getLabel, onPick) {
+      function update() {
+        const query = input.value.trim().toLowerCase();
+        const items = source().filter(item => getLabel(item).toLowerCase().includes(query));
+        renderCombo(menu, items, input, getLabel, onPick);
+      }
+
+      input.addEventListener("focus", update);
+      input.addEventListener("input", update);
+      input.addEventListener("blur", () => {
+        setTimeout(() => {
+          menu.hidden = true;
+        }, 120);
+      });
+    }
+
+    function baseParams() {
+      return new URLSearchParams({
+        zip: zipInput.value.trim(),
+        radius: radiusInput.value,
+        theatre: theatreInput.value.trim(),
+        startDate: startDateInput.value,
+        endDate: endDateInput.value
+      });
+    }
+
+    async function loadTheatres() {
+      setStatus(theatreStatus, "Loading theatres...");
+      results.innerHTML = "";
+      summary.textContent = "Loading real theatres.";
+
+      try {
+        const params = new URLSearchParams({
+          zip: zipInput.value.trim(),
+          radius: radiusInput.value
+        });
+        const data = await getJson("/api/theatres?" + params.toString());
+        theatres = data.theatres || [];
+        setStatus(theatreStatus, theatres.length + " real theatres found near " + data.place + ".");
+        renderCombo(theatreMenu, theatres, theatreInput, theatre => theatre.name, () => {});
+        theatreMenu.hidden = true;
+      } catch (error) {
+        theatres = [];
+        setStatus(theatreStatus, error.message);
+      }
+    }
+
+    async function loadMovies() {
+      setStatus(movieStatus, "Loading movies for selected dates...");
+      const currentMovie = movieInput.value;
+      movies = [];
+      setFormatOptions([]);
+
+      try {
+        const data = await getJson("/api/movies?" + baseParams().toString());
+        movies = data.movies || [];
+        movieInput.value = currentMovie;
+        setStatus(movieStatus, movies.length + " real movie titles loaded for " + startDateInput.value + " to " + endDateInput.value + ".");
+        renderCombo(movieMenu, movies, movieInput, movie => movie.title, () => loadFormats());
+        movieMenu.hidden = true;
+      } catch (error) {
+        setStatus(movieStatus, error.message);
+      }
+    }
+
+    async function loadFormats() {
+      const movieTitle = movieInput.value.trim();
+      setFormatOptions([]);
+      setStatus(formatStatus, "");
+
+      if (!movieTitle) {
+        setStatus(formatStatus, "Choose a movie first.");
+        return;
+      }
+
+      try {
+        setStatus(formatStatus, "Loading formats...");
+        const params = baseParams();
+        params.set("movie", movieTitle);
+        const data = await getJson("/api/formats?" + params.toString());
+        const formats = data.formats || [];
+        setFormatOptions(formats);
+        setStatus(formatStatus, formats.length + " real format" + (formats.length === 1 ? "" : "s") + " found for this movie/date range.");
+      } catch (error) {
+        setFormatOptions([]);
+        setStatus(formatStatus, error.message);
+      }
+    }
+
+    async function search() {
+      const movieTitle = movieInput.value.trim();
+      results.innerHTML = "";
+
+      if (!zipInput.value.trim()) {
+        summary.textContent = "Enter a ZIP code first.";
+        return;
+      }
+
+      if (!movieTitle) {
+        summary.textContent = "Choose a movie first.";
+        return;
+      }
+
+      summary.textContent = "Searching real showtimes and seat maps...";
+
+      try {
+        const params = baseParams();
+        params.set("movie", movieTitle);
+        params.set("format", formatSelect.value);
+        params.set("startTime", startTimeInput.value);
+        params.set("endTime", endTimeInput.value);
+        params.set("adjacentSeats", adjacentSeatsInput.value);
+        params.set("seatArea", seatAreaSelect.value);
+        if (selectedGridCells.size) {
+          params.set("seatGrid", [...selectedGridCells].join(","));
+        }
+        const data = await getJson("/api/search?" + params.toString());
+        renderResults(data);
+      } catch (error) {
+        summary.textContent = error.message;
+      }
+    }
+
+    function addDetail(dl, label, value) {
+      const dt = document.createElement("dt");
+      const dd = document.createElement("dd");
+      dt.textContent = label;
+      dd.textContent = value || "";
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+
+    function createLegendItem(label, className) {
+      const item = document.createElement("span");
+      item.className = "legend-item";
+      const swatch = document.createElement("span");
+      swatch.className = "legend-swatch" + (className ? " " + className : "");
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(label));
+      return item;
+    }
+
+    function renderRealSeatMap(seatMap) {
+      const layout = seatMap && seatMap.layout;
+      if (!layout || !layout.seats || !layout.seats.length) {
+        return null;
+      }
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "real-seat-map";
+
+      const title = document.createElement("div");
+      title.className = "real-seat-map-title";
+      title.innerHTML = "<span>Real Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
+      wrapper.appendChild(title);
+
+      const screen = document.createElement("div");
+      screen.className = "real-screen";
+      screen.title = "Screen";
+      wrapper.appendChild(screen);
+
+      const stage = document.createElement("div");
+      stage.className = "real-seat-map-stage";
+      const width = Math.max(Number(layout.width) || 1, 1);
+      const height = Math.max(Number(layout.height) || 1, 1);
+      stage.style.aspectRatio = width + " / " + height;
+      stage.style.minHeight = "150px";
+
+      layout.seats.forEach(seat => {
+        const node = document.createElement("span");
+        const isAvailable = seat.status === "A";
+        const isAccessible = seat.type === "wheelchair" || seat.type === "companion";
+        node.className = "real-seat " + (isAvailable ? "available" : "unavailable");
+        if (isAccessible) node.classList.add("accessible");
+        if (seat.matched) node.classList.add("matched");
+        node.title = [
+          seat.id || "Seat",
+          isAvailable ? "available" : "unavailable",
+          isAccessible ? seat.type : ""
+        ].filter(Boolean).join(" - ");
+        node.style.left = ((Number(seat.x) || 0) / width * 100) + "%";
+        node.style.top = ((Number(seat.y) || 0) / height * 100) + "%";
+        node.style.width = (Math.max(Number(seat.width) || 1, 1) / width * 100) + "%";
+        node.style.height = (Math.max(Number(seat.height) || 1, 1) / height * 100) + "%";
+        stage.appendChild(node);
+      });
+
+      wrapper.appendChild(stage);
+
+      const legend = document.createElement("div");
+      legend.className = "seat-map-legend";
+      legend.appendChild(createLegendItem("Available", ""));
+      legend.appendChild(createLegendItem("Unavailable", "unavailable"));
+      legend.appendChild(createLegendItem("Matches your filter", "matched"));
+      wrapper.appendChild(legend);
+
+      return wrapper;
+    }
+
+    function renderResults(data) {
+      const matches = data.matches || [];
+      results.innerHTML = "";
+      summary.textContent = matches.length + " real showtime" + (matches.length === 1 ? "" : "s") + " with matching seats. Checked " + data.checkedShowtimes + " showtime" + (data.checkedShowtimes === 1 ? "" : "s") + " and " + data.checkedSeatMaps + " seat map" + (data.checkedSeatMaps === 1 ? "" : "s") + ".";
+
+      if (!matches.length) {
+        const none = document.createElement("p");
+        none.className = "muted";
+        none.textContent = "No real showtimes have seats matching those filters.";
+        results.appendChild(none);
+        return;
+      }
+
+      matches.forEach(match => {
+        const item = document.createElement("section");
+        item.className = "result";
+
+        const title = document.createElement("h3");
+        title.textContent = match.theatre.name;
+        item.appendChild(title);
+
+        const dl = document.createElement("dl");
+        addDetail(dl, "Address", match.theatre.address);
+        addDetail(dl, "Distance", match.theatre.distanceMiles.toFixed(1) + " miles");
+        addDetail(dl, "Movie", match.movieTitle);
+        addDetail(dl, "Format", match.format);
+        addDetail(dl, "Amenities", match.amenities);
+        addDetail(dl, "Date/time", match.date + " at " + match.displayTime);
+        addDetail(dl, "Seats", match.seatMap.availableSeatCount + " of " + match.seatMap.totalSeatCount + " available");
+        item.appendChild(dl);
+
+        const seats = document.createElement("div");
+        seats.className = "seat-blocks";
+        seats.textContent = "Matching blocks: " + match.seatMap.matchingBlocks.map(block =>
+          "Row " + block.row + " seats " + block.seats.join(", ") + " (" + block.count + " adjacent, " + block.area + ")"
+        ).join("; ");
+        item.appendChild(seats);
+
+        const realSeatMap = renderRealSeatMap(match.seatMap);
+        if (realSeatMap) {
+          item.appendChild(realSeatMap);
+        }
+
+        if (match.ticketUrl) {
+          const link = document.createElement("a");
+          link.href = match.ticketUrl;
+          link.textContent = "Buy tickets";
+          link.target = "_blank";
+          link.rel = "noreferrer";
+          item.appendChild(link);
+        }
+
+        results.appendChild(item);
+      });
+    }
+
+    function applyQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("zip")) zipInput.value = params.get("zip");
+      if (params.has("radius")) radiusInput.value = params.get("radius");
+      if (params.has("theatre")) theatreInput.value = params.get("theatre");
+      if (params.has("movie")) movieInput.value = params.get("movie");
+      if (params.has("startDate")) startDateInput.value = params.get("startDate");
+      if (params.has("endDate")) endDateInput.value = params.get("endDate");
+      if (params.has("startTime")) startTimeInput.value = params.get("startTime");
+      if (params.has("endTime")) endTimeInput.value = params.get("endTime");
+      if (params.has("adjacentSeats")) adjacentSeatsInput.value = params.get("adjacentSeats");
+      if (params.has("seatArea")) seatAreaSelect.value = params.get("seatArea");
+      if (params.has("seatGrid")) {
+        params.get("seatGrid").split(",").forEach(value => {
+          const [row, col] = value.split(":").map(Number);
+          if (Number.isInteger(row) && Number.isInteger(col)) {
+            setGridCell(row, col, true);
+          }
+        });
+        updateGridStatus();
+      }
+      if (params.has("format")) {
+        setFormatOptions([params.get("format")]);
+        formatSelect.value = params.get("format");
+      }
+      return params.has("movie");
+    }
+
+    startDateInput.value = todayString();
+    endDateInput.value = addDays(todayString(), 7);
+    buildSeatGrid();
+
+    setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, () => loadMovies());
+    setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, () => loadFormats());
+    seatPreferenceGrid.addEventListener("pointerdown", event => {
+      const cell = event.target.closest(".seat-cell");
+      if (!cell) return;
+      event.preventDefault();
+      isPaintingGrid = true;
+      gridPaintMode = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+      gridDragStart = {
+        row: Number(cell.dataset.row),
+        col: Number(cell.dataset.col),
+      };
+      gridSelectionBeforeDrag = new Set(selectedGridCells);
+      gridDragMoved = false;
+      seatPreferenceGrid.setPointerCapture(event.pointerId);
+      applyGridRectangle(cell);
+    });
+    seatPreferenceGrid.addEventListener("pointermove", event => {
+      if (!isPaintingGrid) return;
+      event.preventDefault();
+      const cell = gridCellFromEvent(event);
+      if (!cell) return;
+      if (Number(cell.dataset.row) !== gridDragStart.row || Number(cell.dataset.col) !== gridDragStart.col) {
+        gridDragMoved = true;
+      }
+      applyGridRectangle(cell);
+    });
+    seatPreferenceGrid.addEventListener("pointerup", event => {
+      if (!isPaintingGrid) return;
+      const cell = gridCellFromEvent(event);
+      if (!gridDragMoved && gridDragStart) {
+        restoreGridSelection(gridSelectionBeforeDrag);
+        const key = cellKey(gridDragStart.row, gridDragStart.col);
+        setGridCell(gridDragStart.row, gridDragStart.col, gridPaintMode ? !gridSelectionBeforeDrag.has(key) : false);
+        updateGridStatus();
+      } else if (cell) {
+        applyGridRectangle(cell);
+      }
+      isPaintingGrid = false;
+      gridDragStart = null;
+      gridSelectionBeforeDrag = new Set();
+      gridDragMoved = false;
+      if (seatPreferenceGrid.hasPointerCapture(event.pointerId)) {
+        seatPreferenceGrid.releasePointerCapture(event.pointerId);
+      }
+    });
+    seatPreferenceGrid.addEventListener("pointercancel", () => {
+      restoreGridSelection(gridSelectionBeforeDrag);
+      updateGridStatus();
+      isPaintingGrid = false;
+      gridDragStart = null;
+      gridSelectionBeforeDrag = new Set();
+      gridDragMoved = false;
+    });
+
+    loadTheatresButton.addEventListener("click", async () => {
+      await loadTheatres();
+      await loadMovies();
+    });
+    loadMoviesButton.addEventListener("click", loadMovies);
+    loadFormatsButton.addEventListener("click", loadFormats);
+    searchButton.addEventListener("click", search);
+    selectCenterGridButton.addEventListener("click", () => selectGridBox(5, 9, 5, 9));
+    selectBackCenterGridButton.addEventListener("click", () => selectGridBox(9, 13, 5, 9));
+    clearGridButton.addEventListener("click", clearGrid);
+    startDateInput.addEventListener("change", () => {
+      movieInput.value = "";
+      movies = [];
+      setFormatOptions([]);
+      setStatus(movieStatus, "Date changed. Load movies for dates.");
+    });
+    endDateInput.addEventListener("change", () => {
+      movieInput.value = "";
+      movies = [];
+      setFormatOptions([]);
+      setStatus(movieStatus, "Date changed. Load movies for dates.");
+    });
+
+    const shouldSearchFromUrl = applyQueryParams();
+    Promise.all([loadTheatres(), loadMovies()]).then(async () => {
+      if (shouldSearchFromUrl) {
+        await loadFormats();
+        const requestedFormat = new URLSearchParams(window.location.search).get("format");
+        if (requestedFormat && Array.from(formatSelect.options).some(option => option.value === requestedFormat)) {
+          formatSelect.value = requestedFormat;
+        }
+        search();
+      }
+    });
+  </script>
+</body>
+</html>
