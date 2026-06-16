@@ -4,6 +4,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import OrderedDict, defaultdict, deque
 import http.client
 import html
 import io
@@ -21,7 +22,10 @@ OVERPASS_ENDPOINTS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
-SEAT_MAP_CACHE = {}
+SEAT_MAP_CACHE = OrderedDict()
+SEAT_MAP_CACHE_LOCK = threading.Lock()
+SEAT_MAP_TTL_SECONDS = 300
+SEAT_MAP_CACHE_MAX = 200
 
 # Cache of theatre+showtime payloads keyed by (zip, radius, date). Showtimes do
 # not change second to second, so a short TTL lets the theatres/movies/formats/
@@ -31,6 +35,18 @@ THEATRES_CACHE_LOCK = threading.Lock()
 THEATRES_TTL_SECONDS = 300
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
+MAX_DATE_RANGE_DAYS = 14
+MAX_TEXT_PARAM_LENGTH = 120
+TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+
+RATE_LIMITS = {
+    "/api/search": (10, 60),
+    "/api/formats": (30, 60),
+    "/api/movies": (30, 60),
+    "/api/theatres": (30, 60),
+}
+RATE_LIMIT_HISTORY = defaultdict(deque)
+RATE_LIMIT_LOCK = threading.Lock()
 
 # Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
 # calls to the same host reuse a socket instead of paying for a new TLS handshake.
@@ -169,9 +185,47 @@ def date_range(start, end):
     final = parse_date(end)
     if final < current:
         raise ValueError("End date must be on or after start date.")
+    if (final - current).days > MAX_DATE_RANGE_DAYS:
+        raise ValueError(f"Date range must be {MAX_DATE_RANGE_DAYS} days or fewer.")
     while current <= final:
         yield current.isoformat()
         current += timedelta(days=1)
+
+
+def validate_radius(radius):
+    if radius < 1 or radius > 100:
+        raise ValueError("Radius must be between 1 and 100 miles.")
+    return radius
+
+
+def validate_short_text(value, field_name):
+    value = (value or "").strip()
+    if len(value) > MAX_TEXT_PARAM_LENGTH:
+        raise ValueError(f"{field_name} must be {MAX_TEXT_PARAM_LENGTH} characters or fewer.")
+    return value
+
+
+def validate_time(value, field_name):
+    if not TIME_PATTERN.fullmatch(value or ""):
+        raise ValueError(f"{field_name} must be in HH:MM format.")
+    hours, minutes = [int(part) for part in value.split(":")]
+    if hours > 23 or minutes > 59:
+        raise ValueError(f"{field_name} must be a valid time.")
+    return value
+
+
+def safe_fandango_url(value):
+    if not value:
+        return ""
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return ""
+    if parts.scheme != "https":
+        return ""
+    if parts.netloc not in {"www.fandango.com", "tickets.fandango.com"}:
+        return ""
+    return value
 
 
 def overpass_theatres(lat, lon, radius_miles):
@@ -577,12 +631,25 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
 def seat_map(showtime_hash):
     if not showtime_hash:
         return None
-    if showtime_hash not in SEAT_MAP_CACHE:
-        SEAT_MAP_CACHE[showtime_hash] = fandango_json(
-            f"/napi/seatMap/{showtime_hash}",
-            referer="https://www.fandango.com/",
-        )
-    return SEAT_MAP_CACHE[showtime_hash]
+    now = time.monotonic()
+    with SEAT_MAP_CACHE_LOCK:
+        cached = SEAT_MAP_CACHE.get(showtime_hash)
+        if cached and now - cached[0] < SEAT_MAP_TTL_SECONDS:
+            SEAT_MAP_CACHE.move_to_end(showtime_hash)
+            return cached[1]
+        if cached:
+            SEAT_MAP_CACHE.pop(showtime_hash, None)
+
+    data = fandango_json(
+        f"/napi/seatMap/{showtime_hash}",
+        referer="https://www.fandango.com/",
+    )
+    with SEAT_MAP_CACHE_LOCK:
+        SEAT_MAP_CACHE[showtime_hash] = (now, data)
+        SEAT_MAP_CACHE.move_to_end(showtime_hash)
+        while len(SEAT_MAP_CACHE) > SEAT_MAP_CACHE_MAX:
+            SEAT_MAP_CACHE.popitem(last=False)
+    return data
 
 
 def seat_band(position, bands):
@@ -906,6 +973,12 @@ def fandango_movies():
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+        super().end_headers()
+
     def send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -917,6 +990,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path in RATE_LIMITS and not self.check_rate_limit(parsed.path):
+            self.send_json(429, {"error": "Too many requests. Please wait a moment and try again."})
+            return
         if parsed.path == "/api/theatres":
             self.handle_theatres(parsed)
             return
@@ -931,16 +1007,26 @@ class Handler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def check_rate_limit(self, path):
+        limit, window = RATE_LIMITS[path]
+        key = (self.client_address[0], path)
+        now = time.monotonic()
+        with RATE_LIMIT_LOCK:
+            history = RATE_LIMIT_HISTORY[key]
+            while history and now - history[0] > window:
+                history.popleft()
+            if len(history) >= limit:
+                return False
+            history.append(now)
+            return True
+
     def handle_theatres(self, parsed):
         try:
             params = parse_qs(parsed.query)
             zip_code = params.get("zip", [""])[0].strip()
-            radius = float(params.get("radius", ["10"])[0])
+            radius = validate_radius(float(params.get("radius", ["10"])[0]))
             if not re.fullmatch(r"\d{5}", zip_code):
                 self.send_json(400, {"error": "Enter a valid 5 digit US ZIP code."})
-                return
-            if radius < 1 or radius > 100:
-                self.send_json(400, {"error": "Radius must be between 1 and 100 miles."})
                 return
 
             try:
@@ -965,17 +1051,20 @@ class Handler(SimpleHTTPRequestHandler):
                 "searchedRadius": limited_radius,
                 "theatres": theatres
             })
-        except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as error:
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except (HTTPError, URLError, TimeoutError, KeyError) as error:
             self.send_json(502, {"error": f"Could not load real theatre data: {error}"})
 
     def handle_movies(self):
         try:
             params = parse_qs(urlparse(self.path).query)
             zip_code = params.get("zip", [""])[0].strip()
-            radius = float(params.get("radius", ["25"])[0])
+            radius = validate_radius(float(params.get("radius", ["25"])[0]))
             start_date = params.get("startDate", [date.today().isoformat()])[0]
             end_date = params.get("endDate", [start_date])[0]
-            theatre_query = params.get("theatre", [""])[0].strip().lower()
+            theatre_query = validate_short_text(params.get("theatre", [""])[0], "Theatre").lower()
+            list(date_range(start_date, end_date))
             if re.fullmatch(r"\d{5}", zip_code):
                 movies = movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query)
                 if not movies:
@@ -985,18 +1074,20 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json(200, {"movies": movies})
                     return
             self.send_json(200, {"movies": fandango_movies()})
-        except (HTTPError, URLError, TimeoutError, ValueError) as error:
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except (HTTPError, URLError, TimeoutError) as error:
             self.send_json(502, {"error": f"Could not load real movie data: {error}"})
 
     def handle_formats(self, parsed):
         try:
             params = parse_qs(parsed.query)
             zip_code = params.get("zip", [""])[0].strip()
-            radius = float(params.get("radius", ["25"])[0])
-            movie_query = params.get("movie", [""])[0].strip()
+            radius = validate_radius(float(params.get("radius", ["25"])[0]))
+            movie_query = validate_short_text(params.get("movie", [""])[0], "Movie")
             start_date = params.get("startDate", [date.today().isoformat()])[0]
             end_date = params.get("endDate", [start_date])[0]
-            theatre_query = params.get("theatre", [""])[0].strip().lower()
+            theatre_query = validate_short_text(params.get("theatre", [""])[0], "Theatre").lower()
             if not movie_query:
                 self.send_json(200, {"formats": []})
                 return
@@ -1009,23 +1100,25 @@ class Handler(SimpleHTTPRequestHandler):
                 theatre_query,
             )
             self.send_json(200, {"formats": sorted(formats)})
-        except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as error:
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except (HTTPError, URLError, TimeoutError, KeyError) as error:
             self.send_json(502, {"error": f"Could not load real format data: {error}"})
 
     def handle_search(self, parsed):
         try:
             params = parse_qs(parsed.query)
             zip_code = params.get("zip", [""])[0].strip()
-            radius = float(params.get("radius", ["25"])[0])
-            theatre_query = params.get("theatre", [""])[0].strip().lower()
-            movie_query = params.get("movie", [""])[0].strip()
-            requested_format = params.get("format", ["any"])[0]
+            radius = validate_radius(float(params.get("radius", ["25"])[0]))
+            theatre_query = validate_short_text(params.get("theatre", [""])[0], "Theatre").lower()
+            movie_query = validate_short_text(params.get("movie", [""])[0], "Movie")
+            requested_format = validate_short_text(params.get("format", ["any"])[0], "Format") or "any"
             start_date = params.get("startDate", [date.today().isoformat()])[0]
             end_date = params.get("endDate", [start_date])[0]
-            start_time = params.get("startTime", ["00:00"])[0]
-            end_time = params.get("endTime", ["23:59"])[0]
-            min_adjacent = int(params.get("adjacentSeats", ["1"])[0])
-            seat_filter = params.get("seatArea", ["any"])[0]
+            start_time = validate_time(params.get("startTime", ["00:00"])[0], "Start time")
+            end_time = validate_time(params.get("endTime", ["23:59"])[0], "End time")
+            min_adjacent = min(max(int(params.get("adjacentSeats", ["1"])[0]), 1), 10)
+            seat_filter = validate_short_text(params.get("seatArea", ["any"])[0], "Seat area") or "any"
             selected_cells = parse_seat_grid(params.get("seatGrid", [""])[0])
             exclude_accessible = params.get("excludeAccessible", ["0"])[0].lower() in ("1", "true", "yes", "on")
             page = max(int(params.get("page", ["1"])[0]), 1)
@@ -1091,7 +1184,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "displayTime": showtime["screenReaderTime"],
                     "format": showtime["format"],
                     "amenities": showtime["amenities"],
-                    "ticketUrl": showtime["ticketUrl"],
+                    "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
                     "seatMap": seat_match,
                 }
 
@@ -1130,7 +1223,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "checkedSeatMaps": checked_seat_maps,
                 "source": "Fandango NAPI",
             })
-        except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as error:
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+        except (HTTPError, URLError, TimeoutError, KeyError) as error:
             self.send_json(502, {"error": f"Could not search real showtimes/seats: {error}"})
 
 

@@ -27,6 +27,7 @@ let theatres = [];
 let movies = [];
 let currentPage = 1;
 const pageSize = 20;
+const maxDateRangeDays = 14;
 const selectedGridCells = new Set();
 let isPaintingGrid = false;
 let gridPaintMode = true;
@@ -396,7 +397,12 @@ function renderRealSeatMap(seatMap) {
 
   const title = document.createElement("div");
   title.className = "real-seat-map-title";
-  title.innerHTML = "<span>Live Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
+  const titleLabel = document.createElement("span");
+  titleLabel.textContent = "Live Fandango seat map";
+  const titleCount = document.createElement("span");
+  titleCount.textContent = seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total";
+  title.appendChild(titleLabel);
+  title.appendChild(titleCount);
   wrapper.appendChild(title);
 
   if (!hasBackground) {
@@ -618,8 +624,12 @@ function applyQueryParams() {
 
 function syncEndDateBounds() {
   endDateInput.min = startDateInput.value;
+  endDateInput.max = addDays(startDateInput.value, maxDateRangeDays);
   if (endDateInput.value && endDateInput.value < startDateInput.value) {
     endDateInput.value = startDateInput.value;
+  }
+  if (endDateInput.value && endDateInput.value > endDateInput.max) {
+    endDateInput.value = endDateInput.max;
   }
 }
 
