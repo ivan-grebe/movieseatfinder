@@ -389,6 +389,7 @@ function renderRealSeatMap(seatMap) {
   if (!layout || !layout.seats || !layout.seats.length) {
     return null;
   }
+  const hasBackground = Boolean(layout.backgroundSvg);
 
   const wrapper = document.createElement("div");
   wrapper.className = "real-seat-map";
@@ -398,18 +399,28 @@ function renderRealSeatMap(seatMap) {
   title.innerHTML = "<span>Live Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
   wrapper.appendChild(title);
 
-  const screen = document.createElement("div");
-  screen.className = "real-screen";
-  screen.title = "Screen";
-  screen.textContent = "SCREEN";
-  wrapper.appendChild(screen);
+  if (!hasBackground) {
+    const screen = document.createElement("div");
+    screen.className = "real-screen";
+    screen.title = "Screen";
+    screen.textContent = "SCREEN";
+    wrapper.appendChild(screen);
+  }
 
   const stage = document.createElement("div");
   stage.className = "real-seat-map-stage";
+  if (hasBackground) stage.classList.add("has-background");
   const width = Math.max(Number(layout.width) || 1, 1);
   const height = Math.max(Number(layout.height) || 1, 1);
   stage.style.aspectRatio = width + " / " + height;
   stage.style.minHeight = "150px";
+  if (hasBackground) {
+    const background = document.createElement("img");
+    background.className = "real-seat-map-background";
+    background.alt = "";
+    background.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(layout.backgroundSvg);
+    stage.appendChild(background);
+  }
 
   layout.seats.forEach(seat => {
     const node = document.createElement("span");

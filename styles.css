@@ -573,6 +573,20 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   box-shadow: inset 0 2px 5px rgba(60, 48, 32, .12);
 }
 
+.real-seat-map-stage.has-background {
+  background-color: #f6f4ef;
+}
+
+.real-seat-map-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+}
+
 .real-screen {
   width: min(460px, 76%);
   margin: 9px auto 12px;

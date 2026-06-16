@@ -262,12 +262,12 @@ def format_matches(format_name, amenity_text, requested):
     if requested == "any":
         return True
 
-    values = {
+    values = [
         normalized_text(value)
         for value in [format_name, *(amenity_text or "").split(",")]
         if normalized_text(value)
-    }
-    combined = normalized_text(f"{format_name} {amenity_text}")
+    ]
+    value_set = set(values)
     exact_checks = {
         "standard": {"standard"},
         "imax": {"imax"},
@@ -283,13 +283,16 @@ def format_matches(format_name, amenity_text, requested):
         "70mm": {"70mm", "70 mm"},
         "70 mm": {"70mm", "70 mm"},
     }
-    if requested == "imax" and re.search(r"\bimax\b.*\b(laser|70\s*mm|70mm)\b", combined):
+    if requested == "imax" and "imax" in value_set:
+        return True
+    if requested == "imax" and any(value.startswith("imax ") for value in values):
         return False
+    combined = normalized_text(f"{format_name} {amenity_text}")
     if requested in ("35mm", "35 mm"):
         return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
     if requested in ("70mm", "70 mm"):
         return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
-    return bool(values & exact_checks.get(requested, {requested}))
+    return bool(value_set & exact_checks.get(requested, {requested}))
 
 
 def fandango_theatres(zip_code, radius, show_date=None):
@@ -360,15 +363,12 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
     return sorted(theatres, key=lambda item: item["distanceMiles"])
 
 
-def movie_has_matching_format(movie, requested_format):
-    for variant in movie.get("variants") or []:
-        format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
-        for group in variant.get("amenityGroups") or []:
-            amenity_text = clean_title(group.get("amenityString", ""))
-            amenities = ", ".join(clean_title(item.get("name", "")) for item in group.get("amenities") or [])
-            if format_matches(format_name, f"{amenity_text}, {amenities}", requested_format):
-                return True
-    return requested_format == "any"
+def should_list_amenity_format(name, visible_terms):
+    normalized_name = normalized_text(name)
+    visible = {normalized_text(term) for term in visible_terms if normalized_text(term)}
+    if normalized_name == "imax" and any(term.startswith("imax ") for term in visible):
+        return False
+    return True
 
 
 def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query=""):
@@ -415,13 +415,18 @@ def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_dat
                     formats.add(format_name)
                     for group in variant.get("amenityGroups") or []:
                         amenity_text = clean_title(group.get("amenityString", ""))
+                        visible_terms = [format_name]
                         for amenity in amenity_text.split(","):
                             amenity = amenity.strip()
                             if any(term in amenity.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
                                 formats.add(amenity)
+                                visible_terms.append(amenity)
                         for amenity in group.get("amenities") or []:
                             name = clean_title(amenity.get("name", ""))
-                            if any(term in name.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
+                            if (
+                                any(term in name.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm"))
+                                and should_list_amenity_format(name, visible_terms)
+                            ):
                                 formats.add(name)
     return sorted(formats)
 
@@ -496,6 +501,12 @@ def normalize_showtimes(theatre, show_date):
                 amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
                 if not amenity_text:
                     amenity_text = ", ".join(item for item in amenities if item)
+                format_tags = ", ".join(
+                    dict.fromkeys(
+                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
+                        [item for item in amenities if item]
+                    )
+                )
                 for showtime in group.get("showtimes") or []:
                     if showtime.get("type") != "available" or showtime.get("expired"):
                         continue
@@ -513,6 +524,7 @@ def normalize_showtimes(theatre, show_date):
                         "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
                         "format": format_name,
                         "amenities": amenity_text,
+                        "formatTags": format_tags,
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
@@ -531,6 +543,12 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
                 amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
                 if not amenity_text:
                     amenity_text = ", ".join(item for item in amenities if item)
+                format_tags = ", ".join(
+                    dict.fromkeys(
+                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
+                        [item for item in amenities if item]
+                    )
+                )
                 for showtime in group.get("showtimes") or []:
                     if showtime.get("type") != "available" or showtime.get("expired"):
                         continue
@@ -548,6 +566,7 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
                         "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
                         "format": format_name,
                         "amenities": amenity_text,
+                        "formatTags": format_tags,
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
@@ -700,6 +719,30 @@ def normalized_seat_layout(data, matching_blocks):
         for block in matching_blocks
         for seat_id in block.get("seats", [])
     }
+    background_svg = data.get("backgroundSvg") or ""
+    background_width = data.get("backgroundWidth")
+    background_height = data.get("backgroundHeight")
+    if background_svg and background_width and background_height:
+        map_offset_x = data.get("mapOffsetX", 0) or 0
+        map_offset_y = data.get("mapOffsetY", 0) or 0
+        return {
+            "width": max(float(background_width), 1),
+            "height": max(float(background_height), 1),
+            "backgroundSvg": background_svg,
+            "seats": [{
+                "id": seat.get("id", ""),
+                "row": seat.get("row"),
+                "column": seat.get("column"),
+                "type": seat.get("type", "standard"),
+                "status": seat.get("status", ""),
+                "x": seat.get("x", 0) + map_offset_x,
+                "y": seat.get("y", 0) + map_offset_y,
+                "width": seat.get("width", 0),
+                "height": seat.get("height", 0),
+                "matched": seat.get("id", "") in matched_ids,
+            } for seat in seats],
+        }
+
     min_left = min((seat.get("x", 0) for seat in seats), default=0)
     min_top = min((seat.get("y", 0) for seat in seats), default=0)
     max_right = max((seat.get("x", 0) + seat.get("width", 0) for seat in seats), default=0)
@@ -1010,7 +1053,6 @@ class Handler(SimpleHTTPRequestHandler):
                 for theatre in dated_theatres:
                     has_candidate_movie = any(
                         movie_matches(movie.get("title", ""), movie_query)
-                        and movie_has_matching_format(movie, requested_format)
                         for movie in theatre.get("rawMovies", [])
                     )
                     if not has_candidate_movie:
@@ -1018,7 +1060,7 @@ class Handler(SimpleHTTPRequestHandler):
                     for showtime in normalize_showtimes_from_movies(theatre, theatre.get("rawMovies", []), show_date):
                         if not movie_matches(showtime["movieTitle"], movie_query):
                             continue
-                        if not format_matches(showtime["format"], showtime["amenities"], requested_format):
+                        if not format_matches(showtime["format"], showtime.get("formatTags", showtime["amenities"]), requested_format):
                             continue
                         if showtime["time"] < start_time or showtime["time"] > end_time:
                             continue
