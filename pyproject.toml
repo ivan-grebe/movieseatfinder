@@ -1,0 +1,9 @@
+[project]
+name = "movieseatfinder-fastapi"
+version = "0.1.0"
+description = "FastAPI/Vercel-ready Movie Seat Finder app."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.117.1",
+    "uvicorn[standard]>=0.35.0",
+]
