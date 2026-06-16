@@ -76,8 +76,6 @@ def date_range(start, end):
     final = parse_date(end)
     if final < current:
         raise ValueError("End date must be on or after start date.")
-    if (final - current).days > 14:
-        raise ValueError("Use a date range of 14 days or less.")
     while current <= final:
         yield current.isoformat()
         current += timedelta(days=1)
@@ -577,9 +575,16 @@ def normalized_seat_layout(data, matching_blocks):
     }
 
 
-def adjacent_blocks(seats, min_adjacent, requested_area, selected_cells=None):
+ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}
+
+
+def adjacent_blocks(seats, min_adjacent, requested_area, selected_cells=None, exclude_accessible=False):
     selected_cells = selected_cells or []
-    available = [seat for seat in seats if seat.get("status") == "A"]
+    available = [
+        seat for seat in seats
+        if seat.get("status") == "A"
+        and not (exclude_accessible and seat.get("type") in ACCESSIBLE_SEAT_TYPES)
+    ]
     if not available:
         return []
 
@@ -639,13 +644,13 @@ def adjacent_blocks(seats, min_adjacent, requested_area, selected_cells=None):
     } for block in blocks]
 
 
-def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=None):
+def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=None, exclude_accessible=False):
     try:
         data = seat_map(showtime.get("showtimeHashCode"))
         if not data:
             return None
         seats = data.get("seats") or []
-        blocks = adjacent_blocks(seats, min_adjacent, requested_area, selected_cells)
+        blocks = adjacent_blocks(seats, min_adjacent, requested_area, selected_cells, exclude_accessible)
         if not blocks:
             return None
         available_count = data.get("totalAvailableSeatCount")
@@ -819,6 +824,7 @@ class Handler(SimpleHTTPRequestHandler):
             min_adjacent = int(params.get("adjacentSeats", ["1"])[0])
             seat_filter = params.get("seatArea", ["any"])[0]
             selected_cells = parse_seat_grid(params.get("seatGrid", [""])[0])
+            exclude_accessible = params.get("excludeAccessible", ["0"])[0].lower() in ("1", "true", "yes", "on")
 
             if not re.fullmatch(r"\d{5}", zip_code):
                 self.send_json(400, {"error": "Enter a valid 5 digit US ZIP code."})
@@ -854,7 +860,7 @@ class Handler(SimpleHTTPRequestHandler):
 
             def check_candidate(candidate):
                 theatre, showtime = candidate
-                seat_match = showtime_seat_match(showtime, min_adjacent, seat_filter, selected_cells)
+                seat_match = showtime_seat_match(showtime, min_adjacent, seat_filter, selected_cells, exclude_accessible)
                 if not seat_match:
                     return None
                 return {

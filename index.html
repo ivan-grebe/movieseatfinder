@@ -7,314 +7,418 @@
   <style>
     :root {
       color-scheme: light;
-      --border: #d7dce2;
-      --ink: #15202b;
-      --muted: #5f6b7a;
-      --panel: #f7f9fb;
-      --accent: #1769aa;
-      --accent-dark: #0f4f82;
-      --good: #0f6b43;
+
+      --paper: #e7e4dd;
+      --paper-edge: #ded9d0;
+      --surface: #ffffff;
+      --surface-2: #faf8f4;
+      --well: #f1eee8;
+      --well-deep: #ebe7df;
+
+      --hairline: #d9d3c8;
+      --border: #cdc6b8;
+      --border-strong: #bdb5a4;
+
+      --ink: #2a2521;
+      --ink-2: #57514a;
+      --muted: #8b847a;
+
+      --accent: #b23b34;
+      --accent-dark: #8f2c27;
+      --accent-deep: #6e201d;
+      --accent-tint: #f6e9e7;
+
+      --good: #2e7d52;
+      --seat-open: #ffffff;
+      --seat-taken: #cfc8ba;
+
+      --radius: 16px;
+      --radius-sm: 11px;
+      --radius-xs: 8px;
+
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      background: white;
+      min-height: 100vh;
       color: var(--ink);
-      font-family: Arial, sans-serif;
-      line-height: 1.4;
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.5;
+      background-color: var(--paper);
     }
 
+    /* ---------- Header ---------- */
     header {
-      border-bottom: 1px solid var(--border);
-      padding: 18px 22px;
-      background: var(--panel);
+      text-align: center;
+      padding: 40px 20px 8px;
     }
 
-    main {
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 20px;
+    .emblem {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 14px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      color: #fbeee9;
+      background-color: var(--accent);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .32),
+        inset 0 -3px 6px rgba(110, 32, 29, .55),
+        0 2px 1px rgba(110, 32, 29, .35),
+        0 8px 18px -6px rgba(110, 32, 29, .5);
     }
+
+    .emblem svg { width: 32px; height: 32px; }
 
     h1 {
-      margin: 0 0 4px;
-      font-size: 28px;
-    }
-
-    h2 {
-      margin: 24px 0 10px;
-      font-size: 20px;
-    }
-
-    p {
       margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(28px, 5vw, 38px);
+      font-weight: 600;
+      letter-spacing: -.01em;
     }
 
-    .muted {
-      color: var(--muted);
-      font-size: 14px;
+    .tagline {
+      margin: 8px auto 0;
+      max-width: 46ch;
+      color: var(--ink-2);
+      font-size: 14.5px;
     }
 
-    .steps {
+    /* ---------- Layout ---------- */
+    main {
+      width: 100%;
+      max-width: 660px;
+      margin: 0 auto;
+      padding: 22px 20px 70px;
+    }
+
+    .card {
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius);
+      background-color: var(--surface);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        0 1px 2px rgba(60, 48, 32, .07),
+        0 18px 36px -20px rgba(60, 48, 32, .45);
+      overflow: hidden;
+    }
+
+    .card-body {
+      padding: 22px;
       display: grid;
-      gap: 14px;
+      gap: 20px;
     }
 
-    fieldset {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-      background: white;
+    .group + .group {
+      padding-top: 20px;
+      border-top: 1px solid var(--hairline);
     }
 
-    legend {
-      padding: 0 6px;
-      font-weight: bold;
+    .group-title {
+      margin: 0 0 14px;
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
     }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 12px 16px;
-      align-items: end;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
     }
 
+    .grid.thirds { grid-template-columns: 1fr 1fr 1fr; }
+    .full { grid-column: 1 / -1; }
+
+    /* ---------- Form controls ---------- */
     label {
       display: block;
-      font-size: 14px;
-      font-weight: bold;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+    }
+
+    .field-hint {
+      font-weight: 400;
+      color: var(--muted);
     }
 
     input,
-    select,
-    button {
+    select {
       width: 100%;
-      margin-top: 5px;
-      padding: 9px 10px;
-      border: 1px solid #b9c1cc;
-      border-radius: 6px;
-      background: white;
+      margin-top: 6px;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      background-color: var(--well);
       color: var(--ink);
       font: inherit;
+      font-size: 15px;
+      box-shadow:
+        inset 0 2px 3px rgba(60, 48, 32, .10),
+        inset 0 1px 0 rgba(60, 48, 32, .04);
+      transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
     }
 
-    button {
-      border-color: var(--accent);
-      background: var(--accent);
-      color: white;
+    select {
       cursor: pointer;
-      font-weight: bold;
+      appearance: none;
+      padding-right: 32px;
     }
 
-    button:hover {
-      background: var(--accent-dark);
+    .select-wrap { position: relative; }
+
+    .select-wrap::after {
+      content: "";
+      position: absolute;
+      right: 13px;
+      bottom: 17px;
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid var(--muted);
+      border-bottom: 2px solid var(--muted);
+      transform: rotate(45deg);
+      pointer-events: none;
     }
 
-    .secondary {
-      background: white;
-      color: var(--accent);
+    input:hover,
+    select:hover { border-color: var(--border-strong); }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+      background-color: var(--surface);
+      box-shadow:
+        inset 0 1px 2px rgba(60, 48, 32, .06),
+        0 0 0 3px rgba(178, 59, 52, .16);
     }
 
-    .secondary:hover {
-      background: #eef6fc;
+    input::placeholder { color: #a39c90; }
+
+    /* ---------- Buttons ---------- */
+    button { font: inherit; cursor: pointer; border: 0; }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px 18px;
+      border-radius: var(--radius-xs);
+      color: #fdf3ef;
+      font-size: 15.5px;
+      font-weight: 700;
+      letter-spacing: .01em;
+      background-color: var(--accent);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .30),
+        inset 0 -2px 4px rgba(110, 32, 29, .45),
+        0 3px 0 var(--accent-deep),
+        0 6px 12px -3px rgba(110, 32, 29, .5);
+      transition: transform .08s ease, box-shadow .08s ease, background-color .15s ease;
     }
 
-    .status {
-      margin-top: 8px;
-      min-height: 20px;
+    .btn-primary:hover:not(:disabled) { background-color: #bd433c; }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(3px);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .25),
+        inset 0 2px 5px rgba(110, 32, 29, .5),
+        0 0 0 var(--accent-deep),
+        0 2px 5px -2px rgba(110, 32, 29, .5);
     }
 
-    .combo {
+    .btn-primary:disabled { opacity: .72; cursor: progress; }
+
+    .btn-small {
+      padding: 8px 14px;
+      border-radius: var(--radius-xs);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background-color: var(--surface-2);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        0 1px 1px rgba(60, 48, 32, .12),
+        0 2px 0 #d3ccbe;
+      transition: transform .08s ease, box-shadow .08s ease, background-color .12s ease;
+    }
+
+    .btn-small:hover { background-color: #fff; }
+
+    .btn-small:active {
+      transform: translateY(2px);
+      box-shadow:
+        inset 0 1px 2px rgba(60, 48, 32, .18),
+        0 0 0 #d3ccbe;
+    }
+
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .cta-row { display: flex; justify-content: center; }
+    .cta-row .btn-primary { max-width: 320px; }
+
+    /* ---------- Checkbox ---------- */
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .check input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+    .check-box {
+      flex: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--well);
+      box-shadow: inset 0 2px 3px rgba(60, 48, 32, .12);
       position: relative;
+      transition: background-color .12s ease, border-color .12s ease;
     }
+
+    .check input:checked + .check-box {
+      background-color: var(--accent);
+      border-color: var(--accent-dark);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 1px 2px rgba(110, 32, 29, .4);
+    }
+
+    .check input:checked + .check-box::after {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 3px;
+      width: 6px;
+      height: 11px;
+      border-right: 2.5px solid #fff;
+      border-bottom: 2.5px solid #fff;
+      transform: rotate(42deg);
+    }
+
+    .check input:focus-visible + .check-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ---------- Status ---------- */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 7px;
+      min-height: 18px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .status:empty { display: none; margin: 0; }
+    .status.is-success { color: var(--good); font-weight: 600; }
+    .status.is-error { color: var(--accent); font-weight: 600; }
+    .status.is-warn { color: #9a6a2a; }
+
+    .spinner {
+      flex: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      border: 2px solid rgba(178, 59, 52, .25);
+      border-top-color: var(--accent);
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Combobox ---------- */
+    .combo { position: relative; }
 
     .combo-menu {
       position: absolute;
-      z-index: 10;
-      top: calc(100% + 4px);
+      z-index: 20;
+      top: calc(100% + 5px);
       left: 0;
       right: 0;
       max-height: 260px;
       overflow: auto;
+      padding: 5px;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      background: white;
-      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+      border-radius: var(--radius-sm);
+      background-color: var(--surface);
+      box-shadow: 0 16px 32px -10px rgba(60, 48, 32, .4), 0 2px 6px rgba(60, 48, 32, .15);
     }
 
-    .combo-menu[hidden] {
-      display: none;
-    }
+    .combo-menu[hidden] { display: none; }
 
     .combo-option {
+      display: block;
       width: 100%;
-      border: 0;
-      border-bottom: 1px solid #eef1f4;
-      border-radius: 0;
-      background: white;
+      padding: 9px 11px;
+      border-radius: var(--radius-xs);
+      background: transparent;
       color: var(--ink);
       text-align: left;
-      font-weight: normal;
+      font-size: 14.5px;
+      font-weight: 500;
     }
 
     .combo-option:hover,
     .combo-option:focus {
-      background: #eef6fc;
-      color: var(--ink);
+      background-color: var(--accent-tint);
+      color: var(--accent-dark);
     }
 
-    .result {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px;
-      margin: 12px 0;
-      background: white;
-    }
-
-    .result h3 {
-      margin: 0 0 8px;
-      font-size: 18px;
-    }
-
-    .result dl {
-      display: grid;
-      grid-template-columns: 140px 1fr;
-      gap: 4px 10px;
-      margin: 0;
-    }
-
-    .result dt {
+    /* ---------- Seat preference ---------- */
+    .seat-help {
+      margin: 0 0 12px;
       color: var(--muted);
-      font-weight: bold;
+      font-size: 13px;
     }
 
-    .result dd {
-      margin: 0;
-    }
-
-    .seat-blocks {
-      margin-top: 10px;
-      color: var(--good);
-      font-weight: bold;
-    }
-
-    .real-seat-map {
-      margin-top: 12px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #fbfcfd;
-    }
-
-    .real-seat-map-title {
+    .seat-stage {
       display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 8px;
-      font-size: 14px;
-      font-weight: bold;
-    }
-
-    .real-seat-map-stage {
-      position: relative;
-      width: 100%;
-      max-width: 680px;
-      overflow: hidden;
-      border: 1px solid #cbd3dc;
-      border-radius: 8px;
-      background: #f2f5f8;
-    }
-
-    .real-screen {
-      width: min(520px, 76%);
-      height: 8px;
-      margin: 6px auto 10px;
-      border-radius: 999px;
-      background: #9aa7b5;
-    }
-
-    .real-seat {
-      position: absolute;
-      border: 1px solid #7c8998;
-      border-radius: 4px 4px 8px 8px;
-      background: white;
-      color: transparent;
-      overflow: hidden;
-    }
-
-    .real-seat.available {
-      background: #ffffff;
-      border-color: #678097;
-    }
-
-    .real-seat.unavailable {
-      background: #d2d8df;
-      border-color: #b8c0ca;
-    }
-
-    .real-seat.accessible {
-      border-color: #6f58a8;
-      background: #efeaff;
-    }
-
-    .real-seat.matched {
-      background: #1769aa;
-      border-color: #0f4f82;
-      box-shadow: 0 0 0 2px rgba(23, 105, 170, 0.22);
-    }
-
-    .seat-map-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .legend-item {
-      display: inline-flex;
+      flex-direction: column;
       align-items: center;
-      gap: 5px;
     }
 
-    .legend-swatch {
-      width: 12px;
-      height: 12px;
-      border: 1px solid #7c8998;
-      border-radius: 3px 3px 6px 6px;
-      background: white;
-    }
-
-    .legend-swatch.unavailable {
-      background: #d2d8df;
-      border-color: #b8c0ca;
-    }
-
-    .legend-swatch.matched {
-      background: #1769aa;
-      border-color: #0f4f82;
-    }
-
-    .seat-picker {
-      margin-top: 12px;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--panel);
+    .screen {
+      width: min(540px, 100%);
+      height: 26px;
+      margin-bottom: 14px;
+      border-radius: 0 0 60% 60% / 0 0 100% 100%;
+      background-color: #d7d1c5;
+      box-shadow:
+        inset 0 3px 0 rgba(255, 255, 255, .7),
+        inset 0 -7px 10px rgba(120, 110, 92, .35),
+        0 8px 14px -8px rgba(80, 72, 58, .8);
+      display: grid;
+      place-items: start center;
+      color: var(--muted);
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .22em;
+      padding-top: 3px;
     }
 
     .seat-grid {
       display: grid;
-      grid-template-columns: repeat(15, minmax(18px, 1fr));
+      grid-template-columns: repeat(15, minmax(16px, 1fr));
       gap: 3px;
-      max-width: 560px;
-      margin-top: 8px;
+      width: min(540px, 100%);
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      background-color: var(--well-deep);
+      box-shadow: inset 0 2px 5px rgba(60, 48, 32, .14);
       user-select: none;
       touch-action: none;
     }
@@ -322,231 +426,374 @@
     .seat-cell {
       aspect-ratio: 1;
       min-width: 0;
-      border: 1px solid #b9c1cc;
-      border-radius: 3px;
-      background: white;
+      border: 1px solid var(--border);
+      border-radius: 4px 4px 6px 6px;
+      background-color: var(--seat-open);
       color: transparent;
       padding: 0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 1px rgba(60, 48, 32, .12);
+      transition: background-color .07s ease, border-color .07s ease, transform .07s ease;
     }
 
     .seat-cell:hover {
-      background: #dceeff;
+      background-color: var(--accent-tint);
+      border-color: var(--accent);
     }
 
     .seat-cell.selected {
-      background: var(--accent);
+      background-color: var(--accent);
       border-color: var(--accent-dark);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 1px 2px rgba(110, 32, 29, .4);
     }
 
-    .screen-label {
-      width: min(560px, 100%);
-      margin-top: 8px;
-      padding: 5px;
-      border-radius: 999px;
-      background: #dfe5ec;
-      color: var(--muted);
+    .grid-actions {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .grid-status { justify-content: center; text-align: center; }
+
+    /* ---------- Results ---------- */
+    .results-head {
+      margin: 36px 0 14px;
       text-align: center;
-      font-size: 12px;
-      font-weight: bold;
+      font-family: var(--serif);
+      font-size: 22px;
+      font-weight: 600;
     }
 
-    .inline-actions {
+    .summary {
+      padding: 13px 16px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      background-color: var(--surface);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 2px rgba(60, 48, 32, .06);
+      color: var(--ink-2);
+      font-size: 14px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+    }
+
+    .summary.is-muted { color: var(--muted); }
+
+    #results { display: grid; gap: 16px; margin-top: 16px; }
+
+    .result {
+      border: 1px solid var(--hairline);
+      border-left: 2px dashed var(--border-strong);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      background-color: var(--surface);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .9),
+        0 1px 2px rgba(60, 48, 32, .07),
+        0 16px 30px -22px rgba(60, 48, 32, .5);
+    }
+
+    .result-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .result-title {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 19px;
+      font-weight: 600;
+    }
+
+    .result-distance {
+      flex: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .result-addr { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+
+    .result-movie { margin: 12px 0 0; font-size: 15px; font-weight: 700; }
+
+    .result-meta {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       gap: 8px;
-      margin-top: 10px;
-      max-width: 560px;
+      margin-top: 9px;
     }
 
-    .inline-actions button {
-      width: auto;
-      min-width: 120px;
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+      background-color: var(--surface-2);
+      border: 1px solid var(--hairline);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
     }
 
-    .results-bar {
-      padding: 12px;
+    .result-open { color: var(--good); font-size: 13px; font-weight: 700; }
+
+    .result-amenities { margin: 11px 0 0; color: var(--muted); font-size: 13px; }
+
+    .seat-blocks { margin-top: 14px; }
+
+    .seat-blocks-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--muted);
+    }
+
+    .seat-block-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+
+    .seat-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 11px;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #235f3f;
+      background-color: #e8f2ec;
+      border: 1px solid #cce0d4;
+    }
+
+    .seat-tag b { color: var(--ink); }
+
+    /* ---------- Real seat map ---------- */
+    .real-seat-map {
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      background-color: var(--surface-2);
+      box-shadow: inset 0 1px 3px rgba(60, 48, 32, .08);
+    }
+
+    .real-seat-map-title {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--ink-2);
+    }
+
+    .real-seat-map-title span:last-child { color: var(--muted); font-weight: 600; }
+
+    .real-seat-map-stage {
+      position: relative;
+      width: 100%;
+      max-width: 620px;
+      margin: 0 auto;
+      overflow: hidden;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--panel);
+      border-radius: var(--radius-xs);
+      background-color: #efece6;
+      box-shadow: inset 0 2px 5px rgba(60, 48, 32, .12);
     }
 
-    @media (max-width: 640px) {
-      main {
-        padding: 14px;
-      }
+    .real-screen {
+      width: min(460px, 76%);
+      height: 6px;
+      margin: 9px auto 12px;
+      border-radius: 999px;
+      background-color: #c4bdb0;
+    }
 
-      .result dl {
-        grid-template-columns: 1fr;
-      }
+    .real-seat {
+      position: absolute;
+      border: 1px solid #b1a998;
+      border-radius: 3px 3px 5px 5px;
+      background-color: #fff;
+      color: transparent;
+      overflow: hidden;
+    }
+
+    .real-seat.available { background-color: #ffffff; border-color: #9c9486; }
+    .real-seat.unavailable { background-color: var(--seat-taken); border-color: #bcb4a4; }
+    .real-seat.accessible { border-color: #5a6f9a; background-color: #e4e9f4; }
+
+    .real-seat.matched {
+      background-color: var(--accent);
+      border-color: var(--accent-dark);
+      box-shadow: 0 0 0 2px rgba(178, 59, 52, .28);
+    }
+
+    .seat-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #9c9486;
+      border-radius: 3px 3px 5px 5px;
+      background-color: #fff;
+    }
+
+    .legend-swatch.unavailable { background-color: var(--seat-taken); border-color: #bcb4a4; }
+    .legend-swatch.matched { background-color: var(--accent); border-color: var(--accent-dark); }
+
+    .buy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 16px;
+      padding: 11px 20px;
+      border-radius: var(--radius-xs);
+      color: #fdf3ef;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      background-color: var(--accent);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .28),
+        0 2px 0 var(--accent-deep),
+        0 5px 11px -4px rgba(110, 32, 29, .5);
+      transition: transform .08s ease, box-shadow .08s ease, background-color .12s ease;
+    }
+
+    .buy-btn:hover { background-color: #bd433c; }
+
+    .buy-btn:active {
+      transform: translateY(2px);
+      box-shadow: inset 0 1px 3px rgba(110, 32, 29, .5), 0 0 0 var(--accent-deep);
+    }
+
+    @media (max-width: 540px) {
+      .card-body { padding: 18px; }
+      .grid.thirds { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
+    <span class="emblem" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 11V7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5V11"/>
+        <path d="M4 11a2 2 0 0 1 2 2v3h12v-3a2 2 0 0 1 2-2"/>
+        <path d="M6 16h12"/>
+        <path d="M7 19v1.4M17 19v1.4"/>
+      </svg>
+    </span>
     <h1>Movie Seat Finder</h1>
-    <p class="muted">Real Fandango theatres, dates, movies, formats, showtimes, seat maps, and ticket links when available.</p>
+    <p class="tagline">Search real Fandango theatres and showtimes, then pinpoint the exact seats you want on a live seat map.</p>
   </header>
 
   <main>
-    <div class="steps">
-      <fieldset>
-        <legend>1. Where and when</legend>
-        <div class="grid">
-          <label>
-            ZIP code
-            <input id="zipInput" type="text" value="10001" inputmode="numeric" maxlength="10">
-          </label>
-
-          <label>
-            Radius in miles
-            <input id="radiusInput" type="number" min="1" max="100" value="5">
-          </label>
-
-          <label>
-            Start date
-            <input id="startDateInput" type="date">
-          </label>
-
-          <label>
-            End date
-            <input id="endDateInput" type="date">
-          </label>
-
-          <div>
-            <button id="loadTheatresButton" type="button">Load theatres</button>
+    <div class="card">
+      <div class="card-body">
+        <div class="group">
+          <p class="group-title">Location &amp; dates</p>
+          <div class="grid">
+            <label>
+              ZIP code
+              <input id="zipInput" type="text" value="10001" inputmode="numeric" maxlength="10">
+            </label>
+            <label>
+              Radius <span class="field-hint">(miles)</span>
+              <input id="radiusInput" type="number" min="1" max="100" value="5">
+            </label>
+            <label>
+              Start date
+              <input id="startDateInput" type="date">
+            </label>
+            <label>
+              End date
+              <input id="endDateInput" type="date">
+            </label>
+            <label class="combo full">
+              Theatre <span class="field-hint">(optional)</span>
+              <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre nearby">
+              <div id="theatreMenu" class="combo-menu" hidden></div>
+            </label>
           </div>
-        </div>
-        <div id="theatreStatus" class="status muted"></div>
-
-        <div class="grid">
-          <label class="combo">
-            Theatre search
-            <input id="theatreInput" type="text" autocomplete="off" placeholder="Type a theatre name">
-            <div id="theatreMenu" class="combo-menu" hidden></div>
-          </label>
-
-          <div>
-            <button id="loadMoviesButton" type="button">Load movies for dates</button>
-          </div>
-        </div>
-        <div id="movieStatus" class="status muted"></div>
-      </fieldset>
-
-      <fieldset>
-        <legend>2. Movie, format, seats</legend>
-        <div class="grid">
-          <label class="combo">
-            Movie search
-            <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title">
-            <div id="movieMenu" class="combo-menu" hidden></div>
-          </label>
-
-          <label>
-            Available format
-            <select id="formatSelect">
-              <option value="any">Any available format</option>
-            </select>
-          </label>
-
-          <div>
-            <button id="loadFormatsButton" type="button">Load formats</button>
-          </div>
-        </div>
-        <div id="formatStatus" class="status muted"></div>
-
-        <div class="grid">
-          <label>
-            Earliest time
-            <input id="startTimeInput" type="time" value="17:00">
-          </label>
-
-          <label>
-            Latest time
-            <input id="endTimeInput" type="time" value="23:30">
-          </label>
-
-          <label>
-            Minimum adjacent seats
-            <input id="adjacentSeatsInput" type="number" min="1" max="10" value="2">
-          </label>
-
-          <label>
-            Seat zone
-            <select id="seatAreaSelect">
-              <option value="any">Any</option>
-              <optgroup label="Exact grid zones">
-                <option value="very-front-far-left">Very front far left</option>
-                <option value="very-front-left">Very front left</option>
-                <option value="very-front-center">Very front center</option>
-                <option value="very-front-right">Very front right</option>
-                <option value="very-front-far-right">Very front far right</option>
-                <option value="front-far-left">Front far left</option>
-                <option value="front-left">Front left</option>
-                <option value="front-center">Front center</option>
-                <option value="front-right">Front right</option>
-                <option value="front-far-right">Front far right</option>
-                <option value="middle-far-left">Middle far left</option>
-                <option value="middle-left">Middle left</option>
-                <option value="middle-center">Middle center</option>
-                <option value="center-middle">Center middle</option>
-                <option value="middle-right">Middle right</option>
-                <option value="middle-far-right">Middle far right</option>
-                <option value="back-far-left">Back far left</option>
-                <option value="back-left">Back left</option>
-                <option value="back-center">Back center</option>
-                <option value="back-right">Back right</option>
-                <option value="back-far-right">Back far right</option>
-                <option value="very-back-far-left">Very back far left</option>
-                <option value="very-back-left">Very back left</option>
-                <option value="very-back-center">Very back center</option>
-                <option value="very-back-right">Very back right</option>
-                <option value="very-back-far-right">Very back far right</option>
-              </optgroup>
-              <optgroup label="Broad zones">
-                <option value="very-front">Very front rows</option>
-                <option value="front">Front rows</option>
-                <option value="middle">Middle rows</option>
-                <option value="back">Back rows</option>
-                <option value="very-back">Very back rows</option>
-                <option value="far-left">Far left column</option>
-                <option value="left">Left column</option>
-                <option value="center">Center column</option>
-                <option value="right">Right column</option>
-                <option value="far-right">Far right column</option>
-              </optgroup>
-              <optgroup label="Special seats">
-                <option value="aisle">Any aisle edge</option>
-                <option value="left-aisle">Left aisle edge</option>
-                <option value="right-aisle">Right aisle edge</option>
-                <option value="accessible">Accessible</option>
-                <option value="wheelchair">Wheelchair space</option>
-                <option value="companion">Companion seat</option>
-              </optgroup>
-            </select>
-          </label>
-
-          <div>
-            <button id="searchButton" type="button">Find matching seats</button>
-          </div>
+          <div id="theatreStatus" class="status" aria-live="polite"></div>
+          <div id="movieStatus" class="status" aria-live="polite"></div>
         </div>
 
-        <div class="seat-picker">
-          <strong>Seat preference grid</strong>
-          <p class="muted">Click one cell or drag a box over the region where you want seats. Hold Shift, Ctrl, or Alt while dragging to erase a box. Top is screen/front, bottom is back. Grid selection overrides the dropdown.</p>
-          <div class="screen-label">SCREEN / FRONT</div>
-          <div id="seatPreferenceGrid" class="seat-grid" aria-label="15 by 15 seat preference grid"></div>
-          <div class="inline-actions">
-            <button id="selectCenterGridButton" class="secondary" type="button">Select center</button>
-            <button id="selectBackCenterGridButton" class="secondary" type="button">Select back center</button>
-            <button id="clearGridButton" class="secondary" type="button">Clear grid</button>
+        <div class="group">
+          <p class="group-title">Movie &amp; format</p>
+          <div class="grid">
+            <label class="combo full">
+              Movie
+              <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title">
+              <div id="movieMenu" class="combo-menu" hidden></div>
+            </label>
+            <label class="select-wrap full">
+              Format
+              <select id="formatSelect">
+                <option value="any">Any available format</option>
+              </select>
+            </label>
           </div>
-          <div id="gridStatus" class="status muted"></div>
+          <div id="formatStatus" class="status" aria-live="polite"></div>
         </div>
-      </fieldset>
+
+        <div class="group">
+          <p class="group-title">Seat preferences</p>
+          <div class="grid thirds">
+            <label>
+              Earliest time
+              <input id="startTimeInput" type="time" value="17:00">
+            </label>
+            <label>
+              Latest time
+              <input id="endTimeInput" type="time" value="23:30">
+            </label>
+            <label>
+              Seats together
+              <input id="adjacentSeatsInput" type="number" min="1" max="10" value="2">
+            </label>
+          </div>
+
+          <label class="check" style="margin-top:16px">
+            <input id="excludeAccessibleInput" type="checkbox">
+            <span class="check-box" aria-hidden="true"></span>
+            <span>Exclude accessible &amp; wheelchair seats from matches</span>
+          </label>
+
+          <p class="seat-help" style="margin-top:18px">Drag a box over the area where you'd like to sit (top is the screen, bottom is the back). Hold Shift, Ctrl, or Alt while dragging to erase. Leave it blank to match anywhere in the auditorium.</p>
+          <div class="seat-stage">
+            <div class="screen">SCREEN</div>
+            <div id="seatPreferenceGrid" class="seat-grid" aria-label="15 by 15 seat preference grid"></div>
+          </div>
+          <div class="grid-actions">
+            <button id="selectCenterGridButton" class="btn-small" type="button">Center</button>
+            <button id="clearGridButton" class="btn-small" type="button">Clear</button>
+          </div>
+          <div id="gridStatus" class="status grid-status" aria-live="polite"></div>
+        </div>
+
+        <div class="cta-row">
+          <button id="searchButton" class="btn-primary" type="button">Find matching seats</button>
+        </div>
+      </div>
     </div>
 
-    <h2>Results</h2>
-    <div id="summary" class="results-bar muted">Choose a ZIP, date range, movie, and seats.</div>
+    <h2 class="results-head">Results</h2>
+    <div id="summary" class="summary is-muted">Pick a movie and your seats, then find matching showtimes.</div>
     <div id="results"></div>
   </main>
 
@@ -555,24 +802,20 @@
     const radiusInput = document.getElementById("radiusInput");
     const startDateInput = document.getElementById("startDateInput");
     const endDateInput = document.getElementById("endDateInput");
-    const loadTheatresButton = document.getElementById("loadTheatresButton");
     const theatreStatus = document.getElementById("theatreStatus");
     const theatreInput = document.getElementById("theatreInput");
     const theatreMenu = document.getElementById("theatreMenu");
-    const loadMoviesButton = document.getElementById("loadMoviesButton");
     const movieStatus = document.getElementById("movieStatus");
     const movieInput = document.getElementById("movieInput");
     const movieMenu = document.getElementById("movieMenu");
     const formatSelect = document.getElementById("formatSelect");
-    const loadFormatsButton = document.getElementById("loadFormatsButton");
     const formatStatus = document.getElementById("formatStatus");
     const startTimeInput = document.getElementById("startTimeInput");
     const endTimeInput = document.getElementById("endTimeInput");
     const adjacentSeatsInput = document.getElementById("adjacentSeatsInput");
-    const seatAreaSelect = document.getElementById("seatAreaSelect");
+    const excludeAccessibleInput = document.getElementById("excludeAccessibleInput");
     const seatPreferenceGrid = document.getElementById("seatPreferenceGrid");
     const selectCenterGridButton = document.getElementById("selectCenterGridButton");
-    const selectBackCenterGridButton = document.getElementById("selectBackCenterGridButton");
     const clearGridButton = document.getElementById("clearGridButton");
     const gridStatus = document.getElementById("gridStatus");
     const searchButton = document.getElementById("searchButton");
@@ -598,6 +841,20 @@
       return date.toISOString().slice(0, 10);
     }
 
+    function formatNiceDate(dateString) {
+      const date = new Date(dateString + "T00:00:00");
+      if (Number.isNaN(date.getTime())) return dateString;
+      return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    }
+
+    function debounce(fn, ms) {
+      let timer;
+      return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+      };
+    }
+
     async function getJson(url) {
       const response = await fetch(url);
       const data = await response.json();
@@ -605,8 +862,43 @@
       return data;
     }
 
-    function setStatus(element, text) {
-      element.textContent = text;
+    // status states: "loading" | "success" | "error" | "warn" | ""
+    function setStatus(element, text, state) {
+      element.className = (element.id === "gridStatus" ? "status grid-status" : "status") + (state ? " is-" + state : "");
+      element.textContent = "";
+      if (!text) return;
+      if (state === "loading") {
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        element.appendChild(spinner);
+      }
+      element.appendChild(document.createTextNode(text));
+    }
+
+    function setSummary(text, muted) {
+      summary.className = "summary" + (muted ? " is-muted" : "");
+      summary.textContent = "";
+      if (muted === "loading") {
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        summary.appendChild(spinner);
+      }
+      summary.appendChild(document.createTextNode(text));
+    }
+
+    function setButtonBusy(button, busy, busyLabel) {
+      if (busy) {
+        button.dataset.label = button.dataset.label || button.textContent;
+        button.disabled = true;
+        button.textContent = "";
+        const spinner = document.createElement("span");
+        spinner.className = "spinner";
+        button.appendChild(spinner);
+        button.appendChild(document.createTextNode(busyLabel || button.dataset.label));
+      } else {
+        button.disabled = false;
+        if (button.dataset.label) button.textContent = button.dataset.label;
+      }
     }
 
     function setFormatOptions(formats) {
@@ -630,9 +922,11 @@
 
     function updateGridStatus() {
       const count = selectedGridCells.size;
-      gridStatus.textContent = count
-        ? count + " grid cell" + (count === 1 ? "" : "s") + " selected. Search will use the grid."
-        : "No grid cells selected. Search will use the seat-zone dropdown.";
+      if (count) {
+        setStatus(gridStatus, count + " seat area" + (count === 1 ? "" : "s") + " highlighted.", "success");
+      } else {
+        setStatus(gridStatus, "No area highlighted — matching seats anywhere.", "");
+      }
     }
 
     function setGridCell(row, col, selected) {
@@ -772,9 +1066,7 @@
     }
 
     async function loadTheatres() {
-      setStatus(theatreStatus, "Loading theatres...");
-      results.innerHTML = "";
-      summary.textContent = "Loading real theatres.";
+      setStatus(theatreStatus, "Loading theatres…", "loading");
 
       try {
         const params = new URLSearchParams({
@@ -783,17 +1075,17 @@
         });
         const data = await getJson("/api/theatres?" + params.toString());
         theatres = data.theatres || [];
-        setStatus(theatreStatus, theatres.length + " real theatres found near " + data.place + ".");
+        setStatus(theatreStatus, theatres.length + " theatres found near " + data.place + ".", "success");
         renderCombo(theatreMenu, theatres, theatreInput, theatre => theatre.name, () => {});
         theatreMenu.hidden = true;
       } catch (error) {
         theatres = [];
-        setStatus(theatreStatus, error.message);
+        setStatus(theatreStatus, error.message, "error");
       }
     }
 
     async function loadMovies() {
-      setStatus(movieStatus, "Loading movies for selected dates...");
+      setStatus(movieStatus, "Loading movies for selected dates…", "loading");
       const currentMovie = movieInput.value;
       movies = [];
       setFormatOptions([]);
@@ -802,35 +1094,32 @@
         const data = await getJson("/api/movies?" + baseParams().toString());
         movies = data.movies || [];
         movieInput.value = currentMovie;
-        setStatus(movieStatus, movies.length + " real movie titles loaded for " + startDateInput.value + " to " + endDateInput.value + ".");
+        setStatus(movieStatus, movies.length + " movies showing " + formatNiceDate(startDateInput.value) + " – " + formatNiceDate(endDateInput.value) + ".", "success");
         renderCombo(movieMenu, movies, movieInput, movie => movie.title, () => loadFormats());
         movieMenu.hidden = true;
       } catch (error) {
-        setStatus(movieStatus, error.message);
+        setStatus(movieStatus, error.message, "error");
       }
     }
 
     async function loadFormats() {
       const movieTitle = movieInput.value.trim();
       setFormatOptions([]);
-      setStatus(formatStatus, "");
+      setStatus(formatStatus, "", "");
 
-      if (!movieTitle) {
-        setStatus(formatStatus, "Choose a movie first.");
-        return;
-      }
+      if (!movieTitle) return;
 
       try {
-        setStatus(formatStatus, "Loading formats...");
+        setStatus(formatStatus, "Loading formats…", "loading");
         const params = baseParams();
         params.set("movie", movieTitle);
         const data = await getJson("/api/formats?" + params.toString());
         const formats = data.formats || [];
         setFormatOptions(formats);
-        setStatus(formatStatus, formats.length + " real format" + (formats.length === 1 ? "" : "s") + " found for this movie/date range.");
+        setStatus(formatStatus, formats.length + " format" + (formats.length === 1 ? "" : "s") + " for this movie.", "success");
       } catch (error) {
         setFormatOptions([]);
-        setStatus(formatStatus, error.message);
+        setStatus(formatStatus, error.message, "error");
       }
     }
 
@@ -839,16 +1128,17 @@
       results.innerHTML = "";
 
       if (!zipInput.value.trim()) {
-        summary.textContent = "Enter a ZIP code first.";
+        setSummary("Enter a ZIP code first.", true);
         return;
       }
 
       if (!movieTitle) {
-        summary.textContent = "Choose a movie first.";
+        setSummary("Choose a movie first.", true);
         return;
       }
 
-      summary.textContent = "Searching real showtimes and seat maps...";
+      setSummary("Searching real showtimes and seat maps…", "loading");
+      setButtonBusy(searchButton, true, "Searching…");
 
       try {
         const params = baseParams();
@@ -857,24 +1147,19 @@
         params.set("startTime", startTimeInput.value);
         params.set("endTime", endTimeInput.value);
         params.set("adjacentSeats", adjacentSeatsInput.value);
-        params.set("seatArea", seatAreaSelect.value);
+        if (excludeAccessibleInput.checked) {
+          params.set("excludeAccessible", "1");
+        }
         if (selectedGridCells.size) {
           params.set("seatGrid", [...selectedGridCells].join(","));
         }
         const data = await getJson("/api/search?" + params.toString());
         renderResults(data);
       } catch (error) {
-        summary.textContent = error.message;
+        setSummary(error.message, true);
+      } finally {
+        setButtonBusy(searchButton, false);
       }
-    }
-
-    function addDetail(dl, label, value) {
-      const dt = document.createElement("dt");
-      const dd = document.createElement("dd");
-      dt.textContent = label;
-      dd.textContent = value || "";
-      dl.appendChild(dt);
-      dl.appendChild(dd);
     }
 
     function createLegendItem(label, className) {
@@ -898,7 +1183,7 @@
 
       const title = document.createElement("div");
       title.className = "real-seat-map-title";
-      title.innerHTML = "<span>Real Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
+      title.innerHTML = "<span>Live Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
       wrapper.appendChild(title);
 
       const screen = document.createElement("div");
@@ -947,40 +1232,92 @@
     function renderResults(data) {
       const matches = data.matches || [];
       results.innerHTML = "";
-      summary.textContent = matches.length + " real showtime" + (matches.length === 1 ? "" : "s") + " with matching seats. Checked " + data.checkedShowtimes + " showtime" + (data.checkedShowtimes === 1 ? "" : "s") + " and " + data.checkedSeatMaps + " seat map" + (data.checkedSeatMaps === 1 ? "" : "s") + ".";
+
+      const summaryText = matches.length + " showtime" + (matches.length === 1 ? "" : "s") +
+        " with matching seats · checked " + data.checkedShowtimes + " showtime" + (data.checkedShowtimes === 1 ? "" : "s") + ".";
+      setSummary(summaryText, matches.length ? false : true);
 
       if (!matches.length) {
-        const none = document.createElement("p");
-        none.className = "muted";
-        none.textContent = "No real showtimes have seats matching those filters.";
+        const none = document.createElement("div");
+        none.className = "summary is-muted";
+        none.style.marginTop = "16px";
+        none.textContent = "No showtimes have seats matching those filters. Try widening the time range, seat area, or dates.";
         results.appendChild(none);
         return;
       }
 
       matches.forEach(match => {
-        const item = document.createElement("section");
+        const item = document.createElement("article");
         item.className = "result";
 
+        const top = document.createElement("div");
+        top.className = "result-top";
         const title = document.createElement("h3");
+        title.className = "result-title";
         title.textContent = match.theatre.name;
-        item.appendChild(title);
+        top.appendChild(title);
+        const distance = document.createElement("span");
+        distance.className = "result-distance";
+        distance.textContent = match.theatre.distanceMiles.toFixed(1) + " mi";
+        top.appendChild(distance);
+        item.appendChild(top);
 
-        const dl = document.createElement("dl");
-        addDetail(dl, "Address", match.theatre.address);
-        addDetail(dl, "Distance", match.theatre.distanceMiles.toFixed(1) + " miles");
-        addDetail(dl, "Movie", match.movieTitle);
-        addDetail(dl, "Format", match.format);
-        addDetail(dl, "Amenities", match.amenities);
-        addDetail(dl, "Date/time", match.date + " at " + match.displayTime);
-        addDetail(dl, "Seats", match.seatMap.availableSeatCount + " of " + match.seatMap.totalSeatCount + " available");
-        item.appendChild(dl);
+        if (match.theatre.address) {
+          const addr = document.createElement("p");
+          addr.className = "result-addr";
+          addr.textContent = match.theatre.address;
+          item.appendChild(addr);
+        }
 
-        const seats = document.createElement("div");
-        seats.className = "seat-blocks";
-        seats.textContent = "Matching blocks: " + match.seatMap.matchingBlocks.map(block =>
-          "Row " + block.row + " seats " + block.seats.join(", ") + " (" + block.count + " adjacent, " + block.area + ")"
-        ).join("; ");
-        item.appendChild(seats);
+        const movie = document.createElement("p");
+        movie.className = "result-movie";
+        movie.textContent = match.movieTitle;
+        item.appendChild(movie);
+
+        const meta = document.createElement("div");
+        meta.className = "result-meta";
+        if (match.format) {
+          const f = document.createElement("span");
+          f.className = "tag";
+          f.textContent = match.format;
+          meta.appendChild(f);
+        }
+        const when = document.createElement("span");
+        when.className = "tag";
+        when.textContent = formatNiceDate(match.date) + " · " + match.displayTime;
+        meta.appendChild(when);
+        const open = document.createElement("span");
+        open.className = "result-open";
+        open.textContent = match.seatMap.availableSeatCount + " of " + match.seatMap.totalSeatCount + " seats open";
+        meta.appendChild(open);
+        item.appendChild(meta);
+
+        if (match.amenities) {
+          const amenities = document.createElement("p");
+          amenities.className = "result-amenities";
+          amenities.textContent = match.amenities;
+          item.appendChild(amenities);
+        }
+
+        if (match.seatMap.matchingBlocks && match.seatMap.matchingBlocks.length) {
+          const blocks = document.createElement("div");
+          blocks.className = "seat-blocks";
+          const blocksTitle = document.createElement("div");
+          blocksTitle.className = "seat-blocks-title";
+          blocksTitle.textContent = "Best matching seats";
+          blocks.appendChild(blocksTitle);
+
+          const list = document.createElement("div");
+          list.className = "seat-block-list";
+          match.seatMap.matchingBlocks.forEach(block => {
+            const chip = document.createElement("span");
+            chip.className = "seat-tag";
+            chip.innerHTML = "<b>Row " + block.row + "</b> · " + block.seats.join(", ") + " · " + block.count + " together";
+            list.appendChild(chip);
+          });
+          blocks.appendChild(list);
+          item.appendChild(blocks);
+        }
 
         const realSeatMap = renderRealSeatMap(match.seatMap);
         if (realSeatMap) {
@@ -989,8 +1326,9 @@
 
         if (match.ticketUrl) {
           const link = document.createElement("a");
+          link.className = "buy-btn";
           link.href = match.ticketUrl;
-          link.textContent = "Buy tickets";
+          link.textContent = "Get tickets →";
           link.target = "_blank";
           link.rel = "noreferrer";
           item.appendChild(link);
@@ -1011,7 +1349,7 @@
       if (params.has("startTime")) startTimeInput.value = params.get("startTime");
       if (params.has("endTime")) endTimeInput.value = params.get("endTime");
       if (params.has("adjacentSeats")) adjacentSeatsInput.value = params.get("adjacentSeats");
-      if (params.has("seatArea")) seatAreaSelect.value = params.get("seatArea");
+      if (params.get("excludeAccessible") === "1") excludeAccessibleInput.checked = true;
       if (params.has("seatGrid")) {
         params.get("seatGrid").split(",").forEach(value => {
           const [row, col] = value.split(":").map(Number);
@@ -1028,12 +1366,31 @@
       return params.has("movie");
     }
 
+    function syncEndDateBounds() {
+      endDateInput.min = startDateInput.value;
+      if (endDateInput.value && endDateInput.value < startDateInput.value) {
+        endDateInput.value = startDateInput.value;
+      }
+    }
+
+    async function refreshTheatresAndMovies() {
+      if (!/^\d{5}$/.test(zipInput.value.trim())) return;
+      await loadTheatres();
+      await loadMovies();
+      if (movieInput.value.trim()) await loadFormats();
+    }
+
+    const autoRefresh = debounce(refreshTheatresAndMovies, 650);
+
     startDateInput.value = todayString();
     endDateInput.value = addDays(todayString(), 7);
+    startDateInput.min = todayString();
+    syncEndDateBounds();
     buildSeatGrid();
 
     setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, () => loadMovies());
     setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, () => loadFormats());
+
     seatPreferenceGrid.addEventListener("pointerdown", event => {
       const cell = event.target.closest(".seat-cell");
       if (!cell) return;
@@ -1087,27 +1444,19 @@
       gridDragMoved = false;
     });
 
-    loadTheatresButton.addEventListener("click", async () => {
-      await loadTheatres();
-      await loadMovies();
-    });
-    loadMoviesButton.addEventListener("click", loadMovies);
-    loadFormatsButton.addEventListener("click", loadFormats);
     searchButton.addEventListener("click", search);
     selectCenterGridButton.addEventListener("click", () => selectGridBox(5, 9, 5, 9));
-    selectBackCenterGridButton.addEventListener("click", () => selectGridBox(9, 13, 5, 9));
     clearGridButton.addEventListener("click", clearGrid);
+
+    zipInput.addEventListener("input", autoRefresh);
+    radiusInput.addEventListener("input", autoRefresh);
     startDateInput.addEventListener("change", () => {
-      movieInput.value = "";
-      movies = [];
-      setFormatOptions([]);
-      setStatus(movieStatus, "Date changed. Load movies for dates.");
+      syncEndDateBounds();
+      autoRefresh();
     });
-    endDateInput.addEventListener("change", () => {
-      movieInput.value = "";
-      movies = [];
-      setFormatOptions([]);
-      setStatus(movieStatus, "Date changed. Load movies for dates.");
+    endDateInput.addEventListener("change", autoRefresh);
+    movieInput.addEventListener("change", () => {
+      if (movieInput.value.trim()) loadFormats();
     });
 
     const shouldSearchFromUrl = applyQueryParams();
