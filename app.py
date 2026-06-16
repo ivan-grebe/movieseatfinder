@@ -1,19 +1,16 @@
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict, defaultdict, deque
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import http.client
 import html
-import io
 import json
 import math
 import re
+import requests
 import threading
 import time
 
@@ -52,104 +49,25 @@ RATE_LIMITS = {
 }
 RATE_LIMIT_HISTORY = defaultdict(deque)
 RATE_LIMIT_LOCK = threading.Lock()
-
-# Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
-# calls to the same host reuse a socket instead of paying for a new TLS handshake.
-_CONNECTION_POOL = {}
-_CONNECTION_POOL_LOCK = threading.Lock()
-_CONNECTION_POOL_MAX_IDLE = 8
-
-
-def _new_connection(scheme, host, timeout):
-    if scheme == "https":
-        return http.client.HTTPSConnection(host, timeout=timeout)
-    return http.client.HTTPConnection(host, timeout=timeout)
-
-
-def _acquire_connection(scheme, host, timeout):
-    with _CONNECTION_POOL_LOCK:
-        bucket = _CONNECTION_POOL.get((scheme, host))
-        conn = bucket.pop() if bucket else None
-    if conn is None:
-        return _new_connection(scheme, host, timeout)
-    conn.timeout = timeout
-    if conn.sock is not None:
-        try:
-            conn.sock.settimeout(timeout)
-        except OSError:
-            pass
-    return conn
-
-
-def _release_connection(scheme, host, conn):
-    with _CONNECTION_POOL_LOCK:
-        bucket = _CONNECTION_POOL.setdefault((scheme, host), [])
-        if len(bucket) < _CONNECTION_POOL_MAX_IDLE:
-            bucket.append(conn)
-            return
-    _discard_connection(conn)
-
-
-def _discard_connection(conn):
-    try:
-        conn.close()
-    except OSError:
-        pass
-
-
-def pooled_request(method, url, headers=None, body=None, timeout=30):
-    """Perform an HTTP(S) request reusing keep-alive connections per host.
-
-    Returns the raw response body as bytes. Raises HTTPError for >= 400 and
-    URLError on connection failure, matching the urllib semantics callers catch.
-    """
-    parts = urlsplit(url)
-    scheme = parts.scheme or "https"
-    host = parts.netloc
-    path = parts.path or "/"
-    if parts.query:
-        path += "?" + parts.query
-    request_headers = dict(headers or {})
-    request_headers.setdefault("Connection", "keep-alive")
-
-    last_error = None
-    for _ in range(2):
-        conn = _acquire_connection(scheme, host, timeout)
-        try:
-            conn.request(method, path, body=body, headers=request_headers)
-            response = conn.getresponse()
-            data = response.read()  # drain fully so the socket can be reused
-            status, reason, response_headers = response.status, response.reason, response.headers
-        except (http.client.HTTPException, ConnectionError, OSError) as error:
-            # A pooled connection may have been closed by the server; retry once fresh.
-            _discard_connection(conn)
-            last_error = error
-            continue
-        if status >= 400:
-            _discard_connection(conn)
-            raise HTTPError(url, status, reason, response_headers, io.BytesIO(data))
-        _release_connection(scheme, host, conn)
-        return data
-    raise URLError(last_error)
+HTTP = requests.Session()
 
 
 def fetch_json(url, timeout=20):
-    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=timeout) as response:
-      return json.loads(response.read().decode("utf-8"))
+    response = HTTP.get(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
 
 
 def fetch_text(url, timeout=20):
-    request = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+    response = HTTP.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+    response.raise_for_status()
+    return response.text
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
-    query = f"?{urlencode(params)}" if params else ""
-    data = pooled_request(
-        "GET",
-        f"{FANDANGO_ORIGIN}{path}{query}",
+    response = HTTP.get(
+        f"{FANDANGO_ORIGIN}{path}",
+        params=params,
         headers={
             "User-Agent": "Mozilla/5.0 MovieSeatFinder/1.0",
             "Accept": "application/json",
@@ -158,7 +76,8 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
         },
         timeout=timeout,
     )
-    return json.loads(data.decode("utf-8"))
+    response.raise_for_status()
+    return response.json()
 
 
 def distance_miles(lat1, lon1, lat2, lon2):
@@ -247,19 +166,20 @@ def overpass_theatres(lat, lon, radius_miles):
     last_error = None
     data = None
     for endpoint in OVERPASS_ENDPOINTS:
-        request = Request(
-            endpoint,
-            data=query.encode("utf-8"),
-            headers={
+        try:
+            response = HTTP.post(
+                endpoint,
+                data=query.encode("utf-8"),
+                headers={
                 "User-Agent": USER_AGENT,
                 "Content-Type": "application/x-www-form-urlencoded",
-            },
-        )
-        try:
-            with urlopen(request, timeout=30) as response:
-                data = json.loads(response.read().decode("utf-8"))
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
             break
-        except (HTTPError, URLError, TimeoutError) as error:
+        except (requests.RequestException, TimeoutError) as error:
             last_error = error
 
     if data is None:
@@ -383,7 +303,7 @@ def fandango_theatres_by_date(zip_code, radius, dates):
             show_date = future_map[future]
             try:
                 results[show_date] = future.result()
-            except (HTTPError, URLError, TimeoutError, KeyError, ValueError):
+            except (requests.RequestException, TimeoutError, KeyError, ValueError):
                 results[show_date] = []
     return results
 
@@ -940,7 +860,7 @@ def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=N
             "totalSeatCount": total_count,
             "layout": normalized_seat_layout(data, blocks),
         }
-    except (HTTPError, URLError, TimeoutError, KeyError, ValueError):
+    except (requests.RequestException, TimeoutError, KeyError, ValueError):
         return None
 
 
@@ -1028,12 +948,12 @@ def api_theatres(request: Request, zip: str = "", radius: float = 10):
             theatres = fandango_theatres(zip_code, radius)
             place = f"ZIP {zip_code}"
             limited_radius = radius
-        except (HTTPError, URLError, TimeoutError, KeyError):
+        except (requests.RequestException, TimeoutError, KeyError):
             location = geocode_zip(zip_code)
             try:
                 theatres = overpass_theatres(location["lat"], location["lon"], radius)
                 limited_radius = radius
-            except (HTTPError, URLError, TimeoutError):
+            except (requests.RequestException, TimeoutError):
                 if radius <= 3:
                     raise
                 limited_radius = 3
@@ -1050,7 +970,7 @@ def api_theatres(request: Request, zip: str = "", radius: float = 10):
         raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (HTTPError, URLError, TimeoutError, KeyError) as error:
+    except (requests.RequestException, TimeoutError, KeyError) as error:
         upstream_error("Could not load real theatre data", error)
 
 
@@ -1081,7 +1001,7 @@ def api_movies(
         return {"movies": fandango_movies()}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (HTTPError, URLError, TimeoutError) as error:
+    except (requests.RequestException, TimeoutError) as error:
         upstream_error("Could not load real movie data", error)
 
 
@@ -1116,7 +1036,7 @@ def api_formats(
         return {"formats": sorted(formats)}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (HTTPError, URLError, TimeoutError, KeyError) as error:
+    except (requests.RequestException, TimeoutError, KeyError) as error:
         upstream_error("Could not load real format data", error)
 
 
@@ -1256,7 +1176,7 @@ def api_search(
         raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (HTTPError, URLError, TimeoutError, KeyError) as error:
+    except (requests.RequestException, TimeoutError, KeyError) as error:
         upstream_error("Could not search real showtimes/seats", error)
 
 
