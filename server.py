@@ -1,13 +1,17 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlencode, parse_qs, urlparse
+from urllib.parse import urlencode, parse_qs, urlparse, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import http.client
 import html
+import io
 import json
 import math
 import re
+import threading
+import time
 
 
 USER_AGENT = "MovieSeatFinder/1.0 (local development app)"
@@ -18,6 +22,92 @@ OVERPASS_ENDPOINTS = [
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
 SEAT_MAP_CACHE = {}
+
+# Cache of theatre+showtime payloads keyed by (zip, radius, date). Showtimes do
+# not change second to second, so a short TTL lets the theatres/movies/formats/
+# search endpoints share one fetch instead of each re-downloading the same data.
+THEATRES_CACHE = {}
+THEATRES_CACHE_LOCK = threading.Lock()
+THEATRES_TTL_SECONDS = 300
+
+# Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
+# calls to the same host reuse a socket instead of paying for a new TLS handshake.
+_CONNECTION_POOL = {}
+_CONNECTION_POOL_LOCK = threading.Lock()
+_CONNECTION_POOL_MAX_IDLE = 8
+
+
+def _new_connection(scheme, host, timeout):
+    if scheme == "https":
+        return http.client.HTTPSConnection(host, timeout=timeout)
+    return http.client.HTTPConnection(host, timeout=timeout)
+
+
+def _acquire_connection(scheme, host, timeout):
+    with _CONNECTION_POOL_LOCK:
+        bucket = _CONNECTION_POOL.get((scheme, host))
+        conn = bucket.pop() if bucket else None
+    if conn is None:
+        return _new_connection(scheme, host, timeout)
+    conn.timeout = timeout
+    if conn.sock is not None:
+        try:
+            conn.sock.settimeout(timeout)
+        except OSError:
+            pass
+    return conn
+
+
+def _release_connection(scheme, host, conn):
+    with _CONNECTION_POOL_LOCK:
+        bucket = _CONNECTION_POOL.setdefault((scheme, host), [])
+        if len(bucket) < _CONNECTION_POOL_MAX_IDLE:
+            bucket.append(conn)
+            return
+    _discard_connection(conn)
+
+
+def _discard_connection(conn):
+    try:
+        conn.close()
+    except OSError:
+        pass
+
+
+def pooled_request(method, url, headers=None, body=None, timeout=30):
+    """Perform an HTTP(S) request reusing keep-alive connections per host.
+
+    Returns the raw response body as bytes. Raises HTTPError for >= 400 and
+    URLError on connection failure, matching the urllib semantics callers catch.
+    """
+    parts = urlsplit(url)
+    scheme = parts.scheme or "https"
+    host = parts.netloc
+    path = parts.path or "/"
+    if parts.query:
+        path += "?" + parts.query
+    request_headers = dict(headers or {})
+    request_headers.setdefault("Connection", "keep-alive")
+
+    last_error = None
+    for _ in range(2):
+        conn = _acquire_connection(scheme, host, timeout)
+        try:
+            conn.request(method, path, body=body, headers=request_headers)
+            response = conn.getresponse()
+            data = response.read()  # drain fully so the socket can be reused
+            status, reason, response_headers = response.status, response.reason, response.headers
+        except (http.client.HTTPException, ConnectionError, OSError) as error:
+            # A pooled connection may have been closed by the server; retry once fresh.
+            _discard_connection(conn)
+            last_error = error
+            continue
+        if status >= 400:
+            _discard_connection(conn)
+            raise HTTPError(url, status, reason, response_headers, io.BytesIO(data))
+        _release_connection(scheme, host, conn)
+        return data
+    raise URLError(last_error)
 
 
 def fetch_json(url, timeout=20):
@@ -34,7 +124,8 @@ def fetch_text(url, timeout=20):
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
     query = f"?{urlencode(params)}" if params else ""
-    request = Request(
+    data = pooled_request(
+        "GET",
         f"{FANDANGO_ORIGIN}{path}{query}",
         headers={
             "User-Agent": "Mozilla/5.0 MovieSeatFinder/1.0",
@@ -42,9 +133,9 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
             "Referer": referer,
             "X-Requested-With": "XMLHttpRequest",
         },
+        timeout=timeout,
     )
-    with urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return json.loads(data.decode("utf-8"))
 
 
 def distance_miles(lat1, lon1, lat2, lon2):
@@ -183,6 +274,40 @@ def format_matches(format_name, amenity_text, requested):
 
 
 def fandango_theatres(zip_code, radius, show_date=None):
+    key = (str(zip_code), str(radius), show_date or "")
+    now = time.monotonic()
+    with THEATRES_CACHE_LOCK:
+        entry = THEATRES_CACHE.get(key)
+        if entry is not None and now - entry[0] < THEATRES_TTL_SECONDS:
+            return entry[1]
+    theatres = _fetch_fandango_theatres(zip_code, radius, show_date)
+    with THEATRES_CACHE_LOCK:
+        THEATRES_CACHE[key] = (now, theatres)
+    return theatres
+
+
+def fandango_theatres_by_date(zip_code, radius, dates):
+    """Fetch (and cache) theatre+showtime payloads for many dates in parallel."""
+    results = {}
+    unique_dates = list(dict.fromkeys(dates))
+    if not unique_dates:
+        return results
+    workers = min(8, len(unique_dates))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {
+            executor.submit(fandango_theatres, zip_code, radius, show_date): show_date
+            for show_date in unique_dates
+        }
+        for future in as_completed(future_map):
+            show_date = future_map[future]
+            try:
+                results[show_date] = future.result()
+            except (HTTPError, URLError, TimeoutError, KeyError, ValueError):
+                results[show_date] = []
+    return results
+
+
+def _fetch_fandango_theatres(zip_code, radius, show_date=None):
     radius_value = int(radius) if float(radius).is_integer() else radius
     params = {"zipCode": zip_code, "radius": radius_value, "limit": 100}
     if show_date:
@@ -230,9 +355,11 @@ def movie_has_matching_format(movie, requested_format):
 def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query=""):
     seen = set()
     movies = []
-    for show_date in date_range(start_date, end_date):
+    dates = list(date_range(start_date, end_date))
+    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+    for show_date in dates:
         theatres = [
-            theatre for theatre in fandango_theatres(zip_code, radius, show_date)
+            theatre for theatre in theatres_by_date.get(show_date, [])
             if not theatre_query or theatre_query in theatre["name"].lower()
         ]
         for theatre in theatres:
@@ -253,9 +380,11 @@ def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, t
 
 def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query=""):
     formats = set()
-    for show_date in date_range(start_date, end_date):
+    dates = list(date_range(start_date, end_date))
+    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+    for show_date in dates:
         theatres = [
-            theatre for theatre in fandango_theatres(zip_code, radius, show_date)
+            theatre for theatre in theatres_by_date.get(show_date, [])
             if not theatre_query or theatre_query in theatre["name"].lower()
         ]
         for theatre in theatres:
@@ -836,9 +965,11 @@ class Handler(SimpleHTTPRequestHandler):
             matches = []
             candidates = []
 
-            for show_date in date_range(start_date, end_date):
+            dates = list(date_range(start_date, end_date))
+            theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+            for show_date in dates:
                 dated_theatres = [
-                    theatre for theatre in fandango_theatres(zip_code, radius, show_date)
+                    theatre for theatre in theatres_by_date.get(show_date, [])
                     if not theatre_query or theatre_query in theatre["name"].lower()
                 ]
                 for theatre in dated_theatres:
