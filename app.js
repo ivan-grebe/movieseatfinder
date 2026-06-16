@@ -397,12 +397,7 @@ function renderRealSeatMap(seatMap) {
 
   const title = document.createElement("div");
   title.className = "real-seat-map-title";
-  const titleLabel = document.createElement("span");
-  titleLabel.textContent = "Live Fandango seat map";
-  const titleCount = document.createElement("span");
-  titleCount.textContent = seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total";
-  title.appendChild(titleLabel);
-  title.appendChild(titleCount);
+  title.innerHTML = "<span>Live Fandango seat map</span><span>" + seatMap.availableSeatCount + " available / " + seatMap.totalSeatCount + " total</span>";
   wrapper.appendChild(title);
 
   if (!hasBackground) {
