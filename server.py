@@ -29,6 +29,8 @@ SEAT_MAP_CACHE = {}
 THEATRES_CACHE = {}
 THEATRES_CACHE_LOCK = threading.Lock()
 THEATRES_TTL_SECONDS = 300
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 50
 
 # Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
 # calls to the same host reuse a socket instead of paying for a new TLS handshake.
@@ -256,21 +258,38 @@ def movie_matches(title, query):
 
 
 def format_matches(format_name, amenity_text, requested):
-    requested = (requested or "any").lower()
+    requested = normalized_text(requested or "any")
     if requested == "any":
         return True
-    haystack = f"{format_name} {amenity_text}".lower()
-    checks = {
-        "standard": ["standard"],
-        "imax": ["imax"],
-        "imax70": ["imax 70", "imax 70mm", "imax 70 mm"],
-        "dolby": ["dolby"],
-        "screenx": ["screenx"],
-        "4dx": ["4dx"],
-        "35mm": ["35mm", "35 mm"],
-        "70mm": ["70mm", "70 mm"],
+
+    values = {
+        normalized_text(value)
+        for value in [format_name, *(amenity_text or "").split(",")]
+        if normalized_text(value)
     }
-    return any(term in haystack for term in checks.get(requested, [requested]))
+    combined = normalized_text(f"{format_name} {amenity_text}")
+    exact_checks = {
+        "standard": {"standard"},
+        "imax": {"imax"},
+        "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax with laser": {"imax with laser", "imax laser"},
+        "dolby": {"dolby", "dolby cinema"},
+        "screenx": {"screenx"},
+        "4dx": {"4dx"},
+        "35mm": {"35mm", "35 mm"},
+        "35 mm": {"35mm", "35 mm"},
+        "70mm": {"70mm", "70 mm"},
+        "70 mm": {"70mm", "70 mm"},
+    }
+    if requested == "imax" and re.search(r"\bimax\b.*\b(laser|70\s*mm|70mm)\b", combined):
+        return False
+    if requested in ("35mm", "35 mm"):
+        return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
+    if requested in ("70mm", "70 mm"):
+        return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
+    return bool(values & exact_checks.get(requested, {requested}))
 
 
 def fandango_theatres(zip_code, radius, show_date=None):
@@ -685,10 +704,19 @@ def normalized_seat_layout(data, matching_blocks):
     min_top = min((seat.get("y", 0) for seat in seats), default=0)
     max_right = max((seat.get("x", 0) + seat.get("width", 0) for seat in seats), default=0)
     max_bottom = max((seat.get("y", 0) + seat.get("height", 0) for seat in seats), default=0)
-    # Fit to the seats' bounding box so the whole auditorium is shown with no
-    # clipping and no dead margin, regardless of Fandango's reported canvas size.
-    width = max(max_right - min_left, 1)
-    height = max(max_bottom - min_top, 1)
+    # Fit to the seats' bounding box with a small buffer so edge seats do not
+    # visually touch the preview frame.
+    seat_widths = [seat.get("width", 0) for seat in seats if seat.get("width", 0)]
+    seat_heights = [seat.get("height", 0) for seat in seats if seat.get("height", 0)]
+    content_width = max(max_right - min_left, 1)
+    content_height = max(max_bottom - min_top, 1)
+    average_seat_size = max(
+        sum(seat_widths) / len(seat_widths) if seat_widths else 0,
+        sum(seat_heights) / len(seat_heights) if seat_heights else 0,
+    )
+    padding = max(average_seat_size * 1.75, min(content_width, content_height) * 0.035, 8)
+    width = content_width + padding * 2
+    height = content_height + padding * 2
 
     return {
         "width": width,
@@ -699,8 +727,8 @@ def normalized_seat_layout(data, matching_blocks):
             "column": seat.get("column"),
             "type": seat.get("type", "standard"),
             "status": seat.get("status", ""),
-            "x": seat.get("x", 0) - min_left,
-            "y": seat.get("y", 0) - min_top,
+            "x": seat.get("x", 0) - min_left + padding,
+            "y": seat.get("y", 0) - min_top + padding,
             "width": seat.get("width", 0),
             "height": seat.get("height", 0),
             "matched": seat.get("id", "") in matched_ids,
@@ -795,7 +823,6 @@ def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=N
         return {
             "availableSeatCount": available_count,
             "totalSeatCount": total_count,
-            "matchingBlocks": blocks,
             "layout": normalized_seat_layout(data, blocks),
         }
     except (HTTPError, URLError, TimeoutError, KeyError, ValueError):
@@ -958,6 +985,10 @@ class Handler(SimpleHTTPRequestHandler):
             seat_filter = params.get("seatArea", ["any"])[0]
             selected_cells = parse_seat_grid(params.get("seatGrid", [""])[0])
             exclude_accessible = params.get("excludeAccessible", ["0"])[0].lower() in ("1", "true", "yes", "on")
+            page = max(int(params.get("page", ["1"])[0]), 1)
+            page_size = min(max(int(params.get("pageSize", [str(DEFAULT_PAGE_SIZE)])[0]), 1), MAX_PAGE_SIZE)
+            page_start = (page - 1) * page_size
+            page_end = page_start + page_size
 
             if not re.fullmatch(r"\d{5}", zip_code):
                 self.send_json(400, {"error": "Enter a valid 5 digit US ZIP code."})
@@ -992,6 +1023,12 @@ class Handler(SimpleHTTPRequestHandler):
                         if showtime["time"] < start_time or showtime["time"] > end_time:
                             continue
                         candidates.append((theatre, showtime))
+            candidates.sort(key=lambda candidate: (
+                candidate[0]["distanceMiles"],
+                candidate[1]["date"],
+                candidate[1]["time"],
+                candidate[1]["movieTitle"],
+            ))
 
             def check_candidate(candidate):
                 theatre, showtime = candidate
@@ -1016,26 +1053,39 @@ class Handler(SimpleHTTPRequestHandler):
                     "seatMap": seat_match,
                 }
 
+            checked_seat_maps = 0
             if candidates:
-                worker_count = min(16, max(4, len(candidates)))
+                worker_count = min(12, max(4, len(candidates)))
+                batch_size = worker_count * 2
                 with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                    future_map = {executor.submit(check_candidate, candidate): candidate for candidate in candidates}
-                    for future in as_completed(future_map):
-                        result = future.result()
-                        if result:
-                            matches.append(result)
+                    for offset in range(0, len(candidates), batch_size):
+                        batch = candidates[offset:offset + batch_size]
+                        future_map = {executor.submit(check_candidate, candidate): candidate for candidate in batch}
+                        checked_seat_maps += len(batch)
+                        for future in as_completed(future_map):
+                            result = future.result()
+                            if result:
+                                matches.append(result)
+                        matches.sort(key=lambda item: (
+                            item["theatre"]["distanceMiles"],
+                            item["date"],
+                            item["time"],
+                            item["movieTitle"],
+                        ))
+                        if len(matches) > page_end:
+                            break
 
-            matches.sort(key=lambda item: (
-                item["theatre"]["distanceMiles"],
-                item["date"],
-                item["time"],
-                item["movieTitle"],
-            ))
+            page_matches = matches[page_start:page_end]
 
             self.send_json(200, {
-                "matches": matches,
+                "matches": page_matches,
+                "page": page,
+                "pageSize": page_size,
+                "hasPreviousPage": page > 1,
+                "hasNextPage": len(matches) > page_end,
+                "matchedThrough": min(len(matches), page_end),
                 "checkedShowtimes": len(candidates),
-                "checkedSeatMaps": len(candidates),
+                "checkedSeatMaps": checked_seat_maps,
                 "source": "Fandango NAPI",
             })
         except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as error:

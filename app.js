@@ -21,9 +21,12 @@ const gridStatus = document.getElementById("gridStatus");
 const searchButton = document.getElementById("searchButton");
 const summary = document.getElementById("summary");
 const results = document.getElementById("results");
+const pagination = document.getElementById("pagination");
 
 let theatres = [];
 let movies = [];
+let currentPage = 1;
+const pageSize = 20;
 const selectedGridCells = new Set();
 let isPaintingGrid = false;
 let gridPaintMode = true;
@@ -324,8 +327,15 @@ async function loadFormats() {
 }
 
 async function search() {
+  currentPage = 1;
+  await runSearch();
+}
+
+async function runSearch() {
   const movieTitle = movieInput.value.trim();
   results.innerHTML = "";
+  pagination.hidden = true;
+  pagination.innerHTML = "";
 
   if (!zipInput.value.trim()) {
     setSummary("Enter a ZIP code first.", true);
@@ -347,6 +357,8 @@ async function search() {
     params.set("startTime", startTimeInput.value);
     params.set("endTime", endTimeInput.value);
     params.set("adjacentSeats", adjacentSeatsInput.value);
+    params.set("page", currentPage);
+    params.set("pageSize", pageSize);
     if (excludeAccessibleInput.checked) {
       params.set("excludeAccessible", "1");
     }
@@ -389,6 +401,7 @@ function renderRealSeatMap(seatMap) {
   const screen = document.createElement("div");
   screen.className = "real-screen";
   screen.title = "Screen";
+  screen.textContent = "SCREEN";
   wrapper.appendChild(screen);
 
   const stage = document.createElement("div");
@@ -428,13 +441,60 @@ function renderRealSeatMap(seatMap) {
   return wrapper;
 }
 
+function renderPagination(data) {
+  const hasPrevious = Boolean(data.hasPreviousPage);
+  const hasNext = Boolean(data.hasNextPage);
+  if (!hasPrevious && !hasNext) {
+    pagination.hidden = true;
+    pagination.innerHTML = "";
+    return;
+  }
+
+  pagination.hidden = false;
+  pagination.innerHTML = "";
+
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "btn-small";
+  previous.textContent = "Previous";
+  previous.disabled = !hasPrevious;
+  previous.addEventListener("click", () => {
+    if (currentPage <= 1) return;
+    currentPage -= 1;
+    runSearch();
+  });
+
+  const label = document.createElement("span");
+  label.className = "pagination-label";
+  label.textContent = "Page " + (data.page || currentPage);
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "btn-small";
+  next.textContent = "Next";
+  next.disabled = !hasNext;
+  next.addEventListener("click", () => {
+    currentPage += 1;
+    runSearch();
+  });
+
+  pagination.appendChild(previous);
+  pagination.appendChild(label);
+  pagination.appendChild(next);
+}
+
 function renderResults(data) {
   const matches = data.matches || [];
   results.innerHTML = "";
 
-  const summaryText = matches.length + " showtime" + (matches.length === 1 ? "" : "s") +
-    " with matching seats · checked " + data.checkedShowtimes + " showtime" + (data.checkedShowtimes === 1 ? "" : "s") + ".";
+  const showingStart = matches.length ? ((data.page || 1) - 1) * (data.pageSize || pageSize) + 1 : 0;
+  const showingEnd = showingStart + matches.length - 1;
+  const pageText = matches.length ? "Showing " + showingStart + "-" + showingEnd + " matching showtime" + (matches.length === 1 ? "" : "s") : "No matching showtimes";
+  const summaryText = pageText +
+    " - checked " + data.checkedSeatMaps + " seat map" + (data.checkedSeatMaps === 1 ? "" : "s") +
+    " from " + data.checkedShowtimes + " candidate showtime" + (data.checkedShowtimes === 1 ? "" : "s") + ".";
   setSummary(summaryText, matches.length ? false : true);
+  renderPagination(data);
 
   if (!matches.length) {
     const none = document.createElement("div");
@@ -496,26 +556,6 @@ function renderResults(data) {
       amenities.className = "result-amenities";
       amenities.textContent = match.amenities;
       item.appendChild(amenities);
-    }
-
-    if (match.seatMap.matchingBlocks && match.seatMap.matchingBlocks.length) {
-      const blocks = document.createElement("div");
-      blocks.className = "seat-blocks";
-      const blocksTitle = document.createElement("div");
-      blocksTitle.className = "seat-blocks-title";
-      blocksTitle.textContent = "Best matching seats";
-      blocks.appendChild(blocksTitle);
-
-      const list = document.createElement("div");
-      list.className = "seat-block-list";
-      match.seatMap.matchingBlocks.forEach(block => {
-        const chip = document.createElement("span");
-        chip.className = "seat-tag";
-        chip.innerHTML = "<b>Row " + block.row + "</b> · " + block.seats.join(", ") + " · " + block.count + " together";
-        list.appendChild(chip);
-      });
-      blocks.appendChild(list);
-      item.appendChild(blocks);
     }
 
     const realSeatMap = renderRealSeatMap(match.seatMap);

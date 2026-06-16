@@ -538,32 +538,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .result-amenities { margin: 11px 0 0; color: var(--muted); font-size: 13px; }
 
-.seat-blocks { margin-top: 14px; }
-
-.seat-blocks-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .09em;
-  color: var(--muted);
-}
-
-.seat-block-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
-
-.seat-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 11px;
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #235f3f;
-  background-color: #e8f2ec;
-  border: 1px solid #cce0d4;
-}
-
-.seat-tag b { color: var(--ink); }
-
 /* ---------- Real seat map ---------- */
 .real-seat-map {
   margin-top: 16px;
@@ -601,10 +575,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .real-screen {
   width: min(460px, 76%);
-  height: 6px;
   margin: 9px auto 12px;
+  padding: 4px 0 5px;
   border-radius: 999px;
-  background-color: #c4bdb0;
+  color: #6f675c;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-align: center;
+  background: linear-gradient(180deg, #d6d0c5, #bbb2a4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
 }
 
 .real-seat {
@@ -646,6 +626,30 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .legend-swatch.unavailable { background-color: var(--seat-taken); border-color: #bcb4a4; }
 .legend-swatch.matched { background-color: var(--accent); border-color: var(--accent-dark); }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.pagination[hidden] { display: none; }
+
+.pagination-label {
+  min-width: 72px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.btn-small:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  transform: none;
+}
 
 .buy-btn {
   display: inline-flex;
