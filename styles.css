@@ -618,7 +618,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .real-seat.available { background-color: #ffffff; border-color: #9c9486; }
 .real-seat.unavailable { background-color: var(--seat-taken); border-color: #bcb4a4; }
-.real-seat.accessible { border-color: #5a6f9a; background-color: #e4e9f4; }
 
 .real-seat.matched {
   background-color: var(--accent);

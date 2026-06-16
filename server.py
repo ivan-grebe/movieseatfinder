@@ -681,10 +681,14 @@ def normalized_seat_layout(data, matching_blocks):
         for block in matching_blocks
         for seat_id in block.get("seats", [])
     }
+    min_left = min((seat.get("x", 0) for seat in seats), default=0)
+    min_top = min((seat.get("y", 0) for seat in seats), default=0)
     max_right = max((seat.get("x", 0) + seat.get("width", 0) for seat in seats), default=0)
     max_bottom = max((seat.get("y", 0) + seat.get("height", 0) for seat in seats), default=0)
-    width = data.get("totalWidth") or data.get("backgroundWidth") or max_right or 1
-    height = data.get("totalHeight") or data.get("backgroundHeight") or max_bottom or 1
+    # Fit to the seats' bounding box so the whole auditorium is shown with no
+    # clipping and no dead margin, regardless of Fandango's reported canvas size.
+    width = max(max_right - min_left, 1)
+    height = max(max_bottom - min_top, 1)
 
     return {
         "width": width,
@@ -695,8 +699,8 @@ def normalized_seat_layout(data, matching_blocks):
             "column": seat.get("column"),
             "type": seat.get("type", "standard"),
             "status": seat.get("status", ""),
-            "x": seat.get("x", 0),
-            "y": seat.get("y", 0),
+            "x": seat.get("x", 0) - min_left,
+            "y": seat.get("y", 0) - min_top,
             "width": seat.get("width", 0),
             "height": seat.get("height", 0),
             "matched": seat.get("id", "") in matched_ids,

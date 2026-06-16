@@ -400,15 +400,14 @@ function renderRealSeatMap(seatMap) {
 
   layout.seats.forEach(seat => {
     const node = document.createElement("span");
-    const isAvailable = seat.status === "A";
     const isAccessible = seat.type === "wheelchair" || seat.type === "companion";
+    // Accessible/wheelchair spaces use the same "unavailable" marking as taken seats.
+    const isAvailable = seat.status === "A" && !isAccessible;
     node.className = "real-seat " + (isAvailable ? "available" : "unavailable");
-    if (isAccessible) node.classList.add("accessible");
     if (seat.matched) node.classList.add("matched");
     node.title = [
       seat.id || "Seat",
-      isAvailable ? "available" : "unavailable",
-      isAccessible ? seat.type : ""
+      isAvailable ? "available" : "unavailable"
     ].filter(Boolean).join(" - ");
     node.style.left = ((Number(seat.x) || 0) / width * 100) + "%";
     node.style.top = ((Number(seat.y) || 0) / height * 100) + "%";
