@@ -500,6 +500,22 @@ function renderPagination(data) {
   pagination.appendChild(next);
 }
 
+const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
+const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>';
+
+function makeTag(text, iconSvg) {
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  if (iconSvg) {
+    const icon = document.createElement("span");
+    icon.className = "tag-icon";
+    icon.innerHTML = iconSvg;
+    tag.appendChild(icon);
+  }
+  tag.appendChild(document.createTextNode(text));
+  return tag;
+}
+
 function renderResults(data) {
   const matches = data.matches || [];
   results.innerHTML = "";
@@ -526,6 +542,22 @@ function renderResults(data) {
     const item = document.createElement("article");
     item.className = "result";
 
+    const body = document.createElement("div");
+    body.className = "result-body";
+
+    if (match.poster) {
+      const poster = document.createElement("img");
+      poster.className = "result-poster";
+      poster.src = match.poster;
+      poster.alt = match.movieTitle + " poster";
+      poster.loading = "lazy";
+      poster.addEventListener("error", () => poster.remove());
+      body.appendChild(poster);
+    }
+
+    const details = document.createElement("div");
+    details.className = "result-details";
+
     const top = document.createElement("div");
     top.className = "result-top";
     const title = document.createElement("h3");
@@ -536,37 +568,45 @@ function renderResults(data) {
     distance.className = "result-distance";
     distance.textContent = match.theatre.distanceMiles.toFixed(1) + " mi";
     top.appendChild(distance);
-    item.appendChild(top);
+    details.appendChild(top);
 
     if (match.theatre.address) {
       const addr = document.createElement("p");
       addr.className = "result-addr";
       addr.textContent = match.theatre.address;
-      item.appendChild(addr);
+      details.appendChild(addr);
     }
 
     const movie = document.createElement("p");
     movie.className = "result-movie";
     movie.textContent = match.movieTitle;
-    item.appendChild(movie);
+    details.appendChild(movie);
+
+    const submetaParts = [];
+    if (match.rating) submetaParts.push(match.rating);
+    if (match.runtime) submetaParts.push(match.runtime);
+    if (match.genres && match.genres.length) submetaParts.push(match.genres.join(", "));
+    if (submetaParts.length) {
+      const submeta = document.createElement("p");
+      submeta.className = "result-submeta";
+      submeta.textContent = submetaParts.join("  ·  ");
+      details.appendChild(submeta);
+    }
 
     const meta = document.createElement("div");
     meta.className = "result-meta";
     if (match.format) {
-      const f = document.createElement("span");
-      f.className = "tag";
-      f.textContent = match.format;
-      meta.appendChild(f);
+      meta.appendChild(makeTag(match.format, ICON_FILM));
     }
-    const when = document.createElement("span");
-    when.className = "tag";
-    when.textContent = formatNiceDate(match.date) + " · " + match.displayTime;
-    meta.appendChild(when);
+    meta.appendChild(makeTag(formatNiceDate(match.date) + " · " + match.displayTime, ICON_CALENDAR));
     const open = document.createElement("span");
     open.className = "result-open";
     open.textContent = match.seatMap.availableSeatCount + " of " + match.seatMap.totalSeatCount + " seats open";
     meta.appendChild(open);
-    item.appendChild(meta);
+    details.appendChild(meta);
+
+    body.appendChild(details);
+    item.appendChild(body);
 
     if (match.amenities) {
       const amenities = document.createElement("p");
