@@ -476,10 +476,47 @@ def showtimes_for_theatre(theatre, show_date):
     return data.get("viewModel", {}).get("movies", [])
 
 
+def poster_url(movie, size="300"):
+    poster = movie.get("poster")
+    if isinstance(poster, dict):
+        sizes = poster.get("size")
+        if isinstance(sizes, dict):
+            return sizes.get(size) or sizes.get("200") or sizes.get("full") or ""
+    return ""
+
+
+def format_runtime(minutes):
+    try:
+        total = int(minutes)
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    hours, mins = divmod(total, 60)
+    if hours and mins:
+        return f"{hours}h {mins}m"
+    return f"{hours}h" if hours else f"{mins}m"
+
+
+def format_rating(rating):
+    value = (rating or "").strip()
+    return {"PG13": "PG-13", "NC17": "NC-17"}.get(value, value)
+
+
+def movie_meta(movie):
+    return {
+        "poster": poster_url(movie),
+        "rating": format_rating(movie.get("rating")),
+        "runtime": format_runtime(movie.get("runtime")),
+        "genres": [genre for genre in (movie.get("genres") or []) if genre][:2],
+    }
+
+
 def normalize_showtimes(theatre, show_date):
     normalized = []
     for movie in showtimes_for_theatre(theatre, show_date):
         movie_title = clean_title(movie.get("title", ""))
+        meta = movie_meta(movie)
         for variant in movie.get("variants") or []:
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
@@ -514,6 +551,7 @@ def normalize_showtimes(theatre, show_date):
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
+                        **meta,
                     })
     return normalized
 
@@ -522,6 +560,7 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
     normalized = []
     for movie in movies or []:
         movie_title = clean_title(movie.get("title", ""))
+        meta = movie_meta(movie)
         for variant in movie.get("variants") or []:
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
@@ -556,6 +595,7 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
+                        **meta,
                     })
     return normalized
 
@@ -942,7 +982,8 @@ async def security_headers(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self' data: https://images.fandango.com; "
         "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
     )
     return response
@@ -1224,6 +1265,10 @@ def api_search(
                 "format": showtime["format"],
                 "amenities": showtime["amenities"],
                 "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
+                "poster": showtime.get("poster", ""),
+                "rating": showtime.get("rating", ""),
+                "runtime": showtime.get("runtime", ""),
+                "genres": showtime.get("genres", []),
                 "seatMap": seat_match,
             }
 
