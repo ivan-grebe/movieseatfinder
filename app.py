@@ -4,11 +4,12 @@ from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict, defaultdict, deque
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 import html
 import json
 import math
+import os
 import re
 import requests
 import threading
@@ -17,8 +18,14 @@ import time
 
 USER_AGENT = "MovieSeatFinder/1.0 (local development app)"
 FANDANGO_ORIGIN = "https://www.fandango.com"
+SITE_NAME = "Movie Seat Finder"
+SITE_DESCRIPTION = (
+    "Find real Fandango showtimes with reserved seating and preview live seat maps "
+    "before you buy movie tickets."
+)
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+INDEX_HTML = STATIC_DIR / "index.html"
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -900,6 +907,35 @@ def fandango_movies():
 app = FastAPI(title="Movie Seat Finder")
 
 
+def site_origin(request):
+    configured_url = os.environ.get("SITE_URL", "").strip().rstrip("/")
+    if configured_url:
+        return configured_url
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_proto and forwarded_host:
+        return f"{forwarded_proto.split(',')[0]}://{forwarded_host.split(',')[0]}".rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def seo_context(request):
+    origin = site_origin(request)
+    return {
+        "__SITE_NAME__": SITE_NAME,
+        "__SITE_DESCRIPTION__": SITE_DESCRIPTION,
+        "__SITE_URL__": origin,
+        "__CANONICAL_URL__": f"{origin}/",
+        "__OG_IMAGE_URL__": f"{origin}/og-image.svg",
+    }
+
+
+def render_index(request):
+    markup = INDEX_HTML.read_text(encoding="utf-8")
+    for token, value in seo_context(request).items():
+        markup = markup.replace(token, value)
+    return markup
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
@@ -915,6 +951,59 @@ async def security_headers(request, call_next):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
+@app.get("/", include_in_schema=False)
+def index(request: Request):
+    return HTMLResponse(render_index(request))
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots(request: Request):
+    origin = site_origin(request)
+    return PlainTextResponse(
+        "\n".join([
+            "User-agent: *",
+            "Allow: /",
+            "",
+            f"Sitemap: {origin}/sitemap.xml",
+        ]) + "\n"
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap(request: Request):
+    origin = site_origin(request)
+    today = date.today().isoformat()
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{origin}/</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+"""
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/site.webmanifest", include_in_schema=False)
+def webmanifest():
+    return JSONResponse({
+        "name": SITE_NAME,
+        "short_name": "Seat Finder",
+        "description": SITE_DESCRIPTION,
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#e7e4dd",
+        "theme_color": "#b23b34",
+        "icons": [{
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+        }],
+    })
 
 
 def enforce_rate_limit(request, path):
