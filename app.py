@@ -39,14 +39,16 @@ SEAT_MAP_CACHE_MAX = 200
 # Cache of theatre+showtime payloads keyed by (zip, radius, date). Showtimes do
 # not change second to second, so a short TTL lets the theatres/movies/formats/
 # search endpoints share one fetch instead of each re-downloading the same data.
-THEATRES_CACHE = {}
+THEATRES_CACHE = OrderedDict()
 THEATRES_CACHE_LOCK = threading.Lock()
 THEATRES_TTL_SECONDS = 300
+THEATRES_CACHE_MAX = 240
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
 MAX_TEXT_PARAM_LENGTH = 120
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+RATE_LIMIT_MAX_KEYS = 1000
 
 RATE_LIMITS = {
     "/api/search": (10, 60),
@@ -56,23 +58,31 @@ RATE_LIMITS = {
 }
 RATE_LIMIT_HISTORY = defaultdict(deque)
 RATE_LIMIT_LOCK = threading.Lock()
-HTTP = requests.Session()
+HTTP_LOCAL = threading.local()
+
+
+def http_session():
+    session = getattr(HTTP_LOCAL, "session", None)
+    if session is None:
+        session = requests.Session()
+        HTTP_LOCAL.session = session
+    return session
 
 
 def fetch_json(url, timeout=20):
-    response = HTTP.get(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=timeout)
+    response = http_session().get(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=timeout)
     response.raise_for_status()
     return response.json()
 
 
 def fetch_text(url, timeout=20):
-    response = HTTP.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+    response = http_session().get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()
     return response.text
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
-    response = HTTP.get(
+    response = http_session().get(
         f"{FANDANGO_ORIGIN}{path}",
         params=params,
         headers={
@@ -174,7 +184,7 @@ def overpass_theatres(lat, lon, radius_miles):
     data = None
     for endpoint in OVERPASS_ENDPOINTS:
         try:
-            response = HTTP.post(
+            response = http_session().post(
                 endpoint,
                 data=query.encode("utf-8"),
                 headers={
@@ -287,10 +297,16 @@ def fandango_theatres(zip_code, radius, show_date=None):
     with THEATRES_CACHE_LOCK:
         entry = THEATRES_CACHE.get(key)
         if entry is not None and now - entry[0] < THEATRES_TTL_SECONDS:
+            THEATRES_CACHE.move_to_end(key)
             return entry[1]
+        if entry is not None:
+            THEATRES_CACHE.pop(key, None)
     theatres = _fetch_fandango_theatres(zip_code, radius, show_date)
     with THEATRES_CACHE_LOCK:
         THEATRES_CACHE[key] = (now, theatres)
+        THEATRES_CACHE.move_to_end(key)
+        while len(THEATRES_CACHE) > THEATRES_CACHE_MAX:
+            THEATRES_CACHE.popitem(last=False)
     return theatres
 
 
@@ -436,46 +452,6 @@ def normalize_movie_list_from_theatres(theatres):
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def movies_for_theatres_and_dates(theatres, start_date, end_date, theatre_query=""):
-    seen = set()
-    movies = []
-    selected_theatres = [
-        theatre for theatre in theatres
-        if not theatre_query or theatre_query in theatre["name"].lower()
-    ]
-    for theatre in selected_theatres:
-        for show_date in date_range(start_date, end_date):
-            for movie in showtimes_for_theatre(theatre, show_date):
-                movie_id = str(movie.get("id") or "")
-                title = clean_title(movie.get("title", ""))
-                key = movie_id or normalized_text(title)
-                if not title or key in seen:
-                    continue
-                seen.add(key)
-                movies.append({
-                    "title": title,
-                    "fandangoId": movie_id,
-                    "source": f"Fandango live showtimes {start_date} to {end_date}",
-                })
-    return sorted(movies, key=lambda movie: movie["title"])
-
-
-def showtimes_for_theatre(theatre, show_date):
-    params = {
-        "chainCode": theatre.get("chainCode") or "",
-        "startDate": show_date,
-        "isdesktop": "true",
-        "partnerRestrictedTicketing": "false",
-    }
-    referer = theatre.get("website") or "https://www.fandango.com/movie-theaters"
-    data = fandango_json(
-        f"/napi/theaterMovieShowtimes/{theatre['fandangoId']}",
-        params,
-        referer=referer,
-    )
-    return data.get("viewModel", {}).get("movies", [])
-
-
 def poster_url(movie, size="300"):
     poster = movie.get("poster")
     if isinstance(poster, dict):
@@ -512,51 +488,7 @@ def movie_meta(movie):
     }
 
 
-def normalize_showtimes(theatre, show_date):
-    normalized = []
-    for movie in showtimes_for_theatre(theatre, show_date):
-        movie_title = clean_title(movie.get("title", ""))
-        meta = movie_meta(movie)
-        for variant in movie.get("variants") or []:
-            format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
-            for group in variant.get("amenityGroups") or []:
-                amenity_text = clean_title(group.get("amenityString", ""))
-                amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
-                if not amenity_text:
-                    amenity_text = ", ".join(item for item in amenities if item)
-                format_tags = ", ".join(
-                    dict.fromkeys(
-                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
-                        [item for item in amenities if item]
-                    )
-                )
-                for showtime in group.get("showtimes") or []:
-                    if showtime.get("type") != "available" or showtime.get("expired"):
-                        continue
-                    ticketing_date = showtime.get("ticketingDate") or ""
-                    if "+" in ticketing_date:
-                        show_date_part, show_time_part = ticketing_date.split("+", 1)
-                    else:
-                        show_date_part, show_time_part = show_date, ""
-                    normalized.append({
-                        "theatre": theatre,
-                        "movieTitle": movie_title,
-                        "movieId": movie.get("id"),
-                        "date": show_date_part,
-                        "time": show_time_part,
-                        "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
-                        "format": format_name,
-                        "amenities": amenity_text,
-                        "formatTags": format_tags,
-                        "reservedSeating": bool(group.get("hasReservedSeating")),
-                        "showtimeHashCode": showtime.get("showtimeHashCode"),
-                        "ticketUrl": showtime.get("ticketingJumpPageURL"),
-                        **meta,
-                    })
-    return normalized
-
-
-def normalize_showtimes_from_movies(theatre, movies, show_date):
+def normalize_showtimes(theatre, movies, show_date):
     normalized = []
     for movie in movies or []:
         movie_title = clean_title(movie.get("title", ""))
@@ -786,8 +718,6 @@ def normalized_seat_layout(data, matching_blocks):
     min_top = min((seat.get("y", 0) for seat in seats), default=0)
     max_right = max((seat.get("x", 0) + seat.get("width", 0) for seat in seats), default=0)
     max_bottom = max((seat.get("y", 0) + seat.get("height", 0) for seat in seats), default=0)
-    # Fit to the seats' bounding box with a small buffer so edge seats do not
-    # visually touch the preview frame.
     seat_widths = [seat.get("width", 0) for seat in seats if seat.get("width", 0)]
     seat_heights = [seat.get("height", 0) for seat in seats if seat.get("height", 0)]
     content_width = max(max_right - min_left, 1)
@@ -1053,6 +983,15 @@ def enforce_rate_limit(request, path):
     key = (client_host, path)
     now = time.monotonic()
     with RATE_LIMIT_LOCK:
+        if len(RATE_LIMIT_HISTORY) > RATE_LIMIT_MAX_KEYS:
+            stale_keys = [
+                history_key for history_key, history in RATE_LIMIT_HISTORY.items()
+                if not history or now - history[-1] > window
+            ]
+            for history_key in stale_keys:
+                RATE_LIMIT_HISTORY.pop(history_key, None)
+                if len(RATE_LIMIT_HISTORY) <= RATE_LIMIT_MAX_KEYS:
+                    break
         history = RATE_LIMIT_HISTORY[key]
         while history and now - history[0] > window:
             history.popleft()
@@ -1230,7 +1169,7 @@ def api_search(
                 )
                 if not has_candidate_movie:
                     continue
-                for showtime in normalize_showtimes_from_movies(theatre_item, theatre_item.get("rawMovies", []), show_date):
+                for showtime in normalize_showtimes(theatre_item, theatre_item.get("rawMovies", []), show_date):
                     if not movie_matches(showtime["movieTitle"], movie_query):
                         continue
                     if not format_matches(showtime["format"], showtime.get("formatTags", showtime["amenities"]), requested_format):

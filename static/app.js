@@ -29,6 +29,7 @@ let currentPage = 1;
 const pageSize = 20;
 const maxDateRangeDays = 14;
 const selectedGridCells = new Set();
+const gridCellElements = new Map();
 let isPaintingGrid = false;
 let gridPaintMode = true;
 let gridDragStart = null;
@@ -66,7 +67,6 @@ async function getJson(url) {
   return data;
 }
 
-// status states: "loading" | "success" | "error" | "warn" | ""
 function setStatus(element, text, state) {
   element.className = (element.id === "gridStatus" ? "status grid-status" : "status") + (state ? " is-" + state : "");
   element.textContent = "";
@@ -135,7 +135,7 @@ function updateGridStatus() {
 
 function setGridCell(row, col, selected) {
   const key = cellKey(row, col);
-  const cell = seatPreferenceGrid.querySelector("[data-cell='" + key + "']");
+  const cell = gridCellElements.get(key);
   if (selected) {
     selectedGridCells.add(key);
     if (cell) cell.classList.add("selected");
@@ -165,6 +165,7 @@ function selectGridBox(rowStart, rowEnd, colStart, colEnd) {
 
 function buildSeatGrid() {
   seatPreferenceGrid.innerHTML = "";
+  gridCellElements.clear();
   for (let row = 0; row < 15; row += 1) {
     for (let col = 0; col < 15; col += 1) {
       const button = document.createElement("button");
@@ -181,6 +182,7 @@ function buildSeatGrid() {
         setGridCell(row, col, !selectedGridCells.has(cellKey(row, col)));
         updateGridStatus();
       });
+      gridCellElements.set(button.dataset.cell, button);
       seatPreferenceGrid.appendChild(button);
     }
   }
@@ -431,7 +433,6 @@ function renderRealSeatMap(seatMap) {
   layout.seats.forEach(seat => {
     const node = document.createElement("span");
     const isAccessible = seat.type === "wheelchair" || seat.type === "companion";
-    // Accessible/wheelchair spaces use the same "unavailable" marking as taken seats.
     const isAvailable = seat.status === "A" && !isAccessible;
     node.className = "real-seat " + (isAvailable ? "available" : "unavailable");
     if (seat.matched) node.classList.add("matched");
