@@ -25,9 +25,9 @@
   --seat-open: #ffffff;
   --seat-taken: #cfc8ba;
 
-  --radius: 16px;
-  --radius-sm: 11px;
-  --radius-xs: 8px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
 
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
@@ -269,6 +269,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   color: var(--ink-2);
   cursor: pointer;
   user-select: none;
+}
+
+.accessible-check {
+  margin: 22px 0 24px;
 }
 
 .check input { position: absolute; opacity: 0; width: 0; height: 0; }
