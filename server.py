@@ -29,8 +29,6 @@ SEAT_MAP_CACHE = {}
 THEATRES_CACHE = {}
 THEATRES_CACHE_LOCK = threading.Lock()
 THEATRES_TTL_SECONDS = 300
-DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 50
 
 # Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
 # calls to the same host reuse a socket instead of paying for a new TLS handshake.
@@ -258,41 +256,21 @@ def movie_matches(title, query):
 
 
 def format_matches(format_name, amenity_text, requested):
-    requested = normalized_text(requested or "any")
+    requested = (requested or "any").lower()
     if requested == "any":
         return True
-
-    values = [
-        normalized_text(value)
-        for value in [format_name, *(amenity_text or "").split(",")]
-        if normalized_text(value)
-    ]
-    value_set = set(values)
-    exact_checks = {
-        "standard": {"standard"},
-        "imax": {"imax"},
-        "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax with laser": {"imax with laser", "imax laser"},
-        "dolby": {"dolby", "dolby cinema"},
-        "screenx": {"screenx"},
-        "4dx": {"4dx"},
-        "35mm": {"35mm", "35 mm"},
-        "35 mm": {"35mm", "35 mm"},
-        "70mm": {"70mm", "70 mm"},
-        "70 mm": {"70mm", "70 mm"},
+    haystack = f"{format_name} {amenity_text}".lower()
+    checks = {
+        "standard": ["standard"],
+        "imax": ["imax"],
+        "imax70": ["imax 70", "imax 70mm", "imax 70 mm"],
+        "dolby": ["dolby"],
+        "screenx": ["screenx"],
+        "4dx": ["4dx"],
+        "35mm": ["35mm", "35 mm"],
+        "70mm": ["70mm", "70 mm"],
     }
-    if requested == "imax" and "imax" in value_set:
-        return True
-    if requested == "imax" and any(value.startswith("imax ") for value in values):
-        return False
-    combined = normalized_text(f"{format_name} {amenity_text}")
-    if requested in ("35mm", "35 mm"):
-        return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
-    if requested in ("70mm", "70 mm"):
-        return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
-    return bool(value_set & exact_checks.get(requested, {requested}))
+    return any(term in haystack for term in checks.get(requested, [requested]))
 
 
 def fandango_theatres(zip_code, radius, show_date=None):
@@ -363,12 +341,51 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
     return sorted(theatres, key=lambda item: item["distanceMiles"])
 
 
-def should_list_amenity_format(name, visible_terms):
-    normalized_name = normalized_text(name)
-    visible = {normalized_text(term) for term in visible_terms if normalized_text(term)}
-    if normalized_name == "imax" and any(term.startswith("imax ") for term in visible):
-        return False
-    return True
+def movie_has_matching_format(movie, requested_format):
+    for variant in movie.get("variants") or []:
+        format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+        for group in variant.get("amenityGroups") or []:
+            amenity_text = clean_title(group.get("amenityString", ""))
+            amenities = ", ".join(clean_title(item.get("name", "")) for item in group.get("amenities") or [])
+            if format_matches(format_name, f"{amenity_text}, {amenities}", requested_format):
+                return True
+    return requested_format == "any"
+
+
+def poster_url(movie, size="300"):
+    poster = movie.get("poster")
+    if isinstance(poster, dict):
+        sizes = poster.get("size")
+        if isinstance(sizes, dict):
+            return sizes.get(size) or sizes.get("200") or sizes.get("full") or ""
+    return ""
+
+
+def format_runtime(minutes):
+    try:
+        total = int(minutes)
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    hours, mins = divmod(total, 60)
+    if hours and mins:
+        return f"{hours}h {mins}m"
+    return f"{hours}h" if hours else f"{mins}m"
+
+
+def format_rating(rating):
+    value = (rating or "").strip()
+    return {"PG13": "PG-13", "NC17": "NC-17"}.get(value, value)
+
+
+def movie_meta(movie):
+    return {
+        "poster": poster_url(movie),
+        "rating": format_rating(movie.get("rating")),
+        "runtime": format_runtime(movie.get("runtime")),
+        "genres": [genre for genre in (movie.get("genres") or []) if genre][:2],
+    }
 
 
 def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query=""):
@@ -415,18 +432,13 @@ def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_dat
                     formats.add(format_name)
                     for group in variant.get("amenityGroups") or []:
                         amenity_text = clean_title(group.get("amenityString", ""))
-                        visible_terms = [format_name]
                         for amenity in amenity_text.split(","):
                             amenity = amenity.strip()
                             if any(term in amenity.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
                                 formats.add(amenity)
-                                visible_terms.append(amenity)
                         for amenity in group.get("amenities") or []:
                             name = clean_title(amenity.get("name", ""))
-                            if (
-                                any(term in name.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm"))
-                                and should_list_amenity_format(name, visible_terms)
-                            ):
+                            if any(term in name.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
                                 formats.add(name)
     return sorted(formats)
 
@@ -494,6 +506,7 @@ def normalize_showtimes(theatre, show_date):
     normalized = []
     for movie in showtimes_for_theatre(theatre, show_date):
         movie_title = clean_title(movie.get("title", ""))
+        meta = movie_meta(movie)
         for variant in movie.get("variants") or []:
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
@@ -501,12 +514,6 @@ def normalize_showtimes(theatre, show_date):
                 amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
                 if not amenity_text:
                     amenity_text = ", ".join(item for item in amenities if item)
-                format_tags = ", ".join(
-                    dict.fromkeys(
-                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
-                        [item for item in amenities if item]
-                    )
-                )
                 for showtime in group.get("showtimes") or []:
                     if showtime.get("type") != "available" or showtime.get("expired"):
                         continue
@@ -524,10 +531,10 @@ def normalize_showtimes(theatre, show_date):
                         "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
                         "format": format_name,
                         "amenities": amenity_text,
-                        "formatTags": format_tags,
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
+                        **meta,
                     })
     return normalized
 
@@ -536,6 +543,7 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
     normalized = []
     for movie in movies or []:
         movie_title = clean_title(movie.get("title", ""))
+        meta = movie_meta(movie)
         for variant in movie.get("variants") or []:
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
@@ -543,12 +551,6 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
                 amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
                 if not amenity_text:
                     amenity_text = ", ".join(item for item in amenities if item)
-                format_tags = ", ".join(
-                    dict.fromkeys(
-                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
-                        [item for item in amenities if item]
-                    )
-                )
                 for showtime in group.get("showtimes") or []:
                     if showtime.get("type") != "available" or showtime.get("expired"):
                         continue
@@ -566,10 +568,10 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
                         "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
                         "format": format_name,
                         "amenities": amenity_text,
-                        "formatTags": format_tags,
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
+                        **meta,
                     })
     return normalized
 
@@ -747,8 +749,6 @@ def normalized_seat_layout(data, matching_blocks):
     min_top = min((seat.get("y", 0) for seat in seats), default=0)
     max_right = max((seat.get("x", 0) + seat.get("width", 0) for seat in seats), default=0)
     max_bottom = max((seat.get("y", 0) + seat.get("height", 0) for seat in seats), default=0)
-    # Fit to the seats' bounding box with a small buffer so edge seats do not
-    # visually touch the preview frame.
     seat_widths = [seat.get("width", 0) for seat in seats if seat.get("width", 0)]
     seat_heights = [seat.get("height", 0) for seat in seats if seat.get("height", 0)]
     content_width = max(max_right - min_left, 1)
@@ -760,7 +760,6 @@ def normalized_seat_layout(data, matching_blocks):
     padding = max(average_seat_size * 1.75, min(content_width, content_height) * 0.035, 8)
     width = content_width + padding * 2
     height = content_height + padding * 2
-
     return {
         "width": width,
         "height": height,
@@ -866,6 +865,7 @@ def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=N
         return {
             "availableSeatCount": available_count,
             "totalSeatCount": total_count,
+            "matchingBlocks": blocks,
             "layout": normalized_seat_layout(data, blocks),
         }
     except (HTTPError, URLError, TimeoutError, KeyError, ValueError):
@@ -938,9 +938,6 @@ class Handler(SimpleHTTPRequestHandler):
             radius = float(params.get("radius", ["10"])[0])
             if not re.fullmatch(r"\d{5}", zip_code):
                 self.send_json(400, {"error": "Enter a valid 5 digit US ZIP code."})
-                return
-            if radius < 1 or radius > 100:
-                self.send_json(400, {"error": "Radius must be between 1 and 100 miles."})
                 return
 
             try:
@@ -1029,7 +1026,7 @@ class Handler(SimpleHTTPRequestHandler):
             selected_cells = parse_seat_grid(params.get("seatGrid", [""])[0])
             exclude_accessible = params.get("excludeAccessible", ["0"])[0].lower() in ("1", "true", "yes", "on")
             page = max(int(params.get("page", ["1"])[0]), 1)
-            page_size = min(max(int(params.get("pageSize", [str(DEFAULT_PAGE_SIZE)])[0]), 1), MAX_PAGE_SIZE)
+            page_size = max(int(params.get("pageSize", ["20"])[0]), 1)
             page_start = (page - 1) * page_size
             page_end = page_start + page_size
 
@@ -1053,6 +1050,7 @@ class Handler(SimpleHTTPRequestHandler):
                 for theatre in dated_theatres:
                     has_candidate_movie = any(
                         movie_matches(movie.get("title", ""), movie_query)
+                        and movie_has_matching_format(movie, requested_format)
                         for movie in theatre.get("rawMovies", [])
                     )
                     if not has_candidate_movie:
@@ -1060,7 +1058,7 @@ class Handler(SimpleHTTPRequestHandler):
                     for showtime in normalize_showtimes_from_movies(theatre, theatre.get("rawMovies", []), show_date):
                         if not movie_matches(showtime["movieTitle"], movie_query):
                             continue
-                        if not format_matches(showtime["format"], showtime.get("formatTags", showtime["amenities"]), requested_format):
+                        if not format_matches(showtime["format"], showtime["amenities"], requested_format):
                             continue
                         if showtime["time"] < start_time or showtime["time"] > end_time:
                             continue
@@ -1092,33 +1090,30 @@ class Handler(SimpleHTTPRequestHandler):
                     "format": showtime["format"],
                     "amenities": showtime["amenities"],
                     "ticketUrl": showtime["ticketUrl"],
+                    "poster": showtime.get("poster", ""),
+                    "rating": showtime.get("rating", ""),
+                    "runtime": showtime.get("runtime", ""),
+                    "genres": showtime.get("genres", []),
                     "seatMap": seat_match,
                 }
 
-            checked_seat_maps = 0
             if candidates:
-                worker_count = min(12, max(4, len(candidates)))
-                batch_size = worker_count * 2
+                worker_count = min(16, max(4, len(candidates)))
                 with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                    for offset in range(0, len(candidates), batch_size):
-                        batch = candidates[offset:offset + batch_size]
-                        future_map = {executor.submit(check_candidate, candidate): candidate for candidate in batch}
-                        checked_seat_maps += len(batch)
-                        for future in as_completed(future_map):
-                            result = future.result()
-                            if result:
-                                matches.append(result)
-                        matches.sort(key=lambda item: (
-                            item["theatre"]["distanceMiles"],
-                            item["date"],
-                            item["time"],
-                            item["movieTitle"],
-                        ))
-                        if len(matches) > page_end:
-                            break
+                    future_map = {executor.submit(check_candidate, candidate): candidate for candidate in candidates}
+                    for future in as_completed(future_map):
+                        result = future.result()
+                        if result:
+                            matches.append(result)
+
+            matches.sort(key=lambda item: (
+                item["theatre"]["distanceMiles"],
+                item["date"],
+                item["time"],
+                item["movieTitle"],
+            ))
 
             page_matches = matches[page_start:page_end]
-
             self.send_json(200, {
                 "matches": page_matches,
                 "page": page,
@@ -1127,7 +1122,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "hasNextPage": len(matches) > page_end,
                 "matchedThrough": min(len(matches), page_end),
                 "checkedShowtimes": len(candidates),
-                "checkedSeatMaps": checked_seat_maps,
+                "checkedSeatMaps": len(candidates),
                 "source": "Fandango NAPI",
             })
         except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as error:

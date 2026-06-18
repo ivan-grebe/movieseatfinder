@@ -1,0 +1,15 @@
+{
+  "name": "Movie Seat Finder",
+  "short_name": "Seat Finder",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff7f6",
+  "theme_color": "#b83232",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
