@@ -120,6 +120,10 @@ function setFormatOptions(formats) {
   });
 }
 
+function hasValidZip() {
+  return /^\d{5}$/.test(zipInput.value.trim());
+}
+
 function cellKey(row, col) {
   return row + ":" + col;
 }
@@ -272,6 +276,12 @@ function baseParams() {
 }
 
 async function loadTheatres() {
+  if (!hasValidZip()) {
+    theatres = [];
+    setStatus(theatreStatus, "", "");
+    return;
+  }
+
   setStatus(theatreStatus, "Loading theatres…", "loading");
 
   try {
@@ -291,6 +301,13 @@ async function loadTheatres() {
 }
 
 async function loadMovies() {
+  if (!hasValidZip()) {
+    movies = [];
+    setFormatOptions([]);
+    setStatus(movieStatus, "", "");
+    return;
+  }
+
   setStatus(movieStatus, "Loading movies for selected dates…", "loading");
   const currentMovie = movieInput.value;
   movies = [];
@@ -313,7 +330,7 @@ async function loadFormats() {
   setFormatOptions([]);
   setStatus(formatStatus, "", "");
 
-  if (!movieTitle) return;
+  if (!movieTitle || !hasValidZip()) return;
 
   try {
     setStatus(formatStatus, "Loading formats…", "loading");
@@ -675,7 +692,16 @@ function syncEndDateBounds() {
 }
 
 async function refreshTheatresAndMovies() {
-  if (!/^\d{5}$/.test(zipInput.value.trim())) return;
+  if (!hasValidZip()) {
+    theatres = [];
+    movies = [];
+    setFormatOptions([]);
+    setStatus(theatreStatus, "", "");
+    setStatus(movieStatus, "", "");
+    setStatus(formatStatus, "", "");
+    return;
+  }
+
   await loadTheatres();
   await loadMovies();
   if (movieInput.value.trim()) await loadFormats();
@@ -761,13 +787,15 @@ movieInput.addEventListener("change", () => {
 });
 
 const shouldSearchFromUrl = applyQueryParams();
-Promise.all([loadTheatres(), loadMovies()]).then(async () => {
-  if (shouldSearchFromUrl) {
-    await loadFormats();
-    const requestedFormat = new URLSearchParams(window.location.search).get("format");
-    if (requestedFormat && Array.from(formatSelect.options).some(option => option.value === requestedFormat)) {
-      formatSelect.value = requestedFormat;
+if (hasValidZip()) {
+  Promise.all([loadTheatres(), loadMovies()]).then(async () => {
+    if (shouldSearchFromUrl) {
+      await loadFormats();
+      const requestedFormat = new URLSearchParams(window.location.search).get("format");
+      if (requestedFormat && Array.from(formatSelect.options).some(option => option.value === requestedFormat)) {
+        formatSelect.value = requestedFormat;
+      }
+      search();
     }
-    search();
-  }
-});
+  });
+}
