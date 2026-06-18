@@ -188,6 +188,19 @@ select {
   transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
+input[type="date"],
+input[type="time"] {
+  appearance: none;
+  -webkit-appearance: none;
+  line-height: 1.15;
+}
+
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  min-height: 1.15em;
+  text-align: left;
+}
+
 select {
   cursor: pointer;
   appearance: none;
@@ -390,6 +403,8 @@ a:focus-visible {
   color: var(--muted);
   font-size: 12px;
 }
+
+.preferences-group .seat-help { margin-top: 14px; }
 
 .seat-stage {
   display: flex;
@@ -837,13 +852,96 @@ a:focus-visible {
 
   .card-body { padding: 12px; gap: 10px; }
   .group { padding: 12px; border-radius: 13px; }
+
+  .group-title {
+    margin-bottom: 8px;
+    font-size: 10px;
+  }
+
   .grid,
   .grid.thirds { grid-template-columns: 1fr; }
-  .seat-grid { width: min(390px, 100%); }
-  .screen { width: min(420px, 100%); }
+
+  .location-group .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .location-group .full,
+  .movie-group .full {
+    grid-column: 1 / -1;
+  }
+
+  .preferences-group .grid.thirds {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  label {
+    font-size: 11px;
+  }
+
+  input,
+  select {
+    min-height: 34px;
+    padding: 6px 9px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+
+  .select-wrap::after {
+    bottom: 13px;
+  }
+
+  .accessible-check {
+    margin: 12px 0 10px;
+  }
+
+  .check {
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .check-box {
+    width: 18px;
+    height: 18px;
+    border-radius: 7px;
+  }
+
+  .check input:checked + .check-box::after {
+    left: 5px;
+    top: 2px;
+  }
+
+  .preferences-group .seat-help {
+    margin: 10px 0 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .seat-grid {
+    width: min(300px, 100%);
+    padding: 7px;
+    gap: 1.5px;
+  }
+
+  .screen {
+    width: min(330px, 100%);
+    height: 15px;
+    margin-bottom: 7px;
+    font-size: 7.5px;
+  }
 
   .results-section { padding-top: 34px; }
   .result-body { align-items: flex-start; }
   .result-poster { width: 52px; height: 78px; }
   .github-link { right: 12px; bottom: 12px; }
+}
+
+@media (max-width: 380px) {
+  .preferences-group .grid.thirds {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preferences-group .grid.thirds label:last-child {
+    grid-column: 1 / -1;
+  }
 }
