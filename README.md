@@ -1,30 +1,68 @@
 # Movie Seat Finder FastAPI
 
-FastAPI/Vercel-ready version of Movie Seat Finder. It serves the static UI from `static/` and exposes the same API routes under `/api/*`.
+[![Tests](https://github.com/ivan-grebe/movieseatfinder-fastapi/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan-grebe/movieseatfinder-fastapi/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Local run
+Production-ready FastAPI and Vercel version of Movie Seat Finder. It searches
+live Fandango showtimes and seat maps, then finds adjacent available seats
+inside a user-selected auditorium region.
+
+## Features
+
+- Live theatre, movie, format, showtime, and seat-map lookup.
+- Adjacent-seat matching with custom auditorium regions.
+- Accessible-seat filtering and normalized seat-map previews.
+- Bounded TTL caches and parallel upstream requests.
+- Input validation, API rate limiting, security headers, and ticket URL checks.
+- Dynamic canonical metadata, Open Graph tags, `robots.txt`, and sitemap.
+
+## Run Locally
+
+Requirements:
+
+- Python 3.12+
 
 ```bash
 pip install -e .
 uvicorn app:app --reload --host 127.0.0.1 --port 4173
 ```
 
-Then open:
+Then open `http://127.0.0.1:4173/`.
+
+## Project Structure
 
 ```text
-http://127.0.0.1:4173/
+.
+|-- backend/       # FastAPI application and seat-search logic
+|-- frontend/      # HTML, CSS, JavaScript, and static assets
+|-- tests/         # Offline unit and route tests
+|-- .github/       # GitHub Actions workflow
+`-- app.py         # Vercel-compatible application entry point
 ```
+
+## Tests
+
+```bash
+pip install -e ".[test]"
+python -m unittest discover -s tests -v
+```
+
+GitHub Actions runs the suite on Python 3.12 and 3.13 for every pull request
+and push to `main`.
 
 ## Vercel
 
-Vercel's Python runtime detects the top-level FastAPI `app` in `app.py`. The Python version is pinned with `.python-version`, and dependencies live in `pyproject.toml`.
-
-Deploy the repo root as the Vercel project.
-
-Set `SITE_URL` in Vercel once the production URL is known, for example:
+Vercel detects the top-level FastAPI `app` exported from `app.py`. Deploy the
+repository root and set `SITE_URL` to the production origin:
 
 ```text
 SITE_URL=https://movieseatfinder.com
 ```
 
-That value is used for canonical tags, Open Graph URLs, `robots.txt`, and `sitemap.xml`.
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Released under the [MIT License](LICENSE).
