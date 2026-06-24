@@ -555,9 +555,10 @@ function renderResults(data) {
     return;
   }
 
-  matches.forEach(match => {
+  matches.forEach((match, index) => {
     const item = document.createElement("article");
     item.className = "result";
+    item.style.animationDelay = Math.min(index, 5) * 80 + "ms";
 
     const body = document.createElement("div");
     body.className = "result-body";
