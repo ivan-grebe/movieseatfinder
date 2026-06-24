@@ -4,6 +4,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import OrderedDict
+from pathlib import Path
 import http.client
 import html
 import io
@@ -16,19 +18,25 @@ import time
 
 USER_AGENT = "MovieSeatFinder/1.0 (local development app)"
 FANDANGO_ORIGIN = "https://www.fandango.com"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = ROOT_DIR / "frontend"
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
-SEAT_MAP_CACHE = {}
+SEAT_MAP_CACHE = OrderedDict()
+SEAT_MAP_CACHE_LOCK = threading.Lock()
+SEAT_MAP_TTL_SECONDS = 300
+SEAT_MAP_CACHE_MAX = 200
 
 # Cache of theatre+showtime payloads keyed by (zip, radius, date). Showtimes do
 # not change second to second, so a short TTL lets the theatres/movies/formats/
 # search endpoints share one fetch instead of each re-downloading the same data.
-THEATRES_CACHE = {}
+THEATRES_CACHE = OrderedDict()
 THEATRES_CACHE_LOCK = threading.Lock()
 THEATRES_TTL_SECONDS = 300
+THEATRES_CACHE_MAX = 240
 
 # Pool of keep-alive HTTP(S) connections, keyed by (scheme, host), so repeated
 # calls to the same host reuse a socket instead of paying for a new TLS handshake.
@@ -113,7 +121,7 @@ def pooled_request(method, url, headers=None, body=None, timeout=30):
 def fetch_json(url, timeout=20):
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     with urlopen(request, timeout=timeout) as response:
-      return json.loads(response.read().decode("utf-8"))
+        return json.loads(response.read().decode("utf-8"))
 
 
 def fetch_text(url, timeout=20):
@@ -256,21 +264,41 @@ def movie_matches(title, query):
 
 
 def format_matches(format_name, amenity_text, requested):
-    requested = (requested or "any").lower()
+    requested = normalized_text(requested or "any")
     if requested == "any":
         return True
-    haystack = f"{format_name} {amenity_text}".lower()
-    checks = {
-        "standard": ["standard"],
-        "imax": ["imax"],
-        "imax70": ["imax 70", "imax 70mm", "imax 70 mm"],
-        "dolby": ["dolby"],
-        "screenx": ["screenx"],
-        "4dx": ["4dx"],
-        "35mm": ["35mm", "35 mm"],
-        "70mm": ["70mm", "70 mm"],
+
+    values = [
+        normalized_text(value)
+        for value in [format_name, *(amenity_text or "").split(",")]
+        if normalized_text(value)
+    ]
+    value_set = set(values)
+    exact_checks = {
+        "standard": {"standard"},
+        "imax": {"imax"},
+        "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
+        "imax with laser": {"imax with laser", "imax laser"},
+        "dolby": {"dolby", "dolby cinema"},
+        "screenx": {"screenx"},
+        "4dx": {"4dx"},
+        "35mm": {"35mm", "35 mm"},
+        "35 mm": {"35mm", "35 mm"},
+        "70mm": {"70mm", "70 mm"},
+        "70 mm": {"70mm", "70 mm"},
     }
-    return any(term in haystack for term in checks.get(requested, [requested]))
+    if requested == "imax" and "imax" in value_set:
+        return True
+    if requested == "imax" and any(value.startswith("imax ") for value in values):
+        return False
+    combined = normalized_text(f"{format_name} {amenity_text}")
+    if requested in ("35mm", "35 mm"):
+        return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
+    if requested in ("70mm", "70 mm"):
+        return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
+    return bool(value_set & exact_checks.get(requested, {requested}))
 
 
 def fandango_theatres(zip_code, radius, show_date=None):
@@ -279,10 +307,16 @@ def fandango_theatres(zip_code, radius, show_date=None):
     with THEATRES_CACHE_LOCK:
         entry = THEATRES_CACHE.get(key)
         if entry is not None and now - entry[0] < THEATRES_TTL_SECONDS:
+            THEATRES_CACHE.move_to_end(key)
             return entry[1]
+        if entry is not None:
+            THEATRES_CACHE.pop(key, None)
     theatres = _fetch_fandango_theatres(zip_code, radius, show_date)
     with THEATRES_CACHE_LOCK:
         THEATRES_CACHE[key] = (now, theatres)
+        THEATRES_CACHE.move_to_end(key)
+        while len(THEATRES_CACHE) > THEATRES_CACHE_MAX:
+            THEATRES_CACHE.popitem(last=False)
     return theatres
 
 
@@ -579,12 +613,25 @@ def normalize_showtimes_from_movies(theatre, movies, show_date):
 def seat_map(showtime_hash):
     if not showtime_hash:
         return None
-    if showtime_hash not in SEAT_MAP_CACHE:
-        SEAT_MAP_CACHE[showtime_hash] = fandango_json(
-            f"/napi/seatMap/{showtime_hash}",
-            referer="https://www.fandango.com/",
-        )
-    return SEAT_MAP_CACHE[showtime_hash]
+    now = time.monotonic()
+    with SEAT_MAP_CACHE_LOCK:
+        entry = SEAT_MAP_CACHE.get(showtime_hash)
+        if entry is not None and now - entry[0] < SEAT_MAP_TTL_SECONDS:
+            SEAT_MAP_CACHE.move_to_end(showtime_hash)
+            return entry[1]
+        if entry is not None:
+            SEAT_MAP_CACHE.pop(showtime_hash, None)
+
+    data = fandango_json(
+        f"/napi/seatMap/{showtime_hash}",
+        referer="https://www.fandango.com/",
+    )
+    with SEAT_MAP_CACHE_LOCK:
+        SEAT_MAP_CACHE[showtime_hash] = (now, data)
+        SEAT_MAP_CACHE.move_to_end(showtime_hash)
+        while len(SEAT_MAP_CACHE) > SEAT_MAP_CACHE_MAX:
+            SEAT_MAP_CACHE.popitem(last=False)
+    return data
 
 
 def seat_band(position, bands):
@@ -906,6 +953,9 @@ def fandango_movies():
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
+
     def send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -1129,7 +1179,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(502, {"error": f"Could not search real showtimes/seats: {error}"})
 
 
-if __name__ == "__main__":
-    server = ThreadingHTTPServer(("127.0.0.1", 4173), Handler)
-    print("Serving Movie Seat Finder at http://127.0.0.1:4173/index.html")
+def run_server(host="127.0.0.1", port=4173):
+    """Start the local Movie Seat Finder HTTP server."""
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"Serving Movie Seat Finder at http://{host}:{port}/")
     server.serve_forever()
+
+
+if __name__ == "__main__":
+    run_server()
