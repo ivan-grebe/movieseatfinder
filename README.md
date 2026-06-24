@@ -43,10 +43,3 @@ Open the app:
 ```text
 http://127.0.0.1:4173/index.html
 ```
-
-## Notes
-
-- The app binds to `127.0.0.1` and is intended for local use.
-- Date searches are intended to stay small; the UI limits the end date to two weeks from the start date.
-- Results depend on Fandango availability and reserved-seat data.
-- Some theatres or formats may not expose seat maps for every showtime.
