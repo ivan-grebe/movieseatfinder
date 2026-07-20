@@ -505,6 +505,7 @@ a:focus-visible {
   margin: 0 0 12px;
   color: var(--muted);
   font-size: 12px;
+  text-align: center;
 }
 
 .preferences-group .seat-help { margin-top: 14px; }
