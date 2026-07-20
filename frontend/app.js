@@ -102,6 +102,11 @@ function hasSearchLocation() {
   return hasValidZip() || preciseLocation !== null;
 }
 
+function reportRequiredField(input, message) {
+  input.setCustomValidity(message);
+  input.reportValidity();
+}
+
 function hasValidRadius() {
   const radius = Number(radiusInput.value);
   return radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100;
@@ -354,7 +359,7 @@ async function runSearch() {
   const movieTitle = movieInput.value.trim();
 
   if (!hasSearchLocation()) {
-    setSummary("Enter a ZIP code or use your location first.", true);
+    reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
     return;
   }
   if (!enforceRadius(true)) {
@@ -362,7 +367,7 @@ async function runSearch() {
   }
 
   if (!movieTitle) {
-    setSummary("Choose a movie first.", true);
+    reportRequiredField(movieInput, "Choose a movie first.");
     return;
   }
 
@@ -792,6 +797,7 @@ function requestLocationOnLoad() {
 }
 
 zipInput.addEventListener("input", () => {
+  zipInput.setCustomValidity("");
   if (zipInput.value.trim()) {
     preciseLocation = null;
     locationStatus.textContent = "Searching from your ZIP code.";
@@ -808,8 +814,10 @@ startDateInput.addEventListener("change", () => {
 });
 endDateInput.addEventListener("change", autoRefresh);
 movieInput.addEventListener("change", () => {
+  movieInput.setCustomValidity("");
   if (movieInput.value.trim()) loadFormats();
 });
+movieInput.addEventListener("input", () => movieInput.setCustomValidity(""));
 
 const shouldSearchFromUrl = applyQueryParams();
 if (hasSearchLocation() && enforceRadius()) {
