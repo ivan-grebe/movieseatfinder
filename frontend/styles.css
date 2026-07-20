@@ -1062,6 +1062,11 @@ input[type="time"] {
 }
 
 @media (max-width: 380px) {
+  /* Native date controls need more width than two columns provide on small phones. */
+  .location-group .grid {
+    grid-template-columns: 1fr;
+  }
+
   .preferences-group .grid.thirds {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
