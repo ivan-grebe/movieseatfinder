@@ -809,7 +809,10 @@ startDateInput.min = todayString();
 syncEndDateBounds();
 buildSeatGrid();
 
-setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, () => loadMovies());
+setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, async () => {
+  await loadMovies();
+  if (movieInput.value.trim()) await loadFormats();
+});
 setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, () => loadFormats());
 
 seatPreferenceGrid.addEventListener("pointerdown", event => {

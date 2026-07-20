@@ -509,6 +509,12 @@ a:focus-visible {
 
 .preferences-group .seat-help { margin-top: 14px; }
 
+/* The Shift-to-erase modifier isn't available on touch, so hide the hint on
+   touch devices and on narrow (mobile) layouts. */
+@media (hover: none) and (pointer: coarse), (max-width: 700px) {
+  .seat-help-erase { display: none; }
+}
+
 .seat-stage {
   display: flex;
   flex-direction: column;
@@ -556,9 +562,13 @@ a:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(44, 77, 118, .12);
 }
 
-.seat-cell:hover {
-  border-color: var(--accent);
-  background: #fff1ef;
+/* Hover only on devices with a real pointer, so touch drags don't leave the
+   last seat stuck in a highlighted state after the finger lifts. */
+@media (hover: hover) {
+  .seat-cell:hover {
+    border-color: var(--accent);
+    background: #fff1ef;
+  }
 }
 
 .seat-cell.selected {
@@ -1188,7 +1198,9 @@ input[type="time"] {
     border-color: rgba(150, 167, 190, .28);
     box-shadow: none;
   }
-  .seat-cell:hover { background: #3a2523; border-color: var(--accent); }
+  @media (hover: hover) {
+    .seat-cell:hover { background: #3a2523; border-color: var(--accent); }
+  }
 
   .screen,
   .real-screen {
