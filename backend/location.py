@@ -49,7 +49,9 @@ def reverse_geocode_zip(lat, lon):
     """Find a ZIP for Fandango's ZIP-only API without retaining location data."""
     response = _session().get(
         "https://nominatim.openstreetmap.org/reverse",
-        params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 10},
+        # City-level results (zoom 10) omit postcodes in many places. Street/
+        # neighbourhood detail reliably includes the ZIP needed by Fandango.
+        params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 16},
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=10,
     )
