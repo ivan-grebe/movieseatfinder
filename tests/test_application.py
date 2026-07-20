@@ -134,7 +134,43 @@ class RouteTests(unittest.TestCase):
     def test_invalid_zip_returns_json_error(self):
         response = self.client.get("/api/theatres", params={"zip": "abc"})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code."})
+        self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
+
+    @patch("backend.application.fandango_json")
+    @patch("backend.application.geocode_zip")
+    def test_five_mile_zip_search_excludes_theatres_outside_the_radius(self, geocode_zip, fandango_json):
+        application.THEATRES_CACHE.clear()
+        geocode_zip.return_value = {"label": "Testville, TS 00000", "lat": 40.0, "lon": -75.0}
+        fandango_json.return_value = {
+            "theaters": [
+                {"name": "Nearby Cinema", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75.0}},
+                {"name": "Too Far Cinema", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75.0}},
+            ]
+        }
+
+        response = self.client.get("/api/theatres", params={"zip": "00000", "radius": 5})
+
+        self.assertEqual(response.status_code, 200)
+        theatres = response.json()["theatres"]
+        self.assertEqual([theatre["name"] for theatre in theatres], ["Nearby Cinema"])
+        self.assertTrue(all(theatre["distanceMiles"] <= 5 for theatre in theatres))
+
+    @patch("backend.application.fandango_json")
+    @patch("backend.application.reverse_geocode_zip", return_value="00000")
+    def test_location_search_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
+        application.THEATRES_CACHE.clear()
+        fandango_json.return_value = {
+            "theaters": [
+                {"name": "Nearby Cinema", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75.0}},
+                {"name": "Too Far Cinema", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75.0}},
+            ]
+        }
+
+        response = self.client.get("/api/theatres", params={"lat": 40.0, "lon": -75.0, "radius": 5})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([theatre["name"] for theatre in response.json()["theatres"]], ["Nearby Cinema"])
+        self.assertEqual(fandango_json.call_args.args[1]["radius"], 100)
 
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)
