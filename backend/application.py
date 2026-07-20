@@ -117,6 +117,45 @@ def geocode_zip(zip_code):
     }
 
 
+def reverse_geocode_zip(lat, lon):
+    """Find a ZIP for Fandango's ZIP-only API without retaining location data."""
+    response = http_session().get(
+        "https://nominatim.openstreetmap.org/reverse",
+        params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 10},
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        timeout=10,
+    )
+    response.raise_for_status()
+    zip_code = str(response.json().get("address", {}).get("postcode", ""))[:5]
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise KeyError("No nearby US ZIP code")
+    return zip_code
+
+
+def validate_coordinates(lat, lon):
+    if lat is None or lon is None:
+        return None
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        raise ValueError("Location coordinates must be valid numbers.")
+    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+        raise ValueError("Location coordinates are out of range.")
+    return lat, lon
+
+
+def resolve_search_location(zip_code, lat=None, lon=None):
+    """Use opt-in browser coordinates, otherwise use the ZIP centroid."""
+    origin = validate_coordinates(lat, lon)
+    if origin:
+        return reverse_geocode_zip(*origin), origin, "your current location"
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise ValueError("Enter a valid 5 digit US ZIP code or use your location.")
+    zip_location = geocode_zip(zip_code)
+    return zip_code, (zip_location["lat"], zip_location["lon"]), zip_location["label"]
+
+
 def parse_date(value):
     return datetime.strptime(value, "%Y-%m-%d").date()
 
@@ -291,8 +330,24 @@ def format_matches(format_name, amenity_text, requested):
     return bool(value_set & exact_checks.get(requested, {requested}))
 
 
-def fandango_theatres(zip_code, radius, show_date=None):
-    key = (str(zip_code), str(radius), show_date or "")
+def filter_theatres_within_radius(theatres, origin_lat, origin_lon, radius):
+    """Return only theatres whose coordinates are inside the requested circle."""
+    filtered = []
+    for theatre in theatres:
+        lat = theatre.get("latitude")
+        lon = theatre.get("longitude")
+        if lat is None or lon is None:
+            continue
+        exact_distance = distance_miles(origin_lat, origin_lon, lat, lon)
+        if exact_distance <= radius:
+            theatre = {**theatre, "distanceMiles": exact_distance}
+            filtered.append(theatre)
+    return sorted(filtered, key=lambda item: item["distanceMiles"])
+
+
+def fandango_theatres(zip_code, radius, show_date=None, origin=None):
+    origin_key = tuple(round(value, 5) for value in origin) if origin else ()
+    key = (str(zip_code), str(radius), show_date or "", origin_key)
     now = time.monotonic()
     with THEATRES_CACHE_LOCK:
         entry = THEATRES_CACHE.get(key)
@@ -301,7 +356,12 @@ def fandango_theatres(zip_code, radius, show_date=None):
             return entry[1]
         if entry is not None:
             THEATRES_CACHE.pop(key, None)
-    theatres = _fetch_fandango_theatres(zip_code, radius, show_date)
+    # Fandango accepts a ZIP rather than coordinates. For a browser-location
+    # search, get a broad candidate set and enforce the exact circle locally.
+    fetch_radius = 100 if origin else radius
+    theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
+    if origin:
+        theatres = filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
     with THEATRES_CACHE_LOCK:
         THEATRES_CACHE[key] = (now, theatres)
         THEATRES_CACHE.move_to_end(key)
@@ -310,7 +370,7 @@ def fandango_theatres(zip_code, radius, show_date=None):
     return theatres
 
 
-def fandango_theatres_by_date(zip_code, radius, dates):
+def fandango_theatres_by_date(zip_code, radius, dates, origin=None):
     """Fetch (and cache) theatre+showtime payloads for many dates in parallel."""
     results = {}
     unique_dates = list(dict.fromkeys(dates))
@@ -319,7 +379,7 @@ def fandango_theatres_by_date(zip_code, radius, dates):
     workers = min(8, len(unique_dates))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_map = {
-            executor.submit(fandango_theatres, zip_code, radius, show_date): show_date
+            executor.submit(fandango_theatres, zip_code, radius, show_date, origin): show_date
             for show_date in unique_dates
         }
         for future in as_completed(future_map):
@@ -353,6 +413,8 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
                 ] if part
             ),
             "distanceMiles": float(theatre.get("distance") or 0),
+            "latitude": float(theatre["geo"]["latitude"]) if theatre.get("geo", {}).get("latitude") is not None else None,
+            "longitude": float(theatre["geo"]["longitude"]) if theatre.get("geo", {}).get("longitude") is not None else None,
             "website": f'{FANDANGO_ORIGIN}{theatre.get("theaterPageUrl", "")}',
             "source": "Fandango",
             "fandangoId": theatre.get("id", ""),
@@ -373,11 +435,11 @@ def should_list_amenity_format(name, visible_terms):
     return True
 
 
-def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query=""):
+def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query="", origin=None):
     seen = set()
     movies = []
     dates = list(date_range(start_date, end_date))
-    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
     for show_date in dates:
         theatres = [
             theatre for theatre in theatres_by_date.get(show_date, [])
@@ -399,10 +461,10 @@ def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, t
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query=""):
+def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query="", origin=None):
     formats = set()
     dates = list(date_range(start_date, end_date))
-    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
     for show_date in dates:
         theatres = [
             theatre for theatre in theatres_by_date.get(show_date, [])
@@ -1005,29 +1067,25 @@ def upstream_error(message, error):
 
 
 @app.get("/api/theatres")
-def api_theatres(request: Request, zip: str = "", radius: float = 10):
+def api_theatres(request: Request, zip: str = "", radius: float = 10, lat: float | None = None, lon: float | None = None):
     enforce_rate_limit(request, "/api/theatres")
     try:
         zip_code = zip.strip()
         radius = validate_radius(radius)
-        if not re.fullmatch(r"\d{5}", zip_code):
-            raise HTTPException(status_code=400, detail="Enter a valid 5 digit US ZIP code.")
+        search_zip, origin, place = resolve_search_location(zip_code, lat, lon)
 
         try:
-            theatres = fandango_theatres(zip_code, radius)
-            place = f"ZIP {zip_code}"
+            theatres = fandango_theatres(search_zip, radius, origin=origin)
             limited_radius = radius
         except (requests.RequestException, TimeoutError, KeyError):
-            location = geocode_zip(zip_code)
             try:
-                theatres = overpass_theatres(location["lat"], location["lon"], radius)
+                theatres = overpass_theatres(origin[0], origin[1], radius)
                 limited_radius = radius
             except (requests.RequestException, TimeoutError):
                 if radius <= 3:
                     raise
                 limited_radius = 3
-                theatres = overpass_theatres(location["lat"], location["lon"], limited_radius)
-            place = location["label"]
+                theatres = overpass_theatres(origin[0], origin[1], limited_radius)
 
         return {
             "place": place,
@@ -1051,6 +1109,8 @@ def api_movies(
     startDate: str = "",
     endDate: str = "",
     theatre: str = "",
+    lat: float | None = None,
+    lon: float | None = None,
 ):
     enforce_rate_limit(request, "/api/movies")
     try:
@@ -1060,13 +1120,16 @@ def api_movies(
         end_date = endDate or start_date
         theatre_query = validate_short_text(theatre, "Theatre").lower()
         list(date_range(start_date, end_date))
-        if re.fullmatch(r"\d{5}", zip_code):
-            movies = movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query)
+        try:
+            search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
+            movies = movies_from_dated_theatre_payloads(search_zip, radius, start_date, end_date, theatre_query, origin)
             if not movies:
-                theatres = fandango_theatres(zip_code, radius)
+                theatres = fandango_theatres(search_zip, radius, origin=origin)
                 movies = normalize_movie_list_from_theatres(theatres)
             if movies:
                 return {"movies": movies}
+        except (requests.RequestException, TimeoutError, KeyError):
+            pass
         return {"movies": fandango_movies()}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -1083,6 +1146,8 @@ def api_formats(
     startDate: str = "",
     endDate: str = "",
     theatre: str = "",
+    lat: float | None = None,
+    lon: float | None = None,
 ):
     enforce_rate_limit(request, "/api/formats")
     try:
@@ -1094,13 +1159,15 @@ def api_formats(
         theatre_query = validate_short_text(theatre, "Theatre").lower()
         if not movie_query:
             return {"formats": []}
+        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
         formats = formats_from_dated_theatre_payloads(
-            zip_code,
+            search_zip,
             radius,
             movie_query,
             start_date,
             end_date,
             theatre_query,
+            origin,
         )
         return {"formats": sorted(formats)}
     except ValueError as error:
@@ -1127,6 +1194,8 @@ def api_search(
     excludeAccessible: str = "0",
     page: int = 1,
     pageSize: int = DEFAULT_PAGE_SIZE,
+    lat: float | None = None,
+    lon: float | None = None,
 ):
     enforce_rate_limit(request, "/api/search")
     try:
@@ -1148,15 +1217,14 @@ def api_search(
         page_start = (page - 1) * page_size
         page_end = page_start + page_size
 
-        if not re.fullmatch(r"\d{5}", zip_code):
-            raise HTTPException(status_code=400, detail="Enter a valid 5 digit US ZIP code.")
+        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
         if not movie_query:
             raise HTTPException(status_code=400, detail="Enter a movie title.")
 
         matches = []
         candidates = []
         dates = list(date_range(start_date, end_date))
-        theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates)
+        theatres_by_date = fandango_theatres_by_date(search_zip, radius, dates, origin)
         for show_date in dates:
             dated_theatres = [
                 theatre_item for theatre_item in theatres_by_date.get(show_date, [])

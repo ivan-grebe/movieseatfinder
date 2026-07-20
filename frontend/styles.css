@@ -89,7 +89,8 @@ h1 {
   margin: 0;
   font-family: var(--serif);
   font-size: clamp(36px, 4.8vw, 58px);
-  line-height: .96;
+  /* Extra leading prevents descenders such as the y in "buy" from clipping. */
+  line-height: 1.06;
   font-weight: 500;
   letter-spacing: -.8px;
   color: #111827;
@@ -187,6 +188,20 @@ h1 {
 
 .grid.thirds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .full { grid-column: 1 / -1; }
+
+.location-control {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  margin-top: -3px;
+}
+
+.location-status {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
 
 label {
   display: block;

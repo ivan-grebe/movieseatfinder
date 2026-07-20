@@ -1,4 +1,6 @@
 const zipInput = document.getElementById("zipInput");
+const useLocationButton = document.getElementById("useLocationButton");
+const locationStatus = document.getElementById("locationStatus");
 const radiusInput = document.getElementById("radiusInput");
 const startDateInput = document.getElementById("startDateInput");
 const endDateInput = document.getElementById("endDateInput");
@@ -25,6 +27,7 @@ const pagination = document.getElementById("pagination");
 
 let theatres = [];
 let movies = [];
+let preciseLocation = null;
 let currentPage = 1;
 const pageSize = 20;
 const maxDateRangeDays = 14;
@@ -122,6 +125,18 @@ function setFormatOptions(formats) {
 
 function hasValidZip() {
   return /^\d{5}$/.test(zipInput.value.trim());
+}
+
+function hasSearchLocation() {
+  return hasValidZip() || preciseLocation !== null;
+}
+
+function locationParams(params) {
+  if (preciseLocation) {
+    params.set("lat", preciseLocation.latitude);
+    params.set("lon", preciseLocation.longitude);
+  }
+  return params;
 }
 
 function cellKey(row, col) {
@@ -266,17 +281,17 @@ function setupCombo(input, menu, source, getLabel, onPick) {
 }
 
 function baseParams() {
-  return new URLSearchParams({
+  return locationParams(new URLSearchParams({
     zip: zipInput.value.trim(),
     radius: radiusInput.value,
     theatre: theatreInput.value.trim(),
     startDate: startDateInput.value,
     endDate: endDateInput.value
-  });
+  }));
 }
 
 async function loadTheatres() {
-  if (!hasValidZip()) {
+  if (!hasSearchLocation()) {
     theatres = [];
     setStatus(theatreStatus, "", "");
     return;
@@ -285,10 +300,10 @@ async function loadTheatres() {
   setStatus(theatreStatus, "Loading theatres…", "loading");
 
   try {
-    const params = new URLSearchParams({
+    const params = locationParams(new URLSearchParams({
       zip: zipInput.value.trim(),
       radius: radiusInput.value
-    });
+    }));
     const data = await getJson("/api/theatres?" + params.toString());
     theatres = data.theatres || [];
     setStatus(theatreStatus, theatres.length + " theatres found near " + data.place + ".", "success");
@@ -301,7 +316,7 @@ async function loadTheatres() {
 }
 
 async function loadMovies() {
-  if (!hasValidZip()) {
+  if (!hasSearchLocation()) {
     movies = [];
     setFormatOptions([]);
     setStatus(movieStatus, "", "");
@@ -330,7 +345,7 @@ async function loadFormats() {
   setFormatOptions([]);
   setStatus(formatStatus, "", "");
 
-  if (!movieTitle || !hasValidZip()) return;
+  if (!movieTitle || !hasSearchLocation()) return;
 
   try {
     setStatus(formatStatus, "Loading formats…", "loading");
@@ -357,8 +372,8 @@ async function runSearch() {
   pagination.hidden = true;
   pagination.innerHTML = "";
 
-  if (!zipInput.value.trim()) {
-    setSummary("Enter a ZIP code first.", true);
+  if (!hasSearchLocation()) {
+    setSummary("Enter a ZIP code or use your location first.", true);
     return;
   }
 
@@ -693,7 +708,7 @@ function syncEndDateBounds() {
 }
 
 async function refreshTheatresAndMovies() {
-  if (!hasValidZip()) {
+  if (!hasSearchLocation()) {
     theatres = [];
     movies = [];
     setFormatOptions([]);
@@ -776,7 +791,37 @@ searchButton.addEventListener("click", search);
 selectCenterGridButton.addEventListener("click", () => selectGridBox(5, 9, 5, 9));
 clearGridButton.addEventListener("click", clearGrid);
 
-zipInput.addEventListener("input", autoRefresh);
+useLocationButton.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    locationStatus.textContent = "Your browser does not support location access. Enter a ZIP code instead.";
+    return;
+  }
+  useLocationButton.disabled = true;
+  locationStatus.textContent = "Requesting your location…";
+  navigator.geolocation.getCurrentPosition(
+    position => {
+      preciseLocation = position.coords;
+      locationStatus.textContent = "Using your precise location for this search. It is not saved.";
+      useLocationButton.textContent = "Location enabled";
+      useLocationButton.disabled = false;
+      refreshTheatresAndMovies();
+    },
+    () => {
+      locationStatus.textContent = "Location was not shared. Enter a ZIP code instead.";
+      useLocationButton.disabled = false;
+    },
+    { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 }
+  );
+});
+
+zipInput.addEventListener("input", () => {
+  if (zipInput.value.trim()) {
+    preciseLocation = null;
+    useLocationButton.textContent = "Use my location";
+    locationStatus.textContent = "Searching from your ZIP code.";
+  }
+  autoRefresh();
+});
 radiusInput.addEventListener("input", autoRefresh);
 startDateInput.addEventListener("change", () => {
   syncEndDateBounds();
@@ -788,7 +833,7 @@ movieInput.addEventListener("change", () => {
 });
 
 const shouldSearchFromUrl = applyQueryParams();
-if (hasValidZip()) {
+if (hasSearchLocation()) {
   Promise.all([loadTheatres(), loadMovies()]).then(async () => {
     if (shouldSearchFromUrl) {
       await loadFormats();

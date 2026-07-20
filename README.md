@@ -1,6 +1,6 @@
-# Movie Seat Finder FastAPI
+# Movie Seat Finder
 
-[![Tests](https://github.com/ivan-grebe/movieseatfinder-fastapi/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan-grebe/movieseatfinder-fastapi/actions/workflows/tests.yml)
+[![Tests](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Production-ready FastAPI and Vercel version of Movie Seat Finder. It searches
@@ -10,6 +10,7 @@ inside a user-selected auditorium region.
 ## Features
 
 - Live theatre, movie, format, showtime, and seat-map lookup.
+- Exact radius filtering from a ZIP centroid or, with permission, the browser's precise location.
 - Adjacent-seat matching with custom auditorium regions.
 - Accessible-seat filtering and normalized seat-map previews.
 - Bounded TTL caches and parallel upstream requests.
@@ -47,8 +48,8 @@ pip install -e ".[test]"
 python -m unittest discover -s tests -v
 ```
 
-GitHub Actions runs the suite on Python 3.12 and 3.13 for every pull request
-and push to `main`.
+GitHub Actions runs the suite on Python 3.12 and 3.13 for every pull request,
+push to `main`, and every day at 09:17 UTC.
 
 ## Vercel
 
