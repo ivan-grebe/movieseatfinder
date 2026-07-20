@@ -1,3 +1,5 @@
+import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
+
 const zipInput = document.getElementById("zipInput");
 const useLocationButton = document.getElementById("useLocationButton");
 const locationStatus = document.getElementById("locationStatus");
@@ -38,37 +40,6 @@ let gridPaintMode = true;
 let gridDragStart = null;
 let gridSelectionBeforeDrag = new Set();
 let gridDragMoved = false;
-
-function todayString() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(dateString, days) {
-  const date = new Date(dateString + "T00:00:00");
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function formatNiceDate(dateString) {
-  const date = new Date(dateString + "T00:00:00");
-  if (Number.isNaN(date.getTime())) return dateString;
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
-
-function debounce(fn, ms) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
-}
-
-async function getJson(url) {
-  const response = await fetch(url);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Request failed.");
-  return data;
-}
 
 function setStatus(element, text, state) {
   element.className = (element.id === "gridStatus" ? "status grid-status" : "status") + (state ? " is-" + state : "");

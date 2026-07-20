@@ -8,12 +8,20 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 import html
 import json
-import math
 import os
 import re
 import requests
 import threading
 import time
+
+from .location import (
+    distance_miles,
+    filter_theatres_within_radius,
+    geocode_zip,
+    reverse_geocode_zip,
+    resolve_search_location,
+    validate_coordinates,
+)
 
 
 USER_AGENT = "MovieSeatFinder/1.0 (local development app)"
@@ -95,65 +103,6 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
     )
     response.raise_for_status()
     return response.json()
-
-
-def distance_miles(lat1, lon1, lat2, lon2):
-    radius = 3958.8
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lambda = math.radians(lon2 - lon1)
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-def geocode_zip(zip_code):
-    data = fetch_json(f"https://api.zippopotam.us/us/{zip_code}")
-    place = data["places"][0]
-    return {
-        "label": f'{place["place name"]}, {place["state abbreviation"]} {data["post code"]}',
-        "lat": float(place["latitude"]),
-        "lon": float(place["longitude"]),
-    }
-
-
-def reverse_geocode_zip(lat, lon):
-    """Find a ZIP for Fandango's ZIP-only API without retaining location data."""
-    response = http_session().get(
-        "https://nominatim.openstreetmap.org/reverse",
-        params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 10},
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-        timeout=10,
-    )
-    response.raise_for_status()
-    zip_code = str(response.json().get("address", {}).get("postcode", ""))[:5]
-    if not re.fullmatch(r"\d{5}", zip_code):
-        raise KeyError("No nearby US ZIP code")
-    return zip_code
-
-
-def validate_coordinates(lat, lon):
-    if lat is None or lon is None:
-        return None
-    try:
-        lat = float(lat)
-        lon = float(lon)
-    except (TypeError, ValueError):
-        raise ValueError("Location coordinates must be valid numbers.")
-    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-        raise ValueError("Location coordinates are out of range.")
-    return lat, lon
-
-
-def resolve_search_location(zip_code, lat=None, lon=None):
-    """Use opt-in browser coordinates, otherwise use the ZIP centroid."""
-    origin = validate_coordinates(lat, lon)
-    if origin:
-        return reverse_geocode_zip(*origin), origin, "your current location"
-    if not re.fullmatch(r"\d{5}", zip_code):
-        raise ValueError("Enter a valid 5 digit US ZIP code or use your location.")
-    zip_location = geocode_zip(zip_code)
-    return zip_code, (zip_location["lat"], zip_location["lon"]), zip_location["label"]
 
 
 def parse_date(value):
@@ -328,21 +277,6 @@ def format_matches(format_name, amenity_text, requested):
     if requested in ("70mm", "70 mm"):
         return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
     return bool(value_set & exact_checks.get(requested, {requested}))
-
-
-def filter_theatres_within_radius(theatres, origin_lat, origin_lon, radius):
-    """Return only theatres whose coordinates are inside the requested circle."""
-    filtered = []
-    for theatre in theatres:
-        lat = theatre.get("latitude")
-        lon = theatre.get("longitude")
-        if lat is None or lon is None:
-            continue
-        exact_distance = distance_miles(origin_lat, origin_lon, lat, lon)
-        if exact_distance <= radius:
-            theatre = {**theatre, "distanceMiles": exact_distance}
-            filtered.append(theatre)
-    return sorted(filtered, key=lambda item: item["distanceMiles"])
 
 
 def fandango_theatres(zip_code, radius, show_date=None, origin=None):

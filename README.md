@@ -3,9 +3,8 @@
 [![Tests](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Production-ready FastAPI and Vercel version of Movie Seat Finder. It searches
-live Fandango showtimes and seat maps, then finds adjacent available seats
-inside a user-selected auditorium region.
+Movie Seat Finder searches live Fandango showtimes and seat maps, then finds
+adjacent available seats inside a user-selected auditorium region.
 
 ## Features
 
@@ -34,8 +33,8 @@ Then open `http://127.0.0.1:4173/`.
 
 ```text
 .
-|-- backend/       # FastAPI application and seat-search logic
-|-- frontend/      # HTML, CSS, JavaScript, and static assets
+|-- backend/       # API routes, location services, and seat-search logic
+|-- frontend/      # Modular browser code, HTML, CSS, and static assets
 |-- tests/         # Offline unit and route tests
 |-- .github/       # GitHub Actions workflow
 `-- app.py         # Vercel-compatible application entry point

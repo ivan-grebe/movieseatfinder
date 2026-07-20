@@ -128,6 +128,9 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
         self.assertNotIn("__SITE_", response.text)
+        self.assertIn('property="og:image:secure_url"', response.text)
+        self.assertIn('property="og:image:width" content="1200"', response.text)
+        self.assertIn('name="twitter:image:alt"', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
@@ -137,7 +140,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
 
     @patch("backend.application.fandango_json")
-    @patch("backend.application.geocode_zip")
+    @patch("backend.location.geocode_zip")
     def test_five_mile_zip_search_excludes_theatres_outside_the_radius(self, geocode_zip, fandango_json):
         application.THEATRES_CACHE.clear()
         geocode_zip.return_value = {"label": "Testville, TS 00000", "lat": 40.0, "lon": -75.0}
@@ -156,7 +159,7 @@ class RouteTests(unittest.TestCase):
         self.assertTrue(all(theatre["distanceMiles"] <= 5 for theatre in theatres))
 
     @patch("backend.application.fandango_json")
-    @patch("backend.application.reverse_geocode_zip", return_value="00000")
+    @patch("backend.location.reverse_geocode_zip", return_value="00000")
     def test_location_search_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
         application.THEATRES_CACHE.clear()
         fandango_json.return_value = {
