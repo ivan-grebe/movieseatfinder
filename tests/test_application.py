@@ -160,7 +160,7 @@ class RouteTests(unittest.TestCase):
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.reverse_geocode_zip", return_value="00000")
-    def test_location_search_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
+    def test_location_search_integration_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
         application.THEATRES_CACHE.clear()
         fandango_json.return_value = {
             "theaters": [
@@ -173,7 +173,14 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([theatre["name"] for theatre in response.json()["theatres"]], ["Nearby Cinema"])
-        self.assertEqual(fandango_json.call_args.args[1]["radius"], 100)
+        self.assertEqual(fandango_json.call_args.args[1]["radius"], 25)
+
+    @patch("backend.location.reverse_geocode_zip", side_effect=application.requests.RequestException())
+    def test_location_lookup_failure_guides_the_user_to_manual_zip_entry(self, reverse_geocode_zip):
+        response = self.client.get("/api/theatres", params={"lat": 40.0, "lon": -75.0, "radius": 25})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Enter a ZIP code instead", response.json()["error"])
 
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)

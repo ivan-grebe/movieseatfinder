@@ -292,7 +292,10 @@ def fandango_theatres(zip_code, radius, show_date=None, origin=None):
             THEATRES_CACHE.pop(key, None)
     # Fandango accepts a ZIP rather than coordinates. For a browser-location
     # search, get a broad candidate set and enforce the exact circle locally.
-    fetch_radius = 100 if origin else radius
+    # Fandango caps reliable ZIP searches below its nominal 100-mile maximum.
+    # A 25–50 mile candidate set covers ZIP-boundary cases, then the exact
+    # coordinate filter below enforces the user's requested radius.
+    fetch_radius = min(max(radius * 2, 25), 50) if origin else radius
     theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
     if origin:
         theatres = filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
@@ -1006,7 +1009,13 @@ def api_theatres(request: Request, zip: str = "", radius: float = 25, lat: float
     try:
         zip_code = zip.strip()
         radius = validate_radius(radius)
-        search_zip, origin, place = resolve_search_location(zip_code, lat, lon)
+        try:
+            search_zip, origin, place = resolve_search_location(zip_code, lat, lon)
+        except (requests.RequestException, TimeoutError, KeyError):
+            raise HTTPException(
+                status_code=400,
+                detail="We could not determine a nearby ZIP for your location. Enter a ZIP code instead.",
+            )
 
         try:
             theatres = fandango_theatres(search_zip, radius, origin=origin)

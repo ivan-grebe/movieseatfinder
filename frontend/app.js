@@ -1,7 +1,6 @@
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
 
 const zipInput = document.getElementById("zipInput");
-const useLocationButton = document.getElementById("useLocationButton");
 const locationStatus = document.getElementById("locationStatus");
 const radiusInput = document.getElementById("radiusInput");
 const startDateInput = document.getElementById("startDateInput");
@@ -762,33 +761,25 @@ searchButton.addEventListener("click", search);
 selectCenterGridButton.addEventListener("click", () => selectGridBox(5, 9, 5, 9));
 clearGridButton.addEventListener("click", clearGrid);
 
-useLocationButton.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    locationStatus.textContent = "Your browser does not support location access. Enter a ZIP code instead.";
-    return;
-  }
-  useLocationButton.disabled = true;
-  locationStatus.textContent = "Requesting your location…";
+function requestLocationOnLoad() {
+  if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(
     position => {
       preciseLocation = position.coords;
       locationStatus.textContent = "Using your precise location for this search. It is not saved.";
-      useLocationButton.textContent = "Location enabled";
-      useLocationButton.disabled = false;
       refreshTheatresAndMovies();
     },
     () => {
-      locationStatus.textContent = "Location was not shared. Enter a ZIP code instead.";
-      useLocationButton.disabled = false;
+      preciseLocation = null;
+      locationStatus.textContent = "Location was not shared. Enter a ZIP code to search.";
     },
     { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 }
   );
-});
+}
 
 zipInput.addEventListener("input", () => {
   if (zipInput.value.trim()) {
     preciseLocation = null;
-    useLocationButton.textContent = "Use my location";
     locationStatus.textContent = "Searching from your ZIP code.";
   }
   autoRefresh();
@@ -816,3 +807,4 @@ if (hasSearchLocation()) {
     }
   });
 }
+if (!hasValidZip()) requestLocationOnLoad();
