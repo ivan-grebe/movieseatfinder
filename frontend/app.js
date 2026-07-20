@@ -369,7 +369,7 @@ async function runSearch() {
     return;
   }
 
-  setSummary("Searching real showtimes and seat maps…", "loading");
+  setSummary("", false);
   setButtonBusy(searchButton, true, "Searching…");
 
   try {
