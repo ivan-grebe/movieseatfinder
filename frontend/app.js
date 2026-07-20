@@ -3,6 +3,7 @@ import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils
 const zipInput = document.getElementById("zipInput");
 const locationStatus = document.getElementById("locationStatus");
 const radiusInput = document.getElementById("radiusInput");
+const radiusStatus = document.getElementById("radiusStatus");
 const startDateInput = document.getElementById("startDateInput");
 const endDateInput = document.getElementById("endDateInput");
 const theatreStatus = document.getElementById("theatreStatus");
@@ -109,6 +110,7 @@ function hasValidRadius() {
 function enforceRadius(report = false) {
   const valid = hasValidRadius();
   radiusInput.setCustomValidity(valid ? "" : "Enter a radius between 1 and 100 miles.");
+  setStatus(radiusStatus, valid ? "" : "Choose a radius between 1 and 100 miles to load nearby movies.", valid ? "" : "error");
   if (!valid && report) radiusInput.reportValidity();
   return valid;
 }
