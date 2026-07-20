@@ -552,11 +552,6 @@ function renderResults(data) {
   renderPagination(data);
 
   if (!matches.length) {
-    const none = document.createElement("div");
-    none.className = "summary is-muted";
-    none.style.marginTop = "16px";
-    none.textContent = "No showtimes have seats matching those filters. Try widening the time range, seat area, or dates.";
-    results.appendChild(none);
     return;
   }
 
