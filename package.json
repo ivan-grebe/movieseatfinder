@@ -1,0 +1,8 @@
+{
+  "name": "movieseatfinder-frontend-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:frontend": "node --test tests/frontend-utils.test.mjs"
+  }
+}

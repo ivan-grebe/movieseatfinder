@@ -164,6 +164,21 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "Enter a search radius."})
 
+    @patch("backend.application.LOGGER.exception")
+    @patch("backend.application.fandango_theatres", side_effect=RuntimeError("unexpected upstream shape"))
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_unexpected_api_errors_are_returned_as_json(
+        self, resolve_search_location, fandango_theatres, logger_exception
+    ):
+        client = TestClient(application.app, raise_server_exceptions=False)
+
+        response = client.get("/api/theatres", params={"zip": "00000", "radius": 25})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.headers["content-type"].split(";")[0], "application/json")
+        self.assertEqual(response.json(), {"error": "We could not complete that search. Please try again."})
+        logger_exception.assert_called_once()
+
     @patch("backend.application.fandango_json")
     @patch("backend.location.geocode_zip")
     def test_five_mile_zip_search_excludes_theatres_outside_the_radius(self, geocode_zip, fandango_json):
