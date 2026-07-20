@@ -135,9 +135,14 @@ class RouteTests(unittest.TestCase):
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
     def test_invalid_zip_returns_json_error(self):
-        response = self.client.get("/api/theatres", params={"zip": "abc"})
+        response = self.client.get("/api/theatres", params={"zip": "abc", "radius": 25})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
+
+    def test_missing_radius_returns_a_clear_error(self):
+        response = self.client.get("/api/theatres", params={"zip": "10001"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"error": "Enter a search radius."})
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.geocode_zip")

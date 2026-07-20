@@ -101,6 +101,11 @@ function hasSearchLocation() {
   return hasValidZip() || preciseLocation !== null;
 }
 
+function hasValidRadius() {
+  const radius = Number(radiusInput.value);
+  return radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100;
+}
+
 function locationParams(params) {
   if (preciseLocation) {
     params.set("lat", preciseLocation.latitude);
@@ -261,7 +266,7 @@ function baseParams() {
 }
 
 async function loadTheatres() {
-  if (!hasSearchLocation()) {
+  if (!hasSearchLocation() || !hasValidRadius()) {
     theatres = [];
     setStatus(theatreStatus, "", "");
     return;
@@ -286,7 +291,7 @@ async function loadTheatres() {
 }
 
 async function loadMovies() {
-  if (!hasSearchLocation()) {
+  if (!hasSearchLocation() || !hasValidRadius()) {
     movies = [];
     setFormatOptions([]);
     setStatus(movieStatus, "", "");
@@ -315,7 +320,7 @@ async function loadFormats() {
   setFormatOptions([]);
   setStatus(formatStatus, "", "");
 
-  if (!movieTitle || !hasSearchLocation()) return;
+  if (!movieTitle || !hasSearchLocation() || !hasValidRadius()) return;
 
   try {
     setStatus(formatStatus, "Loading formats…", "loading");
@@ -344,6 +349,11 @@ async function runSearch() {
 
   if (!hasSearchLocation()) {
     setSummary("Enter a ZIP code or use your location first.", true);
+    return;
+  }
+  if (!hasValidRadius()) {
+    setSummary("Enter a radius between 1 and 100 miles.", true);
+    radiusInput.focus();
     return;
   }
 
@@ -678,7 +688,7 @@ function syncEndDateBounds() {
 }
 
 async function refreshTheatresAndMovies() {
-  if (!hasSearchLocation()) {
+  if (!hasSearchLocation() || !hasValidRadius()) {
     theatres = [];
     movies = [];
     setFormatOptions([]);
