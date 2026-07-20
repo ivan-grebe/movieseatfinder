@@ -352,9 +352,6 @@ async function search() {
 
 async function runSearch() {
   const movieTitle = movieInput.value.trim();
-  results.innerHTML = "";
-  pagination.hidden = true;
-  pagination.innerHTML = "";
 
   if (!hasSearchLocation()) {
     setSummary("Enter a ZIP code or use your location first.", true);
