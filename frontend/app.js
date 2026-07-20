@@ -370,7 +370,7 @@ async function runSearch() {
   }
 
   setSummary("", false);
-  setButtonBusy(searchButton, true, "Searching…");
+  setButtonBusy(searchButton, true, "Searching real showtimes and seat maps…");
 
   try {
     const params = baseParams();
