@@ -645,7 +645,7 @@ function renderResults(data) {
       const link = document.createElement("a");
       link.className = "buy-btn";
       link.href = match.ticketUrl;
-      link.textContent = "Get tickets →";
+      link.textContent = "Get tickets";
       link.target = "_blank";
       link.rel = "noreferrer";
       item.appendChild(link);
