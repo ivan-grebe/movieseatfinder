@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 import html
+import logging
 import os
 import re
 import requests
@@ -63,6 +64,7 @@ RATE_LIMITS = {
 RATE_LIMIT_HISTORY = defaultdict(deque)
 RATE_LIMIT_LOCK = threading.Lock()
 HTTP_LOCAL = threading.local()
+LOGGER = logging.getLogger(__name__)
 
 
 def http_session():
@@ -632,6 +634,15 @@ async def security_headers(request, call_next):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(request, exc):
+    LOGGER.exception("Unhandled request error for %s", request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "We could not complete that search. Please try again."},
+    )
 
 
 @app.get("/", include_in_schema=False)

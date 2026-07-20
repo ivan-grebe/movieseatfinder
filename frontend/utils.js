@@ -24,7 +24,17 @@ export function debounce(fn, ms) {
 
 export async function getJson(url) {
   const response = await fetch(url);
-  const data = await response.json();
+  const body = await response.text();
+  let data;
+  try {
+    data = body ? JSON.parse(body) : {};
+  } catch {
+    throw new Error(
+      response.ok
+        ? "The server returned an unreadable response. Please try again."
+        : "The search service is temporarily unavailable. Please try again."
+    );
+  }
   if (!response.ok) throw new Error(data.error || "Request failed.");
   return data;
 }
