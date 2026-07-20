@@ -88,7 +88,7 @@ class MovieAndFormatTests(unittest.TestCase):
         showtime = application.normalize_showtimes({}, [movie], "2026-07-20")[0]
 
         self.assertEqual(showtime["format"], "IMAX")
-        self.assertEqual(showtime["screenReaderTime"], "6 PM")
+        self.assertEqual(showtime["screenReaderTime"], "6:00 PM")
         self.assertNotIn("o'clock", showtime["screenReaderTime"])
 
 

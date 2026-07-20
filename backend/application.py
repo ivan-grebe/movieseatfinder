@@ -491,7 +491,7 @@ def display_showtime_time(value):
         return value
     suffix = "AM" if hour < 12 else "PM"
     hour = hour % 12 or 12
-    return f"{hour} {suffix}" if minute == 0 else f"{hour}:{minute:02d} {suffix}"
+    return f"{hour}:{minute:02d} {suffix}"
 
 
 def showtime_format(format_header, group, showtime):
