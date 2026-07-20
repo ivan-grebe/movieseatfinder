@@ -379,35 +379,42 @@ a:focus-visible {
   font-weight: 650;
   cursor: pointer;
   user-select: none;
-  min-height: 40px;
+  min-height: 28px;
 }
 
-.accessible-check { margin: 18px 0 16px; }
+.accessible-check { margin: 8px 0 4px; }
 .check input { position: absolute; opacity: 0; width: 0; height: 0; }
 
 .check-box {
   position: relative;
   flex: none;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(255,255,255,.78);
-  box-shadow: inset 0 2px 3px rgba(32, 58, 92, .08);
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--field);
+  transition: border-color .15s ease, background-color .15s ease;
 }
 
+.check:hover .check-box { border-color: rgba(201, 58, 58, .55); }
+
 .check input:checked + .check-box {
-  border-color: var(--accent-deep);
-  background: linear-gradient(180deg, #ef6b62, var(--accent-deep));
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.check input:focus-visible + .check-box {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 2px;
 }
 
 .check input:checked + .check-box::after {
   content: "";
   position: absolute;
-  left: 6px;
-  top: 3px;
-  width: 6px;
-  height: 10px;
+  left: 5.5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
   border-right: 2px solid #fff;
   border-bottom: 2px solid #fff;
   transform: rotate(42deg);
@@ -556,8 +563,8 @@ a:focus-visible {
 
 .seat-cell.selected {
   border-color: var(--accent-deep);
-  background: linear-gradient(180deg, #ef6b62, var(--accent-deep));
-  box-shadow: 0 0 0 2px rgba(201, 58, 58, .16), 0 5px 12px rgba(143, 31, 38, .2);
+  background: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28);
 }
 
 .grid-actions {
@@ -610,7 +617,7 @@ a:focus-visible {
   gap: 11px;
   padding: 28px 16px 36px;
   border-radius: 18px;
-  color: var(--muted);
+  color: #475467;
   background: rgba(255,255,255,.62);
   box-shadow: var(--shadow-border), inset 0 1px 0 rgba(255,255,255,.72);
   text-align: center;
@@ -856,7 +863,7 @@ a:focus-visible {
 
 .real-seat.matched {
   border-color: var(--accent-deep);
-  background: linear-gradient(180deg, #ef6b62, var(--accent-deep));
+  background: var(--accent);
   box-shadow: 0 0 0 2px rgba(201, 58, 58, .23);
 }
 
@@ -880,7 +887,7 @@ a:focus-visible {
 }
 
 .legend-swatch.unavailable { background: var(--seat-taken); border-color: #adb5c0; }
-.legend-swatch.matched { background: linear-gradient(180deg, #ef6b62, var(--accent-deep)); border-color: var(--accent-deep); }
+.legend-swatch.matched { background: var(--accent); border-color: var(--accent-deep); }
 
 .pagination {
   display: flex;
@@ -1191,6 +1198,7 @@ input[type="time"] {
 
   .summary,
   .empty-state {
+    color: #c2cddc;
     background: rgba(255, 255, 255, .04);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .05), inset 0 1px 0 rgba(255, 255, 255, .04);
   }
