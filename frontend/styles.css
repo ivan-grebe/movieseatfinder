@@ -287,16 +287,10 @@ input::placeholder { color: #9aa7b7; }
   padding: 9px 18px;
   border-radius: 12px;
   color: #fff;
-  background:
-    radial-gradient(101.79% 101.79% at 65.61% 81.79%, rgba(255,255,255,.6) 0, rgba(255,255,255,0) 100%),
-    radial-gradient(114.65% 114.65% at 9.73% 17.27%, var(--accent) 0, var(--accent-deep) 100%);
-  background-blend-mode: overlay, normal;
-  box-shadow:
-    18px 18px 24px rgba(232, 129, 129, .26),
-    inset -3px -3px 4px rgba(255, 226, 220, .42),
-    inset 4px 4px 4px rgba(110, 18, 24, .12);
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  box-shadow: 0 7px 14px rgba(143, 31, 38, .16);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 650;
   letter-spacing: -.01em;
   transition-property: transform, filter, box-shadow;
   transition-duration: 160ms;
@@ -895,7 +889,7 @@ a:focus-visible {
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
   box-shadow: 0 7px 14px rgba(143, 31, 38, .16);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 650;
   transition-property: transform, filter, box-shadow;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
