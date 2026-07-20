@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 import html
-import json
 import os
 import re
 import requests
@@ -17,10 +16,7 @@ import time
 from .location import (
     distance_miles,
     filter_theatres_within_radius,
-    geocode_zip,
-    reverse_geocode_zip,
     resolve_search_location,
-    validate_coordinates,
 )
 
 
@@ -75,12 +71,6 @@ def http_session():
         session = requests.Session()
         HTTP_LOCAL.session = session
     return session
-
-
-def fetch_json(url, timeout=20):
-    response = http_session().get(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
 
 
 def fetch_text(url, timeout=20):
@@ -558,15 +548,7 @@ def seat_map(showtime_hash):
 
 
 from .seat_matching import (
-    adjacent_blocks,
-    human_zone,
-    normalized_seat_layout,
     parse_seat_grid,
-    primary_zone,
-    seat_band,
-    seat_matches_filter,
-    seat_matches_grid,
-    seat_zone_labels,
     showtime_seat_match,
 )
 def title_from_slug(slug):
