@@ -122,6 +122,8 @@ def date_range(start, end):
 
 
 def validate_radius(radius):
+    if radius is None:
+        raise ValueError("Enter a search radius.")
     if radius < 1 or radius > 100:
         raise ValueError("Radius must be between 1 and 100 miles.")
     return radius
@@ -731,7 +733,7 @@ def upstream_error(message, error):
 
 
 @app.get("/api/theatres")
-def api_theatres(request: Request, zip: str = "", radius: float = 25, lat: float | None = None, lon: float | None = None):
+def api_theatres(request: Request, zip: str = "", radius: float | None = None, lat: float | None = None, lon: float | None = None):
     enforce_rate_limit(request, "/api/theatres")
     try:
         zip_code = zip.strip()
@@ -775,7 +777,7 @@ def api_theatres(request: Request, zip: str = "", radius: float = 25, lat: float
 def api_movies(
     request: Request,
     zip: str = "",
-    radius: float = 25,
+    radius: float | None = None,
     startDate: str = "",
     endDate: str = "",
     theatre: str = "",
@@ -811,7 +813,7 @@ def api_movies(
 def api_formats(
     request: Request,
     zip: str = "",
-    radius: float = 25,
+    radius: float | None = None,
     movie: str = "",
     startDate: str = "",
     endDate: str = "",
@@ -850,7 +852,7 @@ def api_formats(
 def api_search(
     request: Request,
     zip: str = "",
-    radius: float = 25,
+    radius: float | None = None,
     theatre: str = "",
     movie: str = "",
     format: str = "any",
