@@ -405,6 +405,13 @@ a:focus-visible {
   animation: spin .7s linear infinite;
 }
 
+.btn-primary .spinner {
+  width: 15px;
+  height: 15px;
+  border-color: rgba(255, 255, 255, .42);
+  border-top-color: #fff;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .combo { position: relative; }
@@ -530,28 +537,6 @@ a:focus-visible {
 
 .results-section {
   padding: 42px 0 0;
-}
-
-.section-heading {
-  max-width: 720px;
-  margin: 0 auto 16px;
-  text-align: center;
-}
-
-.results-head {
-  margin: 0;
-  color: #172033;
-  font-size: clamp(24px, 3.2vw, 36px);
-  line-height: 1.12;
-  font-weight: 700;
-  letter-spacing: -.6px;
-}
-
-.section-heading p {
-  margin: 6px auto 0;
-  max-width: 540px;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .summary {
