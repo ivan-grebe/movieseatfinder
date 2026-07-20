@@ -1067,7 +1067,7 @@ def upstream_error(message, error):
 
 
 @app.get("/api/theatres")
-def api_theatres(request: Request, zip: str = "", radius: float = 10, lat: float | None = None, lon: float | None = None):
+def api_theatres(request: Request, zip: str = "", radius: float = 25, lat: float | None = None, lon: float | None = None):
     enforce_rate_limit(request, "/api/theatres")
     try:
         zip_code = zip.strip()
