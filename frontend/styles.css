@@ -564,6 +564,10 @@ a:focus-visible {
   margin-top: 15px;
 }
 
+#results > .summary {
+  grid-column: 1 / -1;
+}
+
 .empty-state {
   grid-column: 1 / -1;
   display: flex;
