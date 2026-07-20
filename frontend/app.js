@@ -106,6 +106,13 @@ function hasValidRadius() {
   return radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100;
 }
 
+function enforceRadius(report = false) {
+  const valid = hasValidRadius();
+  radiusInput.setCustomValidity(valid ? "" : "Enter a radius between 1 and 100 miles.");
+  if (!valid && report) radiusInput.reportValidity();
+  return valid;
+}
+
 function locationParams(params) {
   if (preciseLocation) {
     params.set("lat", preciseLocation.latitude);
@@ -266,7 +273,7 @@ function baseParams() {
 }
 
 async function loadTheatres() {
-  if (!hasSearchLocation() || !hasValidRadius()) {
+  if (!hasSearchLocation() || !enforceRadius()) {
     theatres = [];
     setStatus(theatreStatus, "", "");
     return;
@@ -291,7 +298,7 @@ async function loadTheatres() {
 }
 
 async function loadMovies() {
-  if (!hasSearchLocation() || !hasValidRadius()) {
+  if (!hasSearchLocation() || !enforceRadius()) {
     movies = [];
     setFormatOptions([]);
     setStatus(movieStatus, "", "");
@@ -320,7 +327,7 @@ async function loadFormats() {
   setFormatOptions([]);
   setStatus(formatStatus, "", "");
 
-  if (!movieTitle || !hasSearchLocation() || !hasValidRadius()) return;
+  if (!movieTitle || !hasSearchLocation() || !enforceRadius()) return;
 
   try {
     setStatus(formatStatus, "Loading formats…", "loading");
@@ -351,9 +358,7 @@ async function runSearch() {
     setSummary("Enter a ZIP code or use your location first.", true);
     return;
   }
-  if (!hasValidRadius()) {
-    setSummary("Enter a radius between 1 and 100 miles.", true);
-    radiusInput.focus();
+  if (!enforceRadius(true)) {
     return;
   }
 
@@ -794,7 +799,10 @@ zipInput.addEventListener("input", () => {
   }
   autoRefresh();
 });
-radiusInput.addEventListener("input", autoRefresh);
+radiusInput.addEventListener("input", () => {
+  enforceRadius();
+  autoRefresh();
+});
 startDateInput.addEventListener("change", () => {
   syncEndDateBounds();
   autoRefresh();
@@ -805,7 +813,7 @@ movieInput.addEventListener("change", () => {
 });
 
 const shouldSearchFromUrl = applyQueryParams();
-if (hasSearchLocation()) {
+if (hasSearchLocation() && enforceRadius()) {
   Promise.all([loadTheatres(), loadMovies()]).then(async () => {
     if (shouldSearchFromUrl) {
       await loadFormats();
