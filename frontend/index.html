@@ -63,7 +63,7 @@
 
     <section id="search" class="app-shell">
       <div class="card enter-item enter-item-3">
-        <div class="card-body">
+        <form class="card-body" id="searchForm" novalidate>
         <div class="group location-group">
           <p class="group-title">
             <svg class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
@@ -72,9 +72,13 @@
           <div class="grid">
             <label>
               ZIP code
-              <input id="zipInput" type="text" inputmode="numeric" maxlength="10" placeholder="Enter ZIP">
+              <span class="zip-row">
+                <input id="zipInput" type="text" inputmode="numeric" maxlength="10" placeholder="Enter ZIP">
+                <button id="useLocationButton" class="location-btn" type="button" title="Use my current location" aria-label="Use my current location">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                </button>
+              </span>
             </label>
-            <span id="locationStatus" class="sr-only" aria-live="polite"></span>
             <label>
               Radius <span class="field-hint">(miles)</span>
               <input id="radiusInput" type="number" min="1" max="100" value="25" required>
@@ -84,15 +88,16 @@
               <input id="startDateInput" type="date">
             </label>
             <label class="date-field">
-              End date
+              End date <span class="field-hint">(within 14 days)</span>
               <input id="endDateInput" type="date">
             </label>
             <label class="combo full">
               Theatre <span class="field-hint">(optional)</span>
-              <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre nearby">
-              <div id="theatreMenu" class="combo-menu" hidden></div>
+              <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre nearby" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu">
+              <div id="theatreMenu" class="combo-menu" role="listbox" aria-label="Nearby theatres" hidden></div>
             </label>
           </div>
+          <div id="locationStatus" class="status" aria-live="polite"></div>
           <div id="radiusStatus" class="status" aria-live="polite"></div>
           <div id="theatreStatus" class="status" aria-live="polite"></div>
           <div id="movieStatus" class="status" aria-live="polite"></div>
@@ -106,8 +111,8 @@
           <div class="grid">
             <label class="combo full">
               Movie
-              <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title">
-              <div id="movieMenu" class="combo-menu" hidden></div>
+              <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu">
+              <div id="movieMenu" class="combo-menu" role="listbox" aria-label="Matching movies" hidden></div>
             </label>
             <label class="select-wrap full">
               Format
@@ -145,10 +150,10 @@
             <span>Exclude accessible &amp; wheelchair seats from matches</span>
           </label>
 
-          <p class="seat-help">Drag a box over the area where you'd like to sit (top is the screen, bottom is the back). Hold Shift, Ctrl, or Alt while dragging to erase. Leave it blank to match anywhere in the auditorium.</p>
+          <p class="seat-help">Drag a box over the area where you'd like to sit — the top row is nearest the screen, the bottom is the back. Hold Shift, Ctrl, or Alt while dragging to erase. With the keyboard, focus a cell and use the arrow keys to move, Enter or Space to toggle, and Shift + arrows to select a block. Leave it blank to match anywhere in the auditorium.</p>
           <div class="seat-stage">
             <div class="screen">SCREEN</div>
-            <div id="seatPreferenceGrid" class="seat-grid" aria-label="15 by 15 seat preference grid"></div>
+            <div id="seatPreferenceGrid" class="seat-grid" role="group" aria-label="Seat area preference grid, 15 rows from the screen by 15 columns"></div>
           </div>
           <div class="grid-actions">
             <button id="selectCenterGridButton" class="btn-small" type="button">Center</button>
@@ -158,9 +163,9 @@
         </div>
 
         <div class="cta-row">
-          <button id="searchButton" class="btn-primary" type="button">Find matching seats</button>
+          <button id="searchButton" class="btn-primary" type="submit">Find matching seats</button>
         </div>
-        </div>
+        </form>
       </div>
     </section>
 
