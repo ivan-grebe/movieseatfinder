@@ -407,10 +407,12 @@ def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_dat
                     continue
                 for variant in movie.get("variants") or []:
                     format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
-                    formats.add(format_name)
                     for group in variant.get("amenityGroups") or []:
+                        group_showtimes = group.get("showtimes") or [{}]
+                        for showtime in group_showtimes:
+                            formats.add(showtime_format(format_name, group, showtime))
                         amenity_text = clean_title(group.get("amenityString", ""))
-                        visible_terms = [format_name]
+                        visible_terms = [format_name, *(showtime_format(format_name, group, showtime) for showtime in group_showtimes)]
                         for amenity in amenity_text.split(","):
                             amenity = amenity.strip()
                             if any(term in amenity.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
@@ -481,6 +483,36 @@ def movie_meta(movie):
     }
 
 
+def display_showtime_time(value):
+    """Turn Fandango's 24-hour ticketing time into a compact display time."""
+    try:
+        hour, minute = (int(part) for part in value.split(":", 1))
+    except (AttributeError, TypeError, ValueError):
+        return value
+    suffix = "AM" if hour < 12 else "PM"
+    hour = hour % 12 or 12
+    return f"{hour} {suffix}" if minute == 0 else f"{hour}:{minute:02d} {suffix}"
+
+
+def showtime_format(format_header, group, showtime):
+    """Prefer Fandango's showtime-specific format over broad category labels."""
+    for format_item in showtime.get("filmFormat") or []:
+        name = clean_title(format_item.get("filterName", ""))
+        if name:
+            return name
+
+    header = clean_title(format_header)
+    if normalized_text(header) not in {"premium format", "format", ""}:
+        return header
+
+    premium_terms = ("imax", "dolby", "4dx", "screenx", "rpx", "prime", "xl", "dbox", "d-box", "reald")
+    for amenity in group.get("amenities") or []:
+        name = clean_title(amenity.get("name", ""))
+        if name and any(term in normalized_text(name) for term in premium_terms):
+            return name
+    return header or "Standard"
+
+
 def normalize_showtimes(theatre, movies, show_date):
     normalized = []
     for movie in movies or []:
@@ -507,16 +539,17 @@ def normalize_showtimes(theatre, movies, show_date):
                         show_date_part, show_time_part = ticketing_date.split("+", 1)
                     else:
                         show_date_part, show_time_part = show_date, ""
+                    format_label = showtime_format(format_name, group, showtime)
                     normalized.append({
                         "theatre": theatre,
                         "movieTitle": movie_title,
                         "movieId": movie.get("id"),
                         "date": show_date_part,
                         "time": show_time_part,
-                        "screenReaderTime": showtime.get("screenReaderTime") or showtime.get("date") or show_time_part,
-                        "format": format_name,
+                        "screenReaderTime": display_showtime_time(show_time_part) or showtime.get("date", ""),
+                        "format": format_label,
                         "amenities": amenity_text,
-                        "formatTags": format_tags,
+                        "formatTags": ", ".join(dict.fromkeys([format_label, format_tags])),
                         "reservedSeating": bool(group.get("hasReservedSeating")),
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),

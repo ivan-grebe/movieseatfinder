@@ -697,9 +697,10 @@ a:focus-visible {
 }
 
 .result-addr {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.25;
 }
 
 .result-movie {
@@ -891,10 +892,8 @@ a:focus-visible {
   padding: 9px 13px 9px 15px;
   border-radius: 11px;
   color: #fff;
-  background:
-    radial-gradient(101.79% 101.79% at 65.61% 81.79%, rgba(255,255,255,.52) 0, rgba(255,255,255,0) 100%),
-    radial-gradient(114.65% 114.65% at 9.73% 17.27%, var(--accent) 0, var(--accent-deep) 100%);
-  box-shadow: 0 12px 22px rgba(143, 31, 38, .18), inset -2px -2px 4px rgba(255,226,220,.36);
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  box-shadow: 0 7px 14px rgba(143, 31, 38, .16);
   font-size: 13px;
   font-weight: 850;
   transition-property: transform, filter, box-shadow;

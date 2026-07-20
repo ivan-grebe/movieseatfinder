@@ -69,6 +69,28 @@ class MovieAndFormatTests(unittest.TestCase):
             },
         )
 
+    def test_showtime_uses_the_specific_format_and_compact_time(self):
+        movie = {
+            "title": "Test Movie",
+            "variants": [{
+                "filmFormatHeader": "Premium Format",
+                "amenityGroups": [{
+                    "amenities": [{"name": "IMAX with Laser"}],
+                    "showtimes": [{
+                        "type": "available",
+                        "ticketingDate": "2026-07-20+18:00",
+                        "filmFormat": [{"filterName": "IMAX"}],
+                    }],
+                }],
+            }],
+        }
+
+        showtime = application.normalize_showtimes({}, [movie], "2026-07-20")[0]
+
+        self.assertEqual(showtime["format"], "IMAX")
+        self.assertEqual(showtime["screenReaderTime"], "6 PM")
+        self.assertNotIn("o'clock", showtime["screenReaderTime"])
+
 
 class SeatSelectionTests(unittest.TestCase):
     def setUp(self):
