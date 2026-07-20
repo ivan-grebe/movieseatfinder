@@ -90,7 +90,9 @@ h1 {
   font-family: var(--serif);
   font-size: clamp(36px, 4.8vw, 58px);
   /* Extra leading prevents descenders such as the y in "buy" from clipping. */
-  line-height: 1.06;
+  line-height: 1.14;
+  padding-bottom: .08em;
+  overflow: visible;
   font-weight: 500;
   letter-spacing: -.8px;
   color: #111827;
@@ -1005,7 +1007,8 @@ input[type="time"] {
     min-height: 34px;
     padding: 6px 9px;
     border-radius: 10px;
-    font-size: 12px;
+    /* iOS Safari zooms focused form controls below 16px. */
+    font-size: 16px;
   }
 
   .select-wrap::after {
