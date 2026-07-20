@@ -1,6 +1,8 @@
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
 
+const searchForm = document.getElementById("searchForm");
 const zipInput = document.getElementById("zipInput");
+const useLocationButton = document.getElementById("useLocationButton");
 const locationStatus = document.getElementById("locationStatus");
 const radiusInput = document.getElementById("radiusInput");
 const radiusStatus = document.getElementById("radiusStatus");
@@ -40,6 +42,8 @@ let gridPaintMode = true;
 let gridDragStart = null;
 let gridSelectionBeforeDrag = new Set();
 let gridDragMoved = false;
+let gridFocus = { row: 0, col: 0 };
+let gridAnchor = { row: 0, col: 0 };
 
 function setStatus(element, text, state) {
   element.className = (element.id === "gridStatus" ? "status grid-status" : "status") + (state ? " is-" + state : "");
@@ -151,6 +155,7 @@ function setGridCell(row, col, selected) {
     selectedGridCells.delete(key);
     if (cell) cell.classList.remove("selected");
   }
+  if (cell) cell.setAttribute("aria-pressed", selected ? "true" : "false");
 }
 
 function clearGrid() {
@@ -182,12 +187,16 @@ function buildSeatGrid() {
       button.dataset.cell = cellKey(row, col);
       button.dataset.row = row;
       button.dataset.col = col;
-      button.title = "Row band " + (row + 1) + ", column band " + (col + 1);
+      button.title = "Row " + (row + 1) + " of 15 from the screen, column " + (col + 1) + " of 15";
       button.setAttribute("aria-label", button.title);
+      button.setAttribute("aria-pressed", "false");
+      // Roving tabindex: only one cell is in the tab order at a time.
+      button.tabIndex = row === 0 && col === 0 ? 0 : -1;
       button.addEventListener("click", event => {
         if (event.detail !== 0) return;
         if (isPaintingGrid) return;
         setGridCell(row, col, !selectedGridCells.has(cellKey(row, col)));
+        gridAnchor = { row, col };
         updateGridStatus();
       });
       gridCellElements.set(button.dataset.cell, button);
@@ -195,6 +204,15 @@ function buildSeatGrid() {
     }
   }
   updateGridStatus();
+}
+
+function setRovingCell(row, col, focus = true) {
+  gridFocus = { row, col };
+  gridCellElements.forEach(cell => {
+    cell.tabIndex = cell.dataset.cell === cellKey(row, col) ? 0 : -1;
+  });
+  const cell = gridCellElements.get(cellKey(row, col));
+  if (cell && focus) cell.focus();
 }
 
 function gridCellFromEvent(event) {
@@ -230,42 +248,109 @@ function applyGridRectangle(cell) {
   updateGridStatus();
 }
 
-function renderCombo(menu, items, input, getLabel, onPick) {
+function closeCombo(input, menu) {
+  menu.hidden = true;
+  menu._items = [];
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+}
+
+function renderCombo(menu, items, input, getLabel, onSelect) {
   menu.innerHTML = "";
+  menu._items = items;
   if (!items.length) {
-    menu.hidden = true;
+    closeCombo(input, menu);
     return;
   }
 
-  items.forEach(item => {
+  items.forEach((item, index) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "combo-option";
+    button.id = menu.id + "-option-" + index;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", "false");
     button.textContent = getLabel(item);
+    // mousedown (not click) so the input keeps focus and its blur handler
+    // doesn't close the menu before the selection registers.
     button.addEventListener("mousedown", event => {
       event.preventDefault();
-      input.value = getLabel(item);
-      menu.hidden = true;
-      onPick(item);
+      onSelect(item);
     });
     menu.appendChild(button);
   });
   menu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
 }
 
 function setupCombo(input, menu, source, getLabel, onPick) {
+  let activeIndex = -1;
+
+  function options() {
+    return Array.from(menu.querySelectorAll(".combo-option"));
+  }
+
+  function setActive(index) {
+    const opts = options();
+    opts.forEach(opt => {
+      opt.classList.remove("is-active");
+      opt.setAttribute("aria-selected", "false");
+    });
+    if (!opts.length || index < 0) {
+      activeIndex = -1;
+      input.removeAttribute("aria-activedescendant");
+      return;
+    }
+    activeIndex = (index + opts.length) % opts.length;
+    const active = opts[activeIndex];
+    active.classList.add("is-active");
+    active.setAttribute("aria-selected", "true");
+    input.setAttribute("aria-activedescendant", active.id);
+    active.scrollIntoView({ block: "nearest" });
+  }
+
+  function pick(item) {
+    if (!item) return;
+    input.value = getLabel(item);
+    closeCombo(input, menu);
+    activeIndex = -1;
+    onPick(item);
+  }
+
   function update() {
     const query = input.value.trim().toLowerCase();
     const items = source().filter(item => getLabel(item).toLowerCase().includes(query));
-    renderCombo(menu, items, input, getLabel, onPick);
+    renderCombo(menu, items, input, getLabel, pick);
+    activeIndex = -1;
   }
 
   input.addEventListener("focus", update);
   input.addEventListener("input", update);
+  input.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (menu.hidden) update();
+      setActive(activeIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (menu.hidden) update();
+      setActive(activeIndex === -1 ? -1 : activeIndex - 1);
+    } else if (event.key === "Enter") {
+      if (!menu.hidden && activeIndex >= 0 && menu._items && menu._items[activeIndex]) {
+        event.preventDefault();
+        pick(menu._items[activeIndex]);
+      }
+    } else if (event.key === "Escape") {
+      if (!menu.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeCombo(input, menu);
+        activeIndex = -1;
+      }
+    }
+  });
   input.addEventListener("blur", () => {
-    setTimeout(() => {
-      menu.hidden = true;
-    }, 120);
+    setTimeout(() => closeCombo(input, menu), 120);
   });
 }
 
@@ -296,8 +381,7 @@ async function loadTheatres() {
     const data = await getJson("/api/theatres?" + params.toString());
     theatres = data.theatres || [];
     setStatus(theatreStatus, theatres.length + " theatres found near " + data.place + ".", "success");
-    renderCombo(theatreMenu, theatres, theatreInput, theatre => theatre.name, () => {});
-    theatreMenu.hidden = true;
+    closeCombo(theatreInput, theatreMenu);
   } catch (error) {
     theatres = [];
     setStatus(theatreStatus, error.message, "error");
@@ -322,8 +406,7 @@ async function loadMovies() {
     movies = data.movies || [];
     movieInput.value = currentMovie;
     setStatus(movieStatus, movies.length + " movies showing " + formatNiceDate(startDateInput.value) + " – " + formatNiceDate(endDateInput.value) + ".", "success");
-    renderCombo(movieMenu, movies, movieInput, movie => movie.title, () => loadFormats());
-    movieMenu.hidden = true;
+    closeCombo(movieInput, movieMenu);
   } catch (error) {
     setStatus(movieStatus, error.message, "error");
   }
@@ -496,6 +579,7 @@ function renderPagination(data) {
   previous.type = "button";
   previous.className = "btn-small";
   previous.textContent = "Previous";
+  previous.setAttribute("aria-label", "Previous page of results");
   previous.disabled = !hasPrevious;
   previous.addEventListener("click", () => {
     if (currentPage <= 1) return;
@@ -511,6 +595,7 @@ function renderPagination(data) {
   next.type = "button";
   next.className = "btn-small";
   next.textContent = "Next";
+  next.setAttribute("aria-label", "Next page of results");
   next.disabled = !hasNext;
   next.addEventListener("click", () => {
     currentPage += 1;
@@ -552,12 +637,21 @@ function renderResults(data) {
   renderPagination(data);
 
   if (!matches.length) {
+    const hint = document.createElement("div");
+    hint.className = "empty-state";
+    const hintText = document.createElement("p");
+    hintText.textContent = "Try widening the time range, seat area, or dates.";
+    hint.appendChild(hintText);
+    results.appendChild(hint);
     return;
   }
 
   matches.forEach((match, index) => {
     const item = document.createElement("article");
     item.className = "result";
+    item.setAttribute("aria-label",
+      match.movieTitle + " at " + match.theatre.name + ", " +
+      formatNiceDate(match.date) + " " + match.displayTime);
     item.style.animationDelay = Math.min(index, 5) * 80 + "ms";
 
     const body = document.createElement("div");
@@ -771,31 +865,101 @@ seatPreferenceGrid.addEventListener("pointercancel", () => {
   gridDragMoved = false;
 });
 
-searchButton.addEventListener("click", search);
-selectCenterGridButton.addEventListener("click", () => selectGridBox(5, 9, 5, 9));
+// Keep the roving tab stop in sync with whichever cell actually holds focus.
+seatPreferenceGrid.addEventListener("focusin", event => {
+  const cell = event.target.closest(".seat-cell");
+  if (!cell) return;
+  const row = Number(cell.dataset.row);
+  const col = Number(cell.dataset.col);
+  gridFocus = { row, col };
+  gridCellElements.forEach(other => {
+    other.tabIndex = other === cell ? 0 : -1;
+  });
+});
+
+const GRID_MOVES = {
+  ArrowUp: [-1, 0],
+  ArrowDown: [1, 0],
+  ArrowLeft: [0, -1],
+  ArrowRight: [0, 1],
+};
+
+seatPreferenceGrid.addEventListener("keydown", event => {
+  if (event.key in GRID_MOVES) {
+    event.preventDefault();
+    const [deltaRow, deltaCol] = GRID_MOVES[event.key];
+    const row = Math.min(14, Math.max(0, gridFocus.row + deltaRow));
+    const col = Math.min(14, Math.max(0, gridFocus.col + deltaCol));
+    setRovingCell(row, col);
+    if (event.shiftKey) {
+      selectGridBox(
+        Math.min(gridAnchor.row, row),
+        Math.max(gridAnchor.row, row),
+        Math.min(gridAnchor.col, col),
+        Math.max(gridAnchor.col, col)
+      );
+    } else {
+      gridAnchor = { row, col };
+    }
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    const col = 0;
+    const row = event.ctrlKey ? 0 : gridFocus.row;
+    setRovingCell(row, col);
+    gridAnchor = { row, col };
+  } else if (event.key === "End") {
+    event.preventDefault();
+    const col = 14;
+    const row = event.ctrlKey ? 14 : gridFocus.row;
+    setRovingCell(row, col);
+    gridAnchor = { row, col };
+  }
+});
+
+searchForm.addEventListener("submit", event => {
+  event.preventDefault();
+  search();
+});
+selectCenterGridButton.addEventListener("click", () => {
+  selectGridBox(5, 9, 5, 9);
+  gridAnchor = { row: 5, col: 5 };
+});
 clearGridButton.addEventListener("click", clearGrid);
 
-function requestLocationOnLoad() {
-  if (!navigator.geolocation) return;
+function requestLocation() {
+  if (!navigator.geolocation) {
+    setStatus(locationStatus, "Location isn't available in this browser. Enter a ZIP code to search.", "error");
+    return;
+  }
+  setStatus(locationStatus, "Requesting your location…", "loading");
+  useLocationButton.disabled = true;
   navigator.geolocation.getCurrentPosition(
     position => {
       preciseLocation = position.coords;
-      locationStatus.textContent = "Using your precise location for this search. It is not saved.";
+      zipInput.value = "";
+      zipInput.setCustomValidity("");
+      setStatus(locationStatus, "Using your precise location for this search. It is not saved.", "success");
+      useLocationButton.disabled = false;
       refreshTheatresAndMovies();
     },
     () => {
       preciseLocation = null;
-      locationStatus.textContent = "Location was not shared. Enter a ZIP code to search.";
+      setStatus(locationStatus, "Location access was blocked. Enter a ZIP code to search.", "error");
+      useLocationButton.disabled = false;
     },
     { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 }
   );
 }
 
+useLocationButton.addEventListener("click", requestLocation);
+
 zipInput.addEventListener("input", () => {
   zipInput.setCustomValidity("");
   if (zipInput.value.trim()) {
     preciseLocation = null;
-    locationStatus.textContent = "Searching from your ZIP code.";
+    setStatus(locationStatus, "Searching from your ZIP code.", "");
+  } else if (!preciseLocation) {
+    setStatus(locationStatus, "Enter a ZIP code or use your location.", "");
   }
   autoRefresh();
 });
@@ -827,4 +991,6 @@ if (hasSearchLocation() && enforceRadius()) {
     }
   });
 }
-if (!hasValidZip()) requestLocationOnLoad();
+if (!hasSearchLocation()) {
+  setStatus(locationStatus, "Enter a ZIP code or use your location.", "");
+}

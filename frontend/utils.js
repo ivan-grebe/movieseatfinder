@@ -23,7 +23,12 @@ export function debounce(fn, ms) {
 }
 
 export async function getJson(url) {
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new Error("Couldn't reach the search service. Check your connection and try again.");
+  }
   const body = await response.text();
   let data;
   try {
