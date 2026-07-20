@@ -4,6 +4,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend import application
+from backend import seat_matching
 
 
 class DateAndValidationTests(unittest.TestCase):
@@ -81,17 +82,17 @@ class SeatSelectionTests(unittest.TestCase):
 
     def test_grid_parser_filters_invalid_cells(self):
         self.assertEqual(
-            application.parse_seat_grid("0:0,14:14,15:0,bad,2:x"),
+            seat_matching.parse_seat_grid("0:0,14:14,15:0,bad,2:x"),
             [(0, 0), (14, 14)],
         )
 
     def test_adjacent_blocks_require_available_contiguous_seats(self):
-        blocks = application.adjacent_blocks(self.seats, 2, "any")
+        blocks = seat_matching.adjacent_blocks(self.seats, 2, "any")
         self.assertIn(["A1", "A2"], [block["seats"] for block in blocks])
         self.assertNotIn(["A2", "A3"], [block["seats"] for block in blocks])
 
     def test_accessible_seats_can_be_excluded(self):
-        blocks = application.adjacent_blocks(
+        blocks = seat_matching.adjacent_blocks(
             self.seats,
             1,
             "any",
@@ -113,6 +114,25 @@ class CacheTests(unittest.TestCase):
         second = application.seat_map("showtime-1")
         self.assertIs(first, second)
         fandango_json.assert_called_once()
+
+
+class LiveFandangoIntegrationTests(unittest.TestCase):
+    """Contract check for the upstream endpoint used by production searches."""
+
+    def test_theatre_endpoint_returns_live_theatre_payloads(self):
+        payload = application.fandango_json(
+            "/napi/theaterswithshowtimes",
+            {"zipCode": "10001", "radius": 5, "limit": 5},
+            timeout=30,
+        )
+
+        self.assertIsInstance(payload.get("theaters"), list)
+        self.assertGreater(len(payload["theaters"]), 0)
+        theatre = payload["theaters"][0]
+        self.assertTrue(theatre.get("name"))
+        self.assertIn("geo", theatre)
+        self.assertIn("latitude", theatre["geo"])
+        self.assertIn("longitude", theatre["geo"])
 
 
 class RouteTests(unittest.TestCase):
