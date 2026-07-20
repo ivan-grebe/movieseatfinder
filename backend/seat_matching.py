@@ -263,9 +263,18 @@ def adjacent_blocks(seats, min_adjacent, requested_area, selected_cells=None, ex
     } for block in blocks]
 
 
-def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=None, exclude_accessible=False):
+def showtime_seat_match(
+    showtime,
+    min_adjacent,
+    requested_area,
+    selected_cells=None,
+    exclude_accessible=False,
+    seat_map_loader=None,
+):
     try:
-        data = seat_map(showtime.get("showtimeHashCode"))
+        if seat_map_loader is None:
+            return None
+        data = seat_map_loader(showtime.get("showtimeHashCode"))
         if not data:
             return None
         seats = data.get("seats") or []
@@ -285,6 +294,5 @@ def showtime_seat_match(showtime, min_adjacent, requested_area, selected_cells=N
         }
     except (requests.RequestException, TimeoutError, KeyError, ValueError):
         return None
-
 
 

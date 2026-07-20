@@ -207,6 +207,53 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Enter a ZIP code instead", response.json()["error"])
 
+    @patch("backend.application.seat_map")
+    @patch("backend.application.fandango_theatres_by_date")
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_search_loads_seat_maps_through_the_extracted_matching_engine(
+        self, resolve_search_location, fandango_theatres_by_date, seat_map
+    ):
+        fandango_theatres_by_date.return_value = {
+            "2026-07-20": [{
+                "name": "Test Cinema",
+                "address": "1 Main St",
+                "distanceMiles": 1.2,
+                "website": "https://www.fandango.com/test/theater-page",
+                "source": "Fandango",
+                "rawMovies": [{
+                    "id": "1",
+                    "title": "Test Movie",
+                    "variants": [{
+                        "filmFormatHeader": "Standard",
+                        "amenityGroups": [{
+                            "hasReservedSeating": True,
+                            "showtimes": [{
+                                "type": "available",
+                                "ticketingDate": "2026-07-20+19:00",
+                                "showtimeHashCode": "showtime-1",
+                            }],
+                        }],
+                    }],
+                }],
+            }]
+        }
+        seat_map.return_value = {
+            "seats": [
+                {"id": "A1", "row": 0, "column": 1, "x": 0, "y": 0, "status": "A", "type": "standard"},
+            ],
+            "totalAvailableSeatCount": 1,
+            "totalSeatCount": 1,
+        }
+
+        response = self.client.get("/api/search", params={
+            "zip": "00000", "radius": 25, "movie": "Test Movie",
+            "startDate": "2026-07-20", "endDate": "2026-07-20",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["matches"]), 1)
+        seat_map.assert_called_once_with("showtime-1")
+
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)
         self.assertIn("Sitemap:", self.client.get("/robots.txt").text)
