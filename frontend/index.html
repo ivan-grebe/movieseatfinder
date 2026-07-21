@@ -38,17 +38,41 @@
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "__SITE_NAME__",
-      "url": "__CANONICAL_URL__",
-      "description": "__SITE_DESCRIPTION__",
-      "applicationCategory": "EntertainmentApplication",
-      "operatingSystem": "Any",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "__SITE_URL__#organization",
+          "name": "__SITE_NAME__",
+          "url": "__SITE_URL__",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "__SITE_URL__/favicon.svg"
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "__SITE_URL__#website",
+          "name": "__SITE_NAME__",
+          "url": "__SITE_URL__",
+          "publisher": { "@id": "__SITE_URL__#organization" }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "__SITE_URL__#app",
+          "name": "__SITE_NAME__",
+          "url": "__CANONICAL_URL__",
+          "description": "__SITE_DESCRIPTION__",
+          "applicationCategory": "EntertainmentApplication",
+          "operatingSystem": "Any",
+          "isAccessibleForFree": true,
+          "publisher": { "@id": "__SITE_URL__#organization" },
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        }
+      ]
     }
   </script>
 </head>
