@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:frontend": "node --test tests/frontend-utils.test.mjs"
+    "test:frontend": "node --test tests/frontend-utils.test.mjs",
+    "test:mobile": "playwright test --config=playwright.mobile.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
   }
 }
