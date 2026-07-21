@@ -173,6 +173,8 @@ class RouteTests(unittest.TestCase):
         self.assertIn('property="og:image:secure_url"', response.text)
         self.assertIn('property="og:image:width" content="1200"', response.text)
         self.assertIn('name="twitter:image:alt"', response.text)
+        self.assertIn('"@type": "Organization"', response.text)
+        self.assertIn('"@type": "WebSite"', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
@@ -294,7 +296,9 @@ class RouteTests(unittest.TestCase):
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)
         self.assertIn("Sitemap:", self.client.get("/robots.txt").text)
-        self.assertIn("<urlset", self.client.get("/sitemap.xml").text)
+        sitemap = self.client.get("/sitemap.xml").text
+        self.assertIn("<urlset", sitemap)
+        self.assertNotIn("<lastmod>", sitemap)
 
 
 if __name__ == "__main__":
