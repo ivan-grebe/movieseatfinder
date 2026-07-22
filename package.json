@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test:frontend": "node --test tests/frontend-utils.test.mjs",
-    "test:mobile": "playwright test --config=playwright.mobile.config.mjs"
+    "test:mobile": "playwright test --config=tests/playwright.mobile.config.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1"
