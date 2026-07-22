@@ -61,7 +61,7 @@ SITE_URL=https://movieseatfinder.com
 
 ## Contributing
 
-Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Bug reports and pull requests are welcome.
 
 ## License
 
