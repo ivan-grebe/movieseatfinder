@@ -1,62 +1,55 @@
-# Movie Seat Finder
+<p align="center">
+  <img src="frontend/movie-seat-finder-dark.png" alt="Movie Seat Finder search form in dark mode" width="100%">
+</p>
 
-[![Tests](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">Movie Seat Finder</h1>
 
-Movie Seat Finder searches live Fandango showtimes and seat maps, then finds
-adjacent available seats inside a user-selected auditorium region.
+<p align="center">
+  <em>Find the perfect movie seats before you buy.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml"><img src="https://github.com/ivan-grebe/movieseatfinder/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+</p>
+
+Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adjacent available seats in the part of the auditorium you choose.
 
 ## Features
 
-- Live theatre, movie, format, showtime, and seat-map lookup.
-- Exact radius filtering from a ZIP centroid or, with permission, the browser's precise location.
-- Adjacent-seat matching with custom auditorium regions.
-- Accessible-seat filtering and normalized seat-map previews.
-- Bounded TTL caches and parallel upstream requests.
-- Input validation, API rate limiting, security headers, and ticket URL checks.
-- Dynamic canonical metadata, Open Graph tags, `robots.txt`, and sitemap.
+- Search by ZIP code or your precise browser location.
+- Filter by theatre, movie, multiple formats, dates, and times.
+- Find adjacent seats in a custom auditorium region.
+- Preview normalized seat maps and exclude accessible seats when needed.
+- Use guarded API routes with validation, rate limiting, and safe ticket URLs.
 
-## Run Locally
+## Run locally
 
-Requirements:
-
-- Python 3.12+
+Requirements: Python 3.12+ and Node.js 22+.
 
 ```bash
-pip install -e .
+git clone https://github.com/ivan-grebe/movieseatfinder.git
+cd movieseatfinder
+pip install -e ".[test]"
+npm ci
 uvicorn app:app --reload --host 127.0.0.1 --port 4173
 ```
 
-Then open `http://127.0.0.1:4173/`.
+Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.
 
-## Project Structure
-
-```text
-.
-|-- backend/       # API routes, location services, and seat-search logic
-|-- frontend/      # Modular browser code, HTML, CSS, and static assets
-|-- tests/         # Unit, frontend, and mobile integration tests
-|-- .github/       # GitHub Actions workflow
-`-- app.py         # Vercel-compatible application entry point
-```
-
-## Tests
+## Testing
 
 ```bash
-pip install -e ".[test]"
 python -m unittest discover -s tests -v
-npm ci
 npm run test:frontend
 npm run test:mobile
 ```
 
-GitHub Actions runs the suite on Python 3.12 and 3.13 for every pull request,
-push to `main`, and every day at 09:17 UTC.
+GitHub Actions runs these checks on every pull request, each push to `main`, and daily at 09:17 UTC.
 
-## Vercel
+## Deploy
 
-Vercel detects the top-level FastAPI `app` exported from `app.py`. Deploy the
-repository root and set `SITE_URL` to the production origin:
+Vercel detects the FastAPI `app` exported from `app.py`. Deploy the repository root and set:
 
 ```text
 SITE_URL=https://movieseatfinder.com
