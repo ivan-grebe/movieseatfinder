@@ -138,12 +138,10 @@
               <input id="movieInput" type="text" autocomplete="off" placeholder="Type a movie title" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu">
               <div id="movieMenu" class="combo-menu" role="listbox" aria-label="Matching movies" hidden></div>
             </label>
-            <label class="select-wrap full">
-              Format
-              <select id="formatSelect">
-                <option value="any">Any available format</option>
-              </select>
-            </label>
+            <div class="format-picker full" role="group" aria-labelledby="formatLabel">
+              <span id="formatLabel" class="format-label">Format <span class="field-hint">(choose one or more)</span></span>
+              <div id="formatOptions" class="format-options"></div>
+            </div>
           </div>
           <div id="formatStatus" class="status" aria-live="polite"></div>
         </div>

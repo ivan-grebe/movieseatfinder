@@ -51,6 +51,8 @@ class MovieAndFormatTests(unittest.TestCase):
     def test_format_matching_accepts_amenity_aliases(self):
         self.assertTrue(application.format_matches("Standard", "Dolby Cinema", "dolby"))
         self.assertTrue(application.format_matches("Special Event", "70 mm presentation", "70mm"))
+        self.assertTrue(application.format_matches("IMAX", "", "dolby,imax"))
+        self.assertFalse(application.format_matches("Standard", "", "dolby,imax"))
 
     def test_movie_metadata_is_normalized(self):
         movie = {

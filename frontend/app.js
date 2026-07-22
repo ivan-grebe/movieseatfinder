@@ -14,7 +14,7 @@ const theatreMenu = document.getElementById("theatreMenu");
 const movieStatus = document.getElementById("movieStatus");
 const movieInput = document.getElementById("movieInput");
 const movieMenu = document.getElementById("movieMenu");
-const formatSelect = document.getElementById("formatSelect");
+const formatOptions = document.getElementById("formatOptions");
 const formatStatus = document.getElementById("formatStatus");
 const startTimeInput = document.getElementById("startTimeInput");
 const endTimeInput = document.getElementById("endTimeInput");
@@ -35,6 +35,7 @@ let preciseLocation = null;
 let currentPage = 1;
 const pageSize = 20;
 const maxDateRangeDays = 14;
+const selectedFormats = new Set(["any"]);
 const selectedGridCells = new Set();
 const gridCellElements = new Map();
 let isPaintingGrid = false;
@@ -84,18 +85,53 @@ function setButtonBusy(button, busy, busyLabel) {
 }
 
 function setFormatOptions(formats) {
-  formatSelect.innerHTML = "";
-  const anyOption = document.createElement("option");
-  anyOption.value = "any";
-  anyOption.textContent = "Any available format";
-  formatSelect.appendChild(anyOption);
+  const availableFormats = [...new Set(formats.filter(Boolean))];
+  const retainedFormats = [...selectedFormats].filter(format => availableFormats.includes(format));
+  selectedFormats.clear();
+  if (retainedFormats.length) {
+    retainedFormats.forEach(format => selectedFormats.add(format));
+  } else {
+    selectedFormats.add("any");
+  }
 
-  formats.forEach(format => {
-    const option = document.createElement("option");
-    option.value = format;
-    option.textContent = format;
-    formatSelect.appendChild(option);
+  formatOptions.innerHTML = "";
+  renderFormatOption("Any available format", "any");
+  availableFormats.forEach(format => renderFormatOption(format, format));
+}
+
+function renderFormatOption(label, value) {
+  const option = document.createElement("button");
+  const selected = selectedFormats.has(value);
+  option.type = "button";
+  option.className = "format-option" + (selected ? " is-selected" : "");
+  option.dataset.format = value;
+  option.setAttribute("aria-pressed", String(selected));
+  option.textContent = label;
+  option.addEventListener("click", () => {
+    if (value === "any") {
+      selectedFormats.clear();
+      selectedFormats.add("any");
+    } else {
+      selectedFormats.delete("any");
+      if (selectedFormats.has(value)) selectedFormats.delete(value);
+      else selectedFormats.add(value);
+      if (!selectedFormats.size) selectedFormats.add("any");
+    }
+    setFormatOptions([...formatOptions.querySelectorAll(".format-option")]
+      .map(item => item.dataset.format)
+      .filter(format => format !== "any"));
   });
+  formatOptions.appendChild(option);
+}
+
+function selectedFormatValue() {
+  return selectedFormats.has("any") ? "any" : [...selectedFormats].join(",");
+}
+
+function selectFormats(values) {
+  selectedFormats.clear();
+  values.filter(Boolean).forEach(format => selectedFormats.add(format));
+  if (!selectedFormats.size) selectedFormats.add("any");
 }
 
 function hasValidZip() {
@@ -460,7 +496,7 @@ async function runSearch() {
   try {
     const params = baseParams();
     params.set("movie", movieTitle);
-    params.set("format", formatSelect.value);
+    params.set("format", selectedFormatValue());
     params.set("startTime", startTimeInput.value);
     params.set("endTime", endTimeInput.value);
     params.set("adjacentSeats", adjacentSeatsInput.value);
@@ -768,8 +804,8 @@ function applyQueryParams() {
     updateGridStatus();
   }
   if (params.has("format")) {
-    setFormatOptions([params.get("format")]);
-    formatSelect.value = params.get("format");
+    selectFormats(params.get("format").split(","));
+    setFormatOptions([...selectedFormats].filter(format => format !== "any"));
   }
   return params.has("movie");
 }
@@ -808,6 +844,7 @@ endDateInput.value = addDays(todayString(), 7);
 startDateInput.min = todayString();
 syncEndDateBounds();
 buildSeatGrid();
+setFormatOptions([]);
 
 setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, async () => {
   await loadMovies();
@@ -986,10 +1023,6 @@ if (hasSearchLocation() && enforceRadius()) {
   Promise.all([loadTheatres(), loadMovies()]).then(async () => {
     if (shouldSearchFromUrl) {
       await loadFormats();
-      const requestedFormat = new URLSearchParams(window.location.search).get("format");
-      if (requestedFormat && Array.from(formatSelect.options).some(option => option.value === requestedFormat)) {
-        formatSelect.value = requestedFormat;
-      }
       search();
     }
   });
