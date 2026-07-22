@@ -36,6 +36,7 @@ let currentPage = 1;
 const pageSize = 20;
 const maxDateRangeDays = 14;
 const selectedFormats = new Set(["any"]);
+let formatLoadSequence = 0;
 const selectedGridCells = new Set();
 const gridCellElements = new Map();
 let isPaintingGrid = false;
@@ -442,7 +443,6 @@ async function loadMovies() {
   setStatus(movieStatus, "Loading movies for selected dates…", "loading");
   const currentMovie = movieInput.value;
   movies = [];
-  setFormatOptions([]);
 
   try {
     const data = await getJson("/api/movies?" + baseParams().toString());
@@ -457,20 +457,25 @@ async function loadMovies() {
 
 async function loadFormats() {
   const movieTitle = movieInput.value.trim();
-  setFormatOptions([]);
+  const loadSequence = ++formatLoadSequence;
   setStatus(formatStatus, "", "");
 
-  if (!movieTitle || !hasSearchLocation() || !enforceRadius()) return;
+  if (!movieTitle || !hasSearchLocation() || !enforceRadius()) {
+    setFormatOptions([]);
+    return;
+  }
 
   try {
     setStatus(formatStatus, "Loading formats…", "loading");
     const params = baseParams();
     params.set("movie", movieTitle);
     const data = await getJson("/api/formats?" + params.toString());
+    if (loadSequence !== formatLoadSequence || movieInput.value.trim() !== movieTitle) return;
     const formats = data.formats || [];
     setFormatOptions(formats);
     setStatus(formatStatus, formats.length + " format" + (formats.length === 1 ? "" : "s") + " for this movie.", "success");
   } catch (error) {
+    if (loadSequence !== formatLoadSequence || movieInput.value.trim() !== movieTitle) return;
     setFormatOptions([]);
     setStatus(formatStatus, error.message, "error");
   }
@@ -841,6 +846,7 @@ function syncEndDateBounds() {
 
 async function refreshTheatresAndMovies() {
   if (!hasSearchLocation() || !hasValidRadius()) {
+    formatLoadSequence += 1;
     theatres = [];
     movies = [];
     setFormatOptions([]);

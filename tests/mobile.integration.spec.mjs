@@ -90,11 +90,15 @@ test("mobile format chips send every selected format to the search", async ({ pa
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
+  // Wait for the ZIP-triggered movie refresh to finish before choosing a
+  // movie and its formats, matching the order a user sees in the UI.
+  await expect(page.locator("#movieStatus")).toContainText("1 movie");
   await page.locator("#movieInput").fill("Test Movie");
   await page.locator("#movieInput").press("Tab");
 
   const imax = page.getByRole("button", { name: "IMAX", exact: true });
   const dolby = page.getByRole("button", { name: "Dolby Cinema", exact: true });
+  await expect(page.locator("#formatStatus")).toContainText("3 formats for this movie.");
   await expect(imax).toBeVisible();
   await imax.click();
   await dolby.click();
