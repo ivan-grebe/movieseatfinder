@@ -282,8 +282,10 @@ select {
 }
 
 .format-option {
+  display: inline-flex;
+  align-items: center;
   min-height: 34px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   color: #405069;
@@ -296,10 +298,26 @@ select {
 
 .format-option:hover { border-color: rgba(201, 58, 58, .44); }
 
+.format-check {
+  flex: none;
+  width: 0;
+  height: 13px;
+  margin-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: width .16s ease, margin-right .16s ease, opacity .16s ease;
+}
+
 .format-option.is-selected {
   border-color: var(--accent-deep);
   color: #fff;
   background: var(--accent);
+}
+
+.format-option.is-selected .format-check {
+  width: 13px;
+  margin-right: 5px;
+  opacity: 1;
 }
 
 input:hover,
@@ -1202,6 +1220,8 @@ input[type="time"] {
   label,
   .check,
   .summary,
+  .format-label,
+  .format-option,
   .real-seat-map-title { color: #c2cddc; }
 
   input,
