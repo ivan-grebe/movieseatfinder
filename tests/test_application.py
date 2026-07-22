@@ -172,6 +172,8 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
         self.assertNotIn("__SITE_", response.text)
+        self.assertIn('content="http://example.test/og-image.png"', response.text)
+        self.assertIn('property="og:image:type" content="image/png"', response.text)
         self.assertIn('property="og:image:secure_url"', response.text)
         self.assertIn('property="og:image:width" content="1200"', response.text)
         self.assertIn('name="twitter:image:alt"', response.text)
@@ -179,6 +181,13 @@ class RouteTests(unittest.TestCase):
         self.assertIn('"@type": "WebSite"', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+
+    def test_open_graph_preview_is_a_png(self):
+        response = self.client.get("/og-image.png")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(response.content[16:24], b"\x00\x00\x04\xb0\x00\x00\x02v")
 
     def test_invalid_zip_returns_json_error(self):
         response = self.client.get("/api/theatres", params={"zip": "abc", "radius": 25})
