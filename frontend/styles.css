@@ -40,7 +40,7 @@ body {
   line-height: 1.5;
   background:
     radial-gradient(780px 440px at 50% -120px, rgba(255, 148, 135, .38), transparent 64%),
-    radial-gradient(560px 360px at 82% 80px, rgba(255, 214, 155, .22), transparent 62%),
+    radial-gradient(560px 360px at 82% 80px, rgba(120, 165, 255, .30), transparent 62%),
     linear-gradient(180deg, #fff7f6 0%, #fffafa 34%, #ffffff 100%);
   text-rendering: optimizeLegibility;
 }
