@@ -485,6 +485,9 @@ async function search() {
 }
 
 async function runSearch() {
+  // Final guard: keep the date range inside the 14-day window even if a value
+  // was typed and submitted before its change event fired.
+  syncEndDateBounds();
   const movieTitle = movieInput.value.trim();
 
   if (!hasSearchLocation()) {
@@ -821,6 +824,14 @@ function applyQueryParams() {
 }
 
 function syncEndDateBounds() {
+  const today = todayString();
+  // Start can't be in the past.
+  startDateInput.min = today;
+  if (startDateInput.value && startDateInput.value < today) {
+    startDateInput.value = today;
+  }
+  // End is bounded to the start date plus the 14-day window, so a range longer
+  // than the limit can't be entered (or submitted) in the first place.
   endDateInput.min = startDateInput.value;
   endDateInput.max = addDays(startDateInput.value, maxDateRangeDays);
   if (endDateInput.value && endDateInput.value < startDateInput.value) {
@@ -1021,7 +1032,10 @@ startDateInput.addEventListener("change", () => {
   syncEndDateBounds();
   autoRefresh();
 });
-endDateInput.addEventListener("change", autoRefresh);
+endDateInput.addEventListener("change", () => {
+  syncEndDateBounds();
+  autoRefresh();
+});
 movieInput.addEventListener("change", () => {
   movieInput.setCustomValidity("");
   if (movieInput.value.trim()) loadFormats();
@@ -1029,6 +1043,7 @@ movieInput.addEventListener("change", () => {
 movieInput.addEventListener("input", () => movieInput.setCustomValidity(""));
 
 const shouldSearchFromUrl = applyQueryParams();
+syncEndDateBounds();
 if (hasSearchLocation() && enforceRadius()) {
   Promise.all([loadTheatres(), loadMovies()]).then(async () => {
     if (shouldSearchFromUrl) {
