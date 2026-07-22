@@ -35,7 +35,7 @@ Then open `http://127.0.0.1:4173/`.
 .
 |-- backend/       # API routes, location services, and seat-search logic
 |-- frontend/      # Modular browser code, HTML, CSS, and static assets
-|-- tests/         # Offline unit and route tests
+|-- tests/         # Unit, frontend, and mobile integration tests
 |-- .github/       # GitHub Actions workflow
 `-- app.py         # Vercel-compatible application entry point
 ```
@@ -45,6 +45,9 @@ Then open `http://127.0.0.1:4173/`.
 ```bash
 pip install -e ".[test]"
 python -m unittest discover -s tests -v
+npm ci
+npm run test:frontend
+npm run test:mobile
 ```
 
 GitHub Actions runs the suite on Python 3.12 and 3.13 for every pull request,
@@ -58,10 +61,6 @@ repository root and set `SITE_URL` to the production origin:
 ```text
 SITE_URL=https://movieseatfinder.com
 ```
-
-## Contributing
-
-Bug reports and pull requests are welcome.
 
 ## License
 
