@@ -50,6 +50,21 @@ test("GitHub link has an accessible name without a native hover tooltip", async 
   await expect(githubLink).not.toHaveAttribute("title");
 });
 
+test("dark-mode GitHub link keeps its clean hover treatment", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+
+  const githubLink = page.getByRole("link", { name: "View source on GitHub" });
+  await githubLink.hover();
+  const hoverStyles = await githubLink.evaluate(element => {
+    const style = getComputedStyle(element);
+    return { color: style.color, boxShadow: style.boxShadow };
+  });
+
+  expect(hoverStyles.color).toBe("rgb(242, 202, 202)");
+  expect(hoverStyles.boxShadow).not.toContain("inset");
+});
+
 test("mobile search keeps content stable while loading and then renders its response", async ({ page }) => {
   let releaseSearch;
   let markSearchStarted;
