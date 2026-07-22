@@ -726,9 +726,9 @@ def webmanifest():
         "start_url": "/",
         "display": "standalone",
         "background_color": "#e7e4dd",
-        "theme_color": "#b23b34",
+        "theme_color": "#0b0b0c",
         "icons": [{
-            "src": "/favicon.svg",
+            "src": "/favicon.svg?v=20260722-monochrome",
             "sizes": "any",
             "type": "image/svg+xml",
         }],
