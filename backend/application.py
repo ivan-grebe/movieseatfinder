@@ -646,7 +646,7 @@ def seo_context(request):
         "__SITE_DESCRIPTION__": SITE_DESCRIPTION,
         "__SITE_URL__": origin,
         "__CANONICAL_URL__": f"{origin}/",
-        "__OG_IMAGE_URL__": f"{origin}/og-image.svg",
+        "__OG_IMAGE_URL__": f"{origin}/og-image.png",
     }
 
 
