@@ -84,6 +84,8 @@ function setButtonBusy(button, busy, busyLabel) {
   }
 }
 
+const FORMAT_CHECK = '<svg class="format-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 6"/></svg>';
+
 function setFormatOptions(formats) {
   const availableFormats = [...new Set(formats.filter(Boolean))];
   const retainedFormats = [...selectedFormats].filter(format => availableFormats.includes(format));
@@ -101,27 +103,35 @@ function setFormatOptions(formats) {
 
 function renderFormatOption(label, value) {
   const option = document.createElement("button");
-  const selected = selectedFormats.has(value);
   option.type = "button";
-  option.className = "format-option" + (selected ? " is-selected" : "");
+  option.className = "format-option";
   option.dataset.format = value;
-  option.setAttribute("aria-pressed", String(selected));
-  option.textContent = label;
-  option.addEventListener("click", () => {
-    if (value === "any") {
-      selectedFormats.clear();
-      selectedFormats.add("any");
-    } else {
-      selectedFormats.delete("any");
-      if (selectedFormats.has(value)) selectedFormats.delete(value);
-      else selectedFormats.add(value);
-      if (!selectedFormats.size) selectedFormats.add("any");
-    }
-    setFormatOptions([...formatOptions.querySelectorAll(".format-option")]
-      .map(item => item.dataset.format)
-      .filter(format => format !== "any"));
-  });
+  option.innerHTML = FORMAT_CHECK;
+  option.appendChild(document.createTextNode(label));
+  // Toggle in place instead of rebuilding the list, so keyboard focus stays
+  // on the chip the user just activated.
+  option.addEventListener("click", () => toggleFormat(value));
   formatOptions.appendChild(option);
+  syncFormatState(option);
+}
+
+function toggleFormat(value) {
+  if (value === "any") {
+    selectedFormats.clear();
+    selectedFormats.add("any");
+  } else {
+    selectedFormats.delete("any");
+    if (selectedFormats.has(value)) selectedFormats.delete(value);
+    else selectedFormats.add(value);
+    if (!selectedFormats.size) selectedFormats.add("any");
+  }
+  formatOptions.querySelectorAll(".format-option").forEach(syncFormatState);
+}
+
+function syncFormatState(option) {
+  const selected = selectedFormats.has(option.dataset.format);
+  option.classList.toggle("is-selected", selected);
+  option.setAttribute("aria-pressed", String(selected));
 }
 
 function selectedFormatValue() {
