@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/movie-seat-finder-dark.png" alt="Movie Seat Finder search form in dark mode" width="100%">
+  <img src="frontend/movie-seat-finder-dark-4k.png" alt="Movie Seat Finder search form in dark mode" width="100%">
 </p>
 
 <h1 align="center">Movie Seat Finder</h1>
