@@ -84,8 +84,6 @@ function setButtonBusy(button, busy, busyLabel) {
   }
 }
 
-const FORMAT_CHECK = '<svg class="format-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 6"/></svg>';
-
 function setFormatOptions(formats) {
   const availableFormats = [...new Set(formats.filter(Boolean))];
   const retainedFormats = [...selectedFormats].filter(format => availableFormats.includes(format));
@@ -106,8 +104,7 @@ function renderFormatOption(label, value) {
   option.type = "button";
   option.className = "format-option";
   option.dataset.format = value;
-  option.innerHTML = FORMAT_CHECK;
-  option.appendChild(document.createTextNode(label));
+  option.textContent = label;
   // Toggle in place instead of rebuilding the list, so keyboard focus stays
   // on the chip the user just activated.
   option.addEventListener("click", () => toggleFormat(value));

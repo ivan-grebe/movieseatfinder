@@ -282,8 +282,6 @@ select {
 }
 
 .format-option {
-  display: inline-flex;
-  align-items: center;
   min-height: 34px;
   padding: 6px 12px;
   border: 1px solid var(--line-strong);
@@ -298,26 +296,12 @@ select {
 
 .format-option:hover { border-color: rgba(201, 58, 58, .44); }
 
-.format-check {
-  flex: none;
-  width: 0;
-  height: 13px;
-  margin-right: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: width .16s ease, margin-right .16s ease, opacity .16s ease;
-}
-
+/* Selection is shown by fill only — no width change, so selecting chips never
+   reflows or re-wraps the row. */
 .format-option.is-selected {
   border-color: var(--accent-deep);
   color: #fff;
   background: var(--accent);
-}
-
-.format-option.is-selected .format-check {
-  width: 13px;
-  margin-right: 5px;
-  opacity: 1;
 }
 
 input:hover,
@@ -1056,6 +1040,19 @@ input[type="time"] {
     padding-bottom: 76px;
   }
 
+  /* The desktop glows are sized in fixed px and collapse into a muddy red wash
+     on a narrow screen. Re-anchor them as a warm-left / cool-right sweep sized
+     to the viewport so both tones read cleanly. */
+  body {
+    background:
+      radial-gradient(92% 300px at 6% -40px, rgba(255, 138, 122, .34), transparent 72%),
+      radial-gradient(96% 320px at 100% 44px, rgba(120, 165, 255, .34), transparent 72%),
+      linear-gradient(180deg, #fff7f6 0%, #fffafa 44%, #ffffff 100%);
+  }
+  body::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #fff 64%);
+  }
+
   .hero {
     padding: 32px 0 22px;
   }
@@ -1195,6 +1192,16 @@ input[type="time"] {
     background:
       linear-gradient(180deg, rgba(11, 13, 18, 0) 0%, #0b0d12 58%),
       radial-gradient(900px 200px at 50% 210px, rgba(210, 70, 66, .16), transparent 70%);
+  }
+
+  /* Narrow screens: warm-left / amber-right sweep so the glow isn't a red wash. */
+  @media (max-width: 700px) {
+    body {
+      background:
+        radial-gradient(92% 300px at 6% -40px, rgba(190, 60, 52, .36), transparent 72%),
+        radial-gradient(96% 320px at 100% 44px, rgba(184, 142, 74, .24), transparent 72%),
+        linear-gradient(180deg, #12151c 0%, #0f1218 40%, #0b0d12 100%);
+    }
   }
 
   h1 { color: var(--ink); }
