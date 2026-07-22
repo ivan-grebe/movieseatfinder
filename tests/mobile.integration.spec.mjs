@@ -42,6 +42,14 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.inputFontSize).toBe("16px");
 });
 
+test("GitHub link has an accessible name without a native hover tooltip", async ({ page }) => {
+  await page.goto("/");
+
+  const githubLink = page.getByRole("link", { name: "View source on GitHub" });
+  await expect(githubLink).toHaveAttribute("href", "https://github.com/ivan-grebe/movieseatfinder");
+  await expect(githubLink).not.toHaveAttribute("title");
+});
+
 test("mobile search keeps content stable while loading and then renders its response", async ({ page }) => {
   let releaseSearch;
   let markSearchStarted;
