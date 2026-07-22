@@ -47,13 +47,9 @@ npm run test:mobile
 
 GitHub Actions runs these checks on every pull request, each push to `main`, and daily at 09:17 UTC.
 
-## Deploy
+## Support the project
 
-Vercel detects the FastAPI `app` exported from `app.py`. Deploy the repository root and set:
-
-```text
-SITE_URL=https://movieseatfinder.com
-```
+If Movie Seat Finder is useful, consider giving the repository a ⭐. It helps others discover it and supports continued improvements.
 
 ## License
 
