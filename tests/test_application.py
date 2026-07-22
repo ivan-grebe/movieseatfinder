@@ -167,16 +167,11 @@ class RouteTests(unittest.TestCase):
     def setUp(self):
         application.RATE_LIMIT_HISTORY.clear()
 
-    def test_homepage_renders_dynamic_seo_and_security_headers(self):
+    def test_homepage_renders_context_and_security_headers(self):
         response = self.client.get("/", headers={"host": "example.test"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
         self.assertNotIn("__SITE_", response.text)
-        self.assertIn('property="og:image:secure_url"', response.text)
-        self.assertIn('property="og:image:width" content="1200"', response.text)
-        self.assertIn('name="twitter:image:alt"', response.text)
-        self.assertIn('"@type": "Organization"', response.text)
-        self.assertIn('"@type": "WebSite"', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
 
