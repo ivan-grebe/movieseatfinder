@@ -265,6 +265,43 @@ select {
   pointer-events: none;
 }
 
+.format-picker { min-width: 0; }
+
+.format-label {
+  display: block;
+  color: #405069;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.format-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.format-option {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: #405069;
+  background: var(--field);
+  box-shadow: inset 0 1px 2px rgba(32, 58, 92, .07);
+  font-size: 12px;
+  font-weight: 700;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.format-option:hover { border-color: rgba(201, 58, 58, .44); }
+
+.format-option.is-selected {
+  border-color: var(--accent-deep);
+  color: #fff;
+  background: var(--accent);
+}
+
 input:hover,
 select:hover { border-color: rgba(201, 58, 58, .44); }
 
@@ -872,7 +909,8 @@ a:focus-visible {
 .real-seat.available { background: #fff; border-color: #9fabbb; }
 .real-seat.unavailable { background: var(--seat-taken); border-color: #adb5c0; }
 
-.real-seat.matched {
+.real-seat.available.matched,
+.real-seat.unavailable.matched {
   border-color: var(--accent-deep);
   background: var(--accent);
   box-shadow: 0 0 0 2px rgba(201, 58, 58, .23);

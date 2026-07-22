@@ -10,7 +10,7 @@ const emptySearch = {
   checkedSeatMaps: 1,
 };
 
-async function mockSearchDependencies(page, onSearch) {
+async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/theatres*", route => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ place: "Testville", theatres: [] }),
@@ -21,7 +21,7 @@ async function mockSearchDependencies(page, onSearch) {
   }));
   await page.route("**/api/formats*", route => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ formats: ["Standard"] }),
+    body: JSON.stringify({ formats }),
   }));
   await page.route("**/api/search*", onSearch);
 }
@@ -79,4 +79,68 @@ test("mobile validation keeps required-field feedback at the field", async ({ pa
   const zip = page.locator("#zipInput");
   await expect(zip).toHaveJSProperty("validationMessage", "Enter a ZIP code or allow location access first.");
   await expect(page.locator("#summary")).toBeEmpty();
+});
+
+test("mobile format chips send every selected format to the search", async ({ page }) => {
+  let searchUrl = "";
+  await mockSearchDependencies(page, route => {
+    searchUrl = route.request().url();
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+  }, ["IMAX", "Dolby Cinema", "Standard"]);
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#movieInput").press("Tab");
+
+  const imax = page.getByRole("button", { name: "IMAX", exact: true });
+  const dolby = page.getByRole("button", { name: "Dolby Cinema", exact: true });
+  await expect(imax).toBeVisible();
+  await imax.click();
+  await dolby.click();
+  await expect(imax).toHaveAttribute("aria-pressed", "true");
+  await expect(dolby).toHaveAttribute("aria-pressed", "true");
+
+  await page.locator("#searchButton").click();
+  await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
+});
+
+test("mobile results visibly highlight seats that match the filter", async ({ page }) => {
+  const matchingSearch = {
+    ...emptySearch,
+    matches: [{
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      movieTitle: "Test Movie",
+      date: "2026-07-22",
+      time: "19:00",
+      displayTime: "7:00 PM",
+      format: "IMAX",
+      amenities: "Reserved seating",
+      seatMap: {
+        availableSeatCount: 2,
+        totalSeatCount: 2,
+        layout: {
+          width: 100,
+          height: 50,
+          seats: [
+            { id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true },
+            { id: "A2", status: "A", type: "standard", x: 30, y: 10, width: 10, height: 10, matched: false },
+          ],
+        },
+      },
+    }],
+  };
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(matchingSearch),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  const matchedSeat = page.locator(".real-seat.matched");
+  await expect(matchedSeat).toHaveCount(1);
+  await expect(matchedSeat).toHaveCSS("background-color", "rgb(201, 58, 58)");
 });

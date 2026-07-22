@@ -236,9 +236,15 @@ def movie_matches(title, query):
 
 
 def format_matches(format_name, amenity_text, requested):
-    requested = normalized_text(requested or "any")
-    if requested == "any":
+    requested_formats = [normalized_text(value) for value in (requested or "any").split(",")]
+    requested_formats = [value for value in requested_formats if value]
+    if not requested_formats or "any" in requested_formats:
         return True
+
+    return any(format_matches_one(format_name, amenity_text, requested_format) for requested_format in requested_formats)
+
+
+def format_matches_one(format_name, amenity_text, requested):
 
     values = [
         normalized_text(value)
