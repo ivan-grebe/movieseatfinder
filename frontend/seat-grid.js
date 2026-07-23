@@ -1,5 +1,3 @@
-import { setStatus } from "./ui.js";
-
 const GRID_SIZE = 15;
 const GRID_MOVES = {
   ArrowUp: [-1, 0],
@@ -21,12 +19,42 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   let focus = { row: 0, col: 0 };
   let anchor = { row: 0, col: 0 };
 
+  let shiftEl = null;
+
+  // Render into a persistent span and FLIP it, so when the text width changes
+  // (e.g. 99 -> 100) the centered line glides to its new position instead of
+  // snapping. A no-op when the width is unchanged.
+  function renderStatus(text, state) {
+    const className = `status grid-status${state ? ` is-${state}` : ""}`;
+    if (!shiftEl || shiftEl.parentElement !== status) {
+      status.className = className;
+      status.textContent = "";
+      shiftEl = document.createElement("span");
+      shiftEl.className = "status-shift";
+      shiftEl.textContent = text;
+      status.appendChild(shiftEl);
+      return;
+    }
+
+    status.className = className;
+    const previousLeft = shiftEl.getBoundingClientRect().left;
+    shiftEl.textContent = text;
+    const delta = previousLeft - shiftEl.getBoundingClientRect().left;
+    if (!delta) return;
+
+    shiftEl.style.transition = "none";
+    shiftEl.style.transform = `translateX(${delta}px)`;
+    void shiftEl.offsetWidth; // flush the start position before animating
+    shiftEl.style.transition = "";
+    shiftEl.style.transform = "";
+  }
+
   function updateStatus() {
     const count = selected.size;
     if (count) {
-      setStatus(status, `${count} seat area${count === 1 ? "" : "s"} highlighted.`, "success");
+      renderStatus(`${count} seat area${count === 1 ? "" : "s"} highlighted.`, "success");
     } else {
-      setStatus(status, "No area highlighted — matching seats anywhere.");
+      renderStatus("No area highlighted — matching seats anywhere.");
     }
   }
 
