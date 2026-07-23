@@ -130,6 +130,7 @@ class SeatSelectionTests(unittest.TestCase):
 class CacheTests(unittest.TestCase):
     def setUp(self):
         application.SEAT_MAP_CACHE.clear()
+        application.THEATRES_CACHE.clear()
 
     @patch("backend.application.fandango_json")
     def test_seat_maps_are_cached(self, fandango_json):
@@ -138,6 +139,19 @@ class CacheTests(unittest.TestCase):
         second = application.seat_map("showtime-1")
         self.assertIs(first, second)
         fandango_json.assert_called_once()
+
+    @patch("backend.application._fetch_fandango_theatres", return_value=[])
+    def test_large_radius_uses_fandangos_full_supported_range(self, fetch_theatres):
+        application.fandango_theatres("10001", 100, origin=(40.75, -73.99))
+
+        self.assertEqual(fetch_theatres.call_args.args[1], 100)
+
+    @patch("backend.application.fandango_theatres", side_effect=TimeoutError("upstream down"))
+    def test_all_date_failures_are_propagated(self, fandango_theatres):
+        with self.assertRaisesRegex(TimeoutError, "upstream down"):
+            application.fandango_theatres_by_date(
+                "10001", 25, ["2026-07-22", "2026-07-23"]
+            )
 
 
 class LiveFandangoIntegrationTests(unittest.TestCase):
@@ -174,6 +188,49 @@ class RouteTests(unittest.TestCase):
         self.assertNotIn("__SITE_", response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+
+    def test_homepage_rejects_markup_in_forwarded_host(self):
+        injected_host = 'attacker.example\"><meta name="injected" content="yes'
+        response = self.client.get("/", headers={
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": injected_host,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('<meta name="injected"', response.text)
+        self.assertIn('<link rel="canonical" href="http://testserver/">', response.text)
+
+    @patch("backend.application.movies_from_dated_theatre_payloads", return_value=[])
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_movie_endpoint_does_not_broaden_empty_filtered_results(
+        self, resolve_search_location, movies_from_payloads
+    ):
+        response = self.client.get("/api/movies", params={
+            "zip": "00000",
+            "radius": 25,
+            "startDate": "2026-07-22",
+            "endDate": "2026-07-22",
+            "theatre": "Selected Cinema",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"movies": []})
+        self.assertEqual(movies_from_payloads.call_args.args[4], "selected cinema")
+
+    @patch("backend.application.movies_from_dated_theatre_payloads", side_effect=TimeoutError("upstream down"))
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_movie_endpoint_reports_total_upstream_failure(
+        self, resolve_search_location, movies_from_payloads
+    ):
+        response = self.client.get("/api/movies", params={
+            "zip": "00000",
+            "radius": 25,
+            "startDate": "2026-07-22",
+            "endDate": "2026-07-22",
+        })
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("Could not load real movie data", response.json()["error"])
 
     def test_invalid_zip_returns_json_error(self):
         response = self.client.get("/api/theatres", params={"zip": "abc", "radius": 25})

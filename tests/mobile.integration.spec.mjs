@@ -109,6 +109,49 @@ test("mobile format chips send every selected format to the search", async ({ pa
   await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
 });
 
+test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
+  let movieRequestCount = 0;
+  let releaseFirstMovieRequest;
+  let markFirstMovieRequestStarted;
+  let firstMovieRequestFulfilled = false;
+  const firstMovieRequestStarted = new Promise(resolve => { markFirstMovieRequestStarted = resolve; });
+  const firstMovieRequestGate = new Promise(resolve => { releaseFirstMovieRequest = resolve; });
+
+  await page.route("**/api/theatres*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ place: "Testville", theatres: [] }),
+  }));
+  await page.route("**/api/movies*", async route => {
+    movieRequestCount += 1;
+    if (movieRequestCount === 1) {
+      markFirstMovieRequestStarted();
+      await firstMovieRequestGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ movies: [{ title: "Stale Movie" }] }),
+      });
+      firstMovieRequestFulfilled = true;
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ movies: [{ title: "Current Movie" }] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await firstMovieRequestStarted;
+  await page.locator("#radiusInput").fill("10");
+  await expect(page.locator("#movieStatus")).toContainText("1 movie");
+
+  releaseFirstMovieRequest();
+  await expect.poll(() => firstMovieRequestFulfilled).toBe(true);
+  await page.locator("#movieInput").focus();
+  await expect(page.getByRole("option", { name: "Current Movie", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Stale Movie", exact: true })).toHaveCount(0);
+});
+
 test("mobile results visibly highlight seats that match the filter", async ({ page }) => {
   const matchingSearch = {
     ...emptySearch,
@@ -128,7 +171,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
           height: 50,
           seats: [
             { id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true },
-            { id: "A2", status: "A", type: "standard", x: 30, y: 10, width: 10, height: 10, matched: false },
+            { id: "A2", status: "A", type: "wheelchair", x: 30, y: 10, width: 10, height: 10, matched: false },
           ],
         },
       },
@@ -147,4 +190,6 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   const matchedSeat = page.locator(".real-seat.matched");
   await expect(matchedSeat).toHaveCount(1);
   await expect(matchedSeat).toHaveCSS("background-color", "rgb(201, 58, 58)");
+  const accessibleSeat = page.locator('.real-seat[title="A2 - available"]');
+  await expect(accessibleSeat).toHaveClass(/available/);
 });

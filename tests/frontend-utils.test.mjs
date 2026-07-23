@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getJson } from "../frontend/utils.js";
+import { addDays, getJson, todayString } from "../frontend/utils.js";
 
 function response(status, body) {
   return {
@@ -40,4 +40,18 @@ test("getJson never exposes a JSON parser error for an HTML server failure", asy
       /search service is temporarily unavailable/,
     );
   });
+});
+
+test("date helpers preserve calendar dates in the browser's timezone", () => {
+  const originalTimezone = process.env.TZ;
+  try {
+    process.env.TZ = "America/New_York";
+    assert.equal(todayString(new Date("2026-07-23T00:26:31Z")), "2026-07-22");
+
+    process.env.TZ = "Pacific/Kiritimati";
+    assert.equal(addDays("2026-07-22", 7), "2026-07-29");
+  } finally {
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
 });

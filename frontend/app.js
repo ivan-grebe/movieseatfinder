@@ -20,7 +20,10 @@ let theatres = [];
 let movies = [];
 let preciseLocation = null;
 let currentPage = 1;
+let theatreLoadSequence = 0;
+let movieLoadSequence = 0;
 let formatLoadSequence = 0;
+let searchLoadSequence = 0;
 
 const formatPicker = createFormatPicker(formatOptions);
 const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton);
@@ -81,6 +84,7 @@ function baseParams() {
 }
 
 async function loadTheatres() {
+  const loadSequence = ++theatreLoadSequence;
   if (!hasSearchLocation() || !enforceRadius()) {
     theatres = [];
     setStatus(theatreStatus, "");
@@ -94,16 +98,19 @@ async function loadTheatres() {
       radius: radiusInput.value,
     }));
     const data = await getJson(`/api/theatres?${params}`);
+    if (loadSequence !== theatreLoadSequence) return;
     theatres = data.theatres || [];
     setStatus(theatreStatus, `${theatres.length} theatres found near ${data.place}.`, "success");
     closeCombo(theatreInput, theatreMenu);
   } catch (error) {
+    if (loadSequence !== theatreLoadSequence) return;
     theatres = [];
     setStatus(theatreStatus, error.message, "error");
   }
 }
 
 async function loadMovies() {
+  const loadSequence = ++movieLoadSequence;
   if (!hasSearchLocation() || !enforceRadius()) {
     movies = [];
     formatPicker.setOptions([]);
@@ -116,11 +123,13 @@ async function loadMovies() {
   movies = [];
   try {
     const data = await getJson(`/api/movies?${baseParams()}`);
+    if (loadSequence !== movieLoadSequence) return;
     movies = data.movies || [];
     movieInput.value = currentMovie;
     setStatus(movieStatus, `${movies.length} movies showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`, "success");
     closeCombo(movieInput, movieMenu);
   } catch (error) {
+    if (loadSequence !== movieLoadSequence) return;
     setStatus(movieStatus, error.message, "error");
   }
 }
@@ -168,6 +177,7 @@ async function runSearch() {
     return;
   }
 
+  const loadSequence = ++searchLoadSequence;
   setSummary(summary, "", false);
   setButtonBusy(searchButton, true, "Searching real showtimes and seat maps…");
   try {
@@ -182,11 +192,14 @@ async function runSearch() {
     if (excludeAccessibleInput.checked) params.set("excludeAccessible", "1");
     const selectedCells = seatGrid.values();
     if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
-    resultsView.render(await getJson(`/api/search?${params}`));
+    const data = await getJson(`/api/search?${params}`);
+    if (loadSequence !== searchLoadSequence) return;
+    resultsView.render(data);
   } catch (error) {
+    if (loadSequence !== searchLoadSequence) return;
     setSummary(summary, error.message, true);
   } finally {
-    setButtonBusy(searchButton, false);
+    if (loadSequence === searchLoadSequence) setButtonBusy(searchButton, false);
   }
 }
 
@@ -227,6 +240,8 @@ function syncEndDateBounds() {
 
 async function refreshTheatresAndMovies() {
   if (!hasSearchLocation() || !hasValidRadius()) {
+    theatreLoadSequence += 1;
+    movieLoadSequence += 1;
     formatLoadSequence += 1;
     theatres = [];
     movies = [];

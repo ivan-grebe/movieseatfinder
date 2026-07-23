@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 import html
+import ipaddress
 import logging
 import os
 import re
@@ -292,10 +293,10 @@ def fandango_theatres(zip_code, radius, show_date=None, origin=None):
             THEATRES_CACHE.pop(key, None)
     # Fandango accepts a ZIP rather than coordinates. For a browser-location
     # search, get a broad candidate set and enforce the exact circle locally.
-    # Fandango caps reliable ZIP searches below its nominal 100-mile maximum.
-    # A 25–50 mile candidate set covers ZIP-boundary cases, then the exact
-    # coordinate filter below enforces the user's requested radius.
-    fetch_radius = min(max(radius * 2, 25), 50) if origin else radius
+    # Over-fetch around the ZIP used by Fandango so an exact coordinate search
+    # still includes candidates near ZIP boundaries. Fandango accepts up to the
+    # same 100-mile maximum exposed by this application.
+    fetch_radius = min(max(radius * 2, 25), 100) if origin else radius
     theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
     if origin:
         theatres = filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
@@ -314,6 +315,8 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin=None):
     if not unique_dates:
         return results
     workers = min(8, len(unique_dates))
+    successful_dates = 0
+    last_error = None
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_map = {
             executor.submit(fandango_theatres, zip_code, radius, show_date, origin): show_date
@@ -323,8 +326,12 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin=None):
             show_date = future_map[future]
             try:
                 results[show_date] = future.result()
-            except (requests.RequestException, TimeoutError, KeyError, ValueError):
+                successful_dates += 1
+            except (requests.RequestException, TimeoutError, KeyError, ValueError) as error:
+                last_error = error
                 results[show_date] = []
+    if successful_dates == 0 and last_error is not None:
+        raise last_error
     return results
 
 
@@ -628,15 +635,48 @@ def fandango_movies():
 app = FastAPI(title="Movie Seat Finder")
 
 
+def normalized_origin(value):
+    try:
+        parts = urlsplit((value or "").strip())
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        return None
+    if parts.username or parts.password or parts.path not in {"", "/"} or parts.query or parts.fragment:
+        return None
+
+    hostname = parts.hostname.rstrip(".")
+    try:
+        ipaddress.ip_address(hostname)
+        rendered_host = f"[{hostname}]" if ":" in hostname else hostname
+    except ValueError:
+        labels = hostname.split(".")
+        if not labels or any(
+            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+            for label in labels
+        ):
+            return None
+        rendered_host = hostname.lower()
+    if port is not None:
+        rendered_host = f"{rendered_host}:{port}"
+    return f"{parts.scheme}://{rendered_host}"
+
+
 def site_origin(request):
     configured_url = os.environ.get("SITE_URL", "").strip().rstrip("/")
-    if configured_url:
-        return configured_url
+    configured_origin = normalized_origin(configured_url)
+    if configured_origin:
+        return configured_origin
     forwarded_proto = request.headers.get("x-forwarded-proto")
     forwarded_host = request.headers.get("x-forwarded-host")
     if forwarded_proto and forwarded_host:
-        return f"{forwarded_proto.split(',')[0]}://{forwarded_host.split(',')[0]}".rstrip("/")
-    return str(request.base_url).rstrip("/")
+        forwarded_origin = normalized_origin(
+            f"{forwarded_proto.split(',')[0].strip()}://{forwarded_host.split(',')[0].strip()}"
+        )
+        if forwarded_origin:
+            return forwarded_origin
+    return normalized_origin(str(request.base_url)) or "http://localhost"
 
 
 def seo_context(request):
@@ -822,20 +862,14 @@ def api_movies(
         end_date = endDate or start_date
         theatre_query = validate_short_text(theatre, "Theatre").lower()
         list(date_range(start_date, end_date))
-        try:
-            search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
-            movies = movies_from_dated_theatre_payloads(search_zip, radius, start_date, end_date, theatre_query, origin)
-            if not movies:
-                theatres = fandango_theatres(search_zip, radius, origin=origin)
-                movies = normalize_movie_list_from_theatres(theatres)
-            if movies:
-                return {"movies": movies}
-        except (requests.RequestException, TimeoutError, KeyError):
-            pass
-        return {"movies": fandango_movies()}
+        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
+        movies = movies_from_dated_theatre_payloads(
+            search_zip, radius, start_date, end_date, theatre_query, origin
+        )
+        return {"movies": movies}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (requests.RequestException, TimeoutError) as error:
+    except (requests.RequestException, TimeoutError, KeyError) as error:
         upstream_error("Could not load real movie data", error)
 
 

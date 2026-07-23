@@ -54,8 +54,7 @@ function renderRealSeatMap(seatMap) {
 
   layout.seats.forEach(seat => {
     const node = document.createElement("span");
-    const isAccessible = seat.type === "wheelchair" || seat.type === "companion";
-    const isAvailable = seat.status === "A" && !isAccessible;
+    const isAvailable = seat.status === "A";
     node.className = `real-seat ${isAvailable ? "available" : "unavailable"}`;
     if (seat.matched) node.classList.add("matched");
     node.title = [seat.id || "Seat", isAvailable ? "available" : "unavailable"].join(" - ");
