@@ -632,13 +632,6 @@ a:focus-visible {
 
 .grid-status { justify-content: center; text-align: center; }
 
-/* The status text is FLIP-animated when its width changes, so a growing count
-   (99 -> 100) glides to its new centered position instead of snapping. */
-.status-shift {
-  display: inline-block;
-  transition: transform 220ms cubic-bezier(.2, 0, 0, 1);
-}
-
 .results-section {
   padding: 42px 0 0;
 }
@@ -1022,8 +1015,6 @@ input[type="time"] {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-
-  .status-shift { transition: none; }
 
   .enter-item,
   .result {
