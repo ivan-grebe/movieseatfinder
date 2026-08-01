@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { addDays, getJson, todayString } from "../frontend/utils.js";
+import { logTicketClick } from "../frontend/tracking.js";
 
 function response(status, body) {
   return {
@@ -53,5 +54,39 @@ test("date helpers preserve calendar dates in the browser's timezone", () => {
   } finally {
     if (originalTimezone === undefined) delete process.env.TZ;
     else process.env.TZ = originalTimezone;
+  }
+});
+
+test("ticket click tracking uses a non-blocking beacon", () => {
+  const originalNavigator = globalThis.navigator;
+  const calls = [];
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { sendBeacon: (url) => calls.push(url) > 0 },
+  });
+  try {
+    logTicketClick();
+    assert.deepEqual(calls, ["/api/events/ticket-click"]);
+  } finally {
+    if (originalNavigator === undefined) delete globalThis.navigator;
+    else Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
+  }
+});
+
+test("ticket click tracking falls back when a beacon cannot be queued", async () => {
+  const originalNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { sendBeacon: () => false },
+  });
+  try {
+    await withFetch(async (url, options) => {
+      assert.equal(url, "/api/events/ticket-click");
+      assert.deepEqual(options, { method: "POST", keepalive: true });
+      return response(204, "");
+    }, async () => logTicketClick());
+  } finally {
+    if (originalNavigator === undefined) delete globalThis.navigator;
+    else Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
   }
 });

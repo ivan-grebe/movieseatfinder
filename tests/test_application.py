@@ -1,3 +1,4 @@
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -132,13 +133,39 @@ class CacheTests(unittest.TestCase):
         application.SEAT_MAP_CACHE.clear()
         application.THEATRES_CACHE.clear()
 
+    def test_application_info_logs_use_stdout(self):
+        self.assertTrue(any(
+            getattr(handler, "stream", None) is sys.stdout
+            for handler in application.LOGGER.handlers
+        ))
+
+    @patch("backend.application.LOGGER.info")
     @patch("backend.application.fandango_json")
-    def test_seat_maps_are_cached(self, fandango_json):
+    def test_seat_maps_are_cached(self, fandango_json, logger_info):
         fandango_json.return_value = {"seats": []}
         first = application.seat_map("showtime-1")
         second = application.seat_map("showtime-1")
         self.assertIs(first, second)
         fandango_json.assert_called_once()
+        logger_info.assert_called_once()
+        self.assertEqual(
+            logger_info.call_args.args[:2],
+            ("event=cache_hit cache=%s age_ms=%d", "seat_map"),
+        )
+
+    @patch("backend.application.LOGGER.info")
+    @patch("backend.application._fetch_fandango_theatres", return_value=[])
+    def test_theatre_payloads_are_cached(self, fetch_theatres, logger_info):
+        first = application.fandango_theatres("10001", 25)
+        second = application.fandango_theatres("10001", 25)
+
+        self.assertIs(first, second)
+        fetch_theatres.assert_called_once()
+        logger_info.assert_called_once()
+        self.assertEqual(
+            logger_info.call_args.args[:2],
+            ("event=cache_hit cache=%s age_ms=%d", "theatres"),
+        )
 
     @patch("backend.application._fetch_fandango_theatres", return_value=[])
     def test_large_radius_uses_fandangos_full_supported_range(self, fetch_theatres):
@@ -188,6 +215,14 @@ class RouteTests(unittest.TestCase):
         self.assertNotIn("__SITE_", response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+
+    @patch("backend.application.LOGGER.info")
+    def test_ticket_click_is_logged_without_request_data(self, logger_info):
+        response = self.client.post("/api/events/ticket-click")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        logger_info.assert_called_once_with("event=ticket_click")
 
     def test_homepage_rejects_markup_in_forwarded_host(self):
         injected_host = 'attacker.example\"><meta name="injected" content="yes'

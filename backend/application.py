@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import requests
+import sys
 import threading
 import time
 
@@ -57,6 +58,7 @@ TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 RATE_LIMIT_MAX_KEYS = 1000
 
 RATE_LIMITS = {
+    "/api/events/ticket-click": (60, 60),
     "/api/search": (10, 60),
     "/api/formats": (30, 60),
     "/api/movies": (30, 60),
@@ -66,6 +68,19 @@ RATE_LIMIT_HISTORY = defaultdict(deque)
 RATE_LIMIT_LOCK = threading.Lock()
 HTTP_LOCAL = threading.local()
 LOGGER = logging.getLogger(__name__)
+if not LOGGER.handlers:
+    LOGGER.addHandler(logging.StreamHandler(sys.stdout))
+LOGGER.setLevel(logging.INFO)
+LOGGER.propagate = False
+
+
+def log_cache_hit(cache_name, age_seconds):
+    """Log cache usage without including a request's search data."""
+    LOGGER.info(
+        "event=cache_hit cache=%s age_ms=%d",
+        cache_name,
+        max(0, round(age_seconds * 1000)),
+    )
 
 
 def http_session():
@@ -288,9 +303,16 @@ def fandango_theatres(zip_code, radius, show_date=None, origin=None):
         entry = THEATRES_CACHE.get(key)
         if entry is not None and now - entry[0] < THEATRES_TTL_SECONDS:
             THEATRES_CACHE.move_to_end(key)
-            return entry[1]
-        if entry is not None:
-            THEATRES_CACHE.pop(key, None)
+            cached_theatres = entry[1]
+            cache_age = now - entry[0]
+        else:
+            cached_theatres = None
+            cache_age = None
+            if entry is not None:
+                THEATRES_CACHE.pop(key, None)
+    if cache_age is not None:
+        log_cache_hit("theatres", cache_age)
+        return cached_theatres
     # Fandango accepts a ZIP rather than coordinates. For a browser-location
     # search, get a broad candidate set and enforce the exact circle locally.
     # Over-fetch around the ZIP used by Fandango so an exact coordinate search
@@ -579,9 +601,16 @@ def seat_map(showtime_hash):
         cached = SEAT_MAP_CACHE.get(showtime_hash)
         if cached and now - cached[0] < SEAT_MAP_TTL_SECONDS:
             SEAT_MAP_CACHE.move_to_end(showtime_hash)
-            return cached[1]
-        if cached:
-            SEAT_MAP_CACHE.pop(showtime_hash, None)
+            cached_seat_map = cached[1]
+            cache_age = now - cached[0]
+        else:
+            cached_seat_map = None
+            cache_age = None
+            if cached:
+                SEAT_MAP_CACHE.pop(showtime_hash, None)
+    if cache_age is not None:
+        log_cache_hit("seat_map", cache_age)
+        return cached_seat_map
 
     data = fandango_json(
         f"/napi/seatMap/{showtime_hash}",
@@ -800,6 +829,13 @@ def enforce_rate_limit(request, path):
 
 def upstream_error(message, error):
     raise HTTPException(status_code=502, detail=f"{message}: {error}")
+
+
+@app.post("/api/events/ticket-click", status_code=204)
+def ticket_click(request: Request):
+    enforce_rate_limit(request, "/api/events/ticket-click")
+    LOGGER.info("event=ticket_click")
+    return Response(status_code=204)
 
 
 @app.get("/api/theatres")
