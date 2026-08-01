@@ -4,6 +4,7 @@ import { logTicketClick } from "./tracking.js";
 
 const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
 const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>';
+const CRITERIA_DISMISS_DURATION_MS = 160;
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
@@ -104,7 +105,103 @@ function makeTag(text, iconSvg) {
   return tag;
 }
 
-export function createResultsView({ results, summary, pagination, pageSize, getPage, onPageChange }) {
+export function createResultsView({
+  results,
+  searchCriteria,
+  searchCriteriaMovie,
+  searchCriteriaDetails,
+  searchCriteriaDismiss,
+  summary,
+  pagination,
+  pageSize,
+  getPage,
+  onPageChange,
+}) {
+  let dismissTimer = null;
+  let swipe = null;
+
+  function resetSearchCriteriaPosition() {
+    searchCriteria.classList.remove("is-dismissing", "is-swiping");
+    searchCriteria.style.removeProperty("opacity");
+    searchCriteria.style.removeProperty("transform");
+  }
+
+  function dismissSearchCriteria(direction = 0) {
+    if (dismissTimer !== null) window.clearTimeout(dismissTimer);
+    searchCriteria.classList.remove("is-swiping");
+    if (direction) searchCriteria.style.transform = `translateX(${direction * 110}%)`;
+    searchCriteria.style.opacity = "0";
+    searchCriteria.classList.add("is-dismissing");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    dismissTimer = window.setTimeout(() => {
+      searchCriteria.hidden = true;
+      resetSearchCriteriaPosition();
+      dismissTimer = null;
+    }, reducedMotion ? 0 : CRITERIA_DISMISS_DURATION_MS);
+  }
+
+  function cancelSwipe() {
+    if (!swipe) return;
+    swipe = null;
+    searchCriteria.classList.remove("is-swiping");
+    searchCriteria.style.removeProperty("opacity");
+    searchCriteria.style.removeProperty("transform");
+  }
+
+  searchCriteriaDismiss.addEventListener("click", () => dismissSearchCriteria());
+  searchCriteria.addEventListener("pointerdown", event => {
+    if (event.pointerType !== "touch" || event.target.closest("a, button")) return;
+    swipe = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, deltaX: 0, horizontal: false };
+    try {
+      searchCriteria.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic pointer events used by tests do not create capturable pointers.
+    }
+  });
+  searchCriteria.addEventListener("pointermove", event => {
+    if (!swipe || event.pointerId !== swipe.pointerId) return;
+    const deltaX = event.clientX - swipe.startX;
+    const deltaY = event.clientY - swipe.startY;
+    if (!swipe.horizontal) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+        cancelSwipe();
+        return;
+      }
+      swipe.horizontal = true;
+      searchCriteria.classList.add("is-swiping");
+    }
+    swipe.deltaX = deltaX;
+    const progress = Math.min(Math.abs(deltaX) / searchCriteria.offsetWidth, 1);
+    searchCriteria.style.transform = `translateX(${deltaX}px)`;
+    searchCriteria.style.opacity = String(1 - progress * .65);
+  });
+  searchCriteria.addEventListener("pointerup", event => {
+    if (!swipe || event.pointerId !== swipe.pointerId) return;
+    const { deltaX, horizontal } = swipe;
+    swipe = null;
+    const threshold = Math.min(96, searchCriteria.offsetWidth * .3);
+    if (horizontal && Math.abs(deltaX) >= threshold) {
+      dismissSearchCriteria(Math.sign(deltaX));
+      return;
+    }
+    searchCriteria.classList.remove("is-swiping");
+    searchCriteria.style.removeProperty("opacity");
+    searchCriteria.style.removeProperty("transform");
+  });
+  searchCriteria.addEventListener("pointercancel", cancelSwipe);
+
+  function renderSearchCriteria(criteria) {
+    if (dismissTimer !== null) {
+      window.clearTimeout(dismissTimer);
+      dismissTimer = null;
+    }
+    resetSearchCriteriaPosition();
+    searchCriteriaMovie.textContent = criteria.title;
+    searchCriteriaDetails.textContent = criteria.details.join(" · ");
+    searchCriteria.hidden = false;
+  }
+
   function renderPagination(data) {
     const hasPrevious = Boolean(data.hasPreviousPage);
     const hasNext = Boolean(data.hasNextPage);
@@ -140,9 +237,10 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
     pagination.append(previous, label, next);
   }
 
-  function render(data) {
+  function render(data, criteria) {
     const matches = data.matches || [];
     results.innerHTML = "";
+    renderSearchCriteria(criteria);
     const showingStart = matches.length ? ((data.page || 1) - 1) * (data.pageSize || pageSize) + 1 : 0;
     const showingEnd = showingStart + matches.length - 1;
     const pageText = matches.length

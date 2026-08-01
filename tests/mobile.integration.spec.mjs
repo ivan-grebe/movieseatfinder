@@ -69,8 +69,38 @@ test("mobile search keeps content stable while loading and then renders its resp
 
   releaseSearch();
   await expect(page.locator("#summary")).toContainText("No matching showtimes");
+  await expect(page.locator("#searchCriteria")).toBeVisible();
+  await expect(page.locator("#searchCriteriaMovie")).toHaveText("Test Movie");
+  await expect(page.locator("#searchCriteriaDetails")).toContainText("ZIP 10001");
+  await expect(page.locator("#searchCriteriaDetails")).toContainText("Accessible seats excluded");
+  await expect(page.getByRole("link", { name: "Edit search", exact: true })).toHaveAttribute("href", "#search");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("mobile search criteria can be dismissed and return after another search", async ({ page }) => {
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(emptySearch),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  const criteria = page.locator("#searchCriteria");
+  await expect(criteria).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss current search summary", exact: true }).click();
+  await expect(criteria).toBeHidden();
+
+  await page.locator("#searchButton").click();
+  await expect(criteria).toBeVisible();
+
+  await criteria.dispatchEvent("pointerdown", { pointerType: "touch", pointerId: 7, clientX: 280, clientY: 80 });
+  await criteria.dispatchEvent("pointermove", { pointerType: "touch", pointerId: 7, clientX: 80, clientY: 84 });
+  await criteria.dispatchEvent("pointerup", { pointerType: "touch", pointerId: 7, clientX: 80, clientY: 84 });
+  await expect(criteria).toBeHidden();
 });
 
 test("mobile validation keeps required-field feedback at the field", async ({ page }) => {

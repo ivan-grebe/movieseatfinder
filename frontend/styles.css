@@ -638,6 +638,119 @@ a:focus-visible {
   padding: 42px 0 0;
 }
 
+.search-criteria {
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 920px;
+  margin: 0 auto 12px;
+  padding: 12px 12px 12px 15px;
+  border-radius: 16px;
+  color: #314058;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: var(--shadow-border), 0 14px 30px rgba(36, 65, 106, .12);
+  backdrop-filter: blur(18px);
+  touch-action: pan-y;
+  transition-property: transform, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
+}
+
+.search-criteria[hidden] { display: none; }
+.search-criteria.is-swiping { transition-duration: 0ms; }
+.search-criteria.is-dismissing {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+.search-criteria-copy {
+  min-width: 0;
+}
+
+.search-criteria-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.search-criteria-movie,
+.search-criteria-details {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-criteria-movie {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.search-criteria-details {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.search-criteria-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-criteria-edit,
+.search-criteria-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 10px;
+  color: var(--accent-deep);
+  background: rgba(201, 58, 58, .08);
+  box-shadow: 0 0 0 1px rgba(201, 58, 58, .13);
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+  transition-property: transform, background-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.search-criteria-edit { padding: 0 13px; }
+
+.search-criteria-dismiss {
+  width: 44px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.search-criteria-dismiss svg {
+  width: 16px;
+  height: 16px;
+}
+
+.search-criteria-edit:hover,
+.search-criteria-dismiss:hover {
+  background: rgba(201, 58, 58, .13);
+  box-shadow: 0 0 0 1px rgba(201, 58, 58, .2);
+}
+
+.search-criteria-edit:active,
+.search-criteria-dismiss:active { transform: scale(.96); }
+
 .summary {
   display: flex;
   align-items: center;
@@ -1073,7 +1186,10 @@ input[type="time"] {
   .btn-small,
   .buy-btn,
   .github-link,
-  .combo-option {
+  .combo-option,
+  .search-criteria,
+  .search-criteria-edit,
+  .search-criteria-dismiss {
     transition-duration: 0ms;
   }
 }
@@ -1213,6 +1329,22 @@ input[type="time"] {
   .preferences-group .grid.thirds label:last-child {
     grid-column: 1 / -1;
   }
+
+  .search-criteria {
+    top: 6px;
+    gap: 9px;
+    padding: 10px 10px 10px 12px;
+    border-radius: 14px;
+  }
+
+  .search-criteria-details {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .search-criteria-edit { padding: 0 9px; }
+  .search-criteria-actions { gap: 4px; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1326,10 +1458,25 @@ input[type="time"] {
   }
 
   .summary,
+  .search-criteria,
   .empty-state {
     color: #c2cddc;
     background: rgba(255, 255, 255, .04);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .05), inset 0 1px 0 rgba(255, 255, 255, .04);
+  }
+  .search-criteria-label,
+  .search-criteria-edit,
+  .search-criteria-dismiss { color: #f28a91; }
+  .search-criteria-details { color: #9aa7b8; }
+  .search-criteria-edit,
+  .search-criteria-dismiss {
+    background: rgba(211, 77, 86, .11);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .08);
+  }
+  .search-criteria-edit:hover,
+  .search-criteria-dismiss:hover {
+    background: rgba(211, 77, 86, .17);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .12);
   }
   .empty-art { color: rgba(150, 170, 196, .4); }
 

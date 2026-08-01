@@ -1,7 +1,8 @@
 import { closeCombo, setupCombo } from "./combo.js";
-import { elements } from "./dom.js";
+import { elements } from "./dom.js?v=20260801-criteria-dismiss";
 import { createFormatPicker } from "./format-picker.js";
-import { createResultsView } from "./results.js";
+import { createResultsView } from "./results.js?v=20260801-criteria-dismiss";
+import { buildSearchCriteria } from "./search-criteria.js?v=20260801-criteria-dismiss";
 import { createSeatGrid } from "./seat-grid.js";
 import { setButtonBusy, setStatus, setSummary } from "./ui.js";
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
@@ -11,7 +12,8 @@ const {
   startDateInput, endDateInput, theatreStatus, theatreInput, theatreMenu, movieStatus,
   movieInput, movieMenu, formatOptions, formatStatus, startTimeInput, endTimeInput,
   adjacentSeatsInput, excludeAccessibleInput, seatPreferenceGrid, selectCenterGridButton,
-  clearGridButton, gridStatus, searchButton, summary, results, pagination,
+  clearGridButton, gridStatus, searchButton, searchCriteria, searchCriteriaMovie,
+  searchCriteriaDetails, searchCriteriaDismiss, summary, results, pagination,
 } = elements;
 
 const PAGE_SIZE = 20;
@@ -29,6 +31,10 @@ const formatPicker = createFormatPicker(formatOptions);
 const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton);
 const resultsView = createResultsView({
   results,
+  searchCriteria,
+  searchCriteriaMovie,
+  searchCriteriaDetails,
+  searchCriteriaDismiss,
   summary,
   pagination,
   pageSize: PAGE_SIZE,
@@ -194,7 +200,7 @@ async function runSearch() {
     if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
     const data = await getJson(`/api/search?${params}`);
     if (loadSequence !== searchLoadSequence) return;
-    resultsView.render(data);
+    resultsView.render(data, buildSearchCriteria(params));
   } catch (error) {
     if (loadSequence !== searchLoadSequence) return;
     setSummary(summary, error.message, true);

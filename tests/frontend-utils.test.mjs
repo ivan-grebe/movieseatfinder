@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { addDays, getJson, todayString } from "../frontend/utils.js";
 import { logTicketClick } from "../frontend/tracking.js";
+import { buildSearchCriteria } from "../frontend/search-criteria.js";
 
 function response(status, body) {
   return {
@@ -89,4 +90,36 @@ test("ticket click tracking falls back when a beacon cannot be queued", async ()
     if (originalNavigator === undefined) delete globalThis.navigator;
     else Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
   }
+});
+
+test("search criteria summarize the submitted filters", () => {
+  const params = new URLSearchParams({
+    zip: "10001",
+    radius: "10",
+    theatre: "Test Cinema",
+    movie: "Test Movie",
+    startDate: "2026-08-01",
+    endDate: "2026-08-01",
+    startTime: "00:00",
+    endTime: "23:59",
+    format: "IMAX,Dolby Cinema",
+    adjacentSeats: "2",
+    seatGrid: Array.from({ length: 5 }, (_, rowOffset) =>
+      Array.from({ length: 5 }, (_, columnOffset) => `${rowOffset + 5}:${columnOffset + 5}`),
+    ).flat().join(","),
+    excludeAccessible: "1",
+  });
+
+  const criteria = buildSearchCriteria(params);
+  assert.equal(criteria.title, "Test Movie");
+  assert.deepEqual(criteria.details, [
+    "ZIP 10001, 10 mi radius",
+    "Test Cinema",
+    "Sat, Aug 1",
+    "All day",
+    "IMAX, Dolby Cinema",
+    "2 seats together",
+    "Center area",
+    "Accessible seats excluded",
+  ]);
 });
