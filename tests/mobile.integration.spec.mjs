@@ -36,11 +36,13 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
     scrollWidth: document.documentElement.scrollWidth,
     dateWidths: [...document.querySelectorAll('input[type="date"]')].map(input => input.getBoundingClientRect().width),
     inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
+    githubShadow: getComputedStyle(document.querySelector(".github-link")).boxShadow,
   }));
 
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.dateWidths.every(width => width >= 200)).toBe(true);
   expect(layout.inputFontSize).toBe("16px");
+  expect(layout.githubShadow).toBe("none");
 });
 
 test("mobile search keeps content stable while loading and then renders its response", async ({ page }) => {
@@ -109,6 +111,97 @@ test("mobile format chips send every selected format to the search", async ({ pa
   await page.locator("#searchButton").click();
   await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
   expect(searchUrl).toContain("excludeAccessible=1");
+});
+
+test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
+  const searchSorts = [];
+  let releaseLatestSearch;
+  let markLatestSearchStarted;
+  const latestSearchStarted = new Promise(resolve => { markLatestSearchStarted = resolve; });
+  const latestSearchGate = new Promise(resolve => { releaseLatestSearch = resolve; });
+  const matchingSearch = {
+    ...emptySearch,
+    matches: [{
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      movieTitle: "Test Movie",
+      date: "2026-08-01",
+      time: "19:00",
+      displayTime: "7:00 PM",
+      format: "Standard",
+      amenities: "Reserved seating",
+      seatMap: {
+        availableSeatCount: 1,
+        totalSeatCount: 1,
+        layout: {
+          width: 30,
+          height: 30,
+          seats: [{ id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+        },
+      },
+    }],
+  };
+  await mockSearchDependencies(page, async route => {
+    const sort = new URL(route.request().url()).searchParams.get("sort");
+    searchSorts.push(sort);
+    if (sort === "latest") {
+      markLatestSearchStarted();
+      await latestSearchGate;
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(matchingSearch) });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  const sortInput = page.locator("#sortInput");
+  await expect(sortInput).toBeVisible();
+  await expect(sortInput).toHaveValue("earliest");
+  await page.locator("#resultsToolbar").scrollIntoViewIfNeeded();
+  const beforeReorder = await page.evaluate(() => ({
+    resultsMarkup: document.querySelector("#results").innerHTML,
+    resultsHeight: document.querySelector("#results").getBoundingClientRect().height,
+    scrollY: window.scrollY,
+  }));
+
+  await sortInput.selectOption("latest");
+  await latestSearchStarted;
+  await expect(page.locator("#sortStatus")).toHaveText("Reordering…");
+  await expect(sortInput).toBeDisabled();
+  await expect(page.locator("#searchButton")).toBeEnabled();
+  await expect(page.locator("#searchButton")).toHaveText("Find matching seats");
+  const duringReorder = await page.evaluate(() => ({
+    resultsMarkup: document.querySelector("#results").innerHTML,
+    minHeight: Number.parseFloat(document.querySelector("#results").style.minHeight),
+    scrollY: window.scrollY,
+  }));
+  expect(duringReorder.resultsMarkup).toBe(beforeReorder.resultsMarkup);
+  expect(duringReorder.minHeight).toBeGreaterThanOrEqual(beforeReorder.resultsHeight);
+  expect(duringReorder.scrollY).toBe(beforeReorder.scrollY);
+
+  releaseLatestSearch();
+  await expect.poll(() => searchSorts.at(-1)).toBe("latest");
+  await expect(sortInput).toBeEnabled();
+  await expect(page.locator("#sortStatus")).toBeEmpty();
+  await page.waitForTimeout(50);
+  const afterReorder = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    animationName: getComputedStyle(document.querySelector(".result")).animationName,
+  }));
+  expect(afterReorder.scrollY).toBe(beforeReorder.scrollY);
+  expect(afterReorder.animationName).toBe("none");
+
+  await sortInput.selectOption("nearest");
+  await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
+  expect(searchSorts[0]).toBe("earliest");
+
+  const dimensions = await sortInput.evaluate(select => ({
+    height: select.getBoundingClientRect().height,
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  expect(dimensions.height).toBeGreaterThanOrEqual(44);
+  expect(dimensions.overflow).toBeLessThanOrEqual(0);
 });
 
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
@@ -208,6 +301,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
   await expect(wheelchairSeat).toHaveClass(/accessible/);
   await expect(wheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
+  expect(await wheelchairSeat.evaluate(seat => getComputedStyle(seat, "::before").content)).toBe("none");
   const unavailableWheelchairSeat = page.locator('.real-seat[title="A3 - unavailable - wheelchair"]');
   await expect(unavailableWheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
   const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
@@ -224,8 +318,20 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
 
   const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
   await expect(includedWheelchairSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
+  const wheelchairGlow = await includedWheelchairSeat.evaluate(seat => {
+    const style = getComputedStyle(seat, "::before");
+    return { backgroundColor: style.backgroundColor, filter: style.filter };
+  });
+  expect(wheelchairGlow.backgroundColor).toBe("rgba(37, 99, 199, 0.62)");
+  expect(wheelchairGlow.filter).toBe("blur(2px)");
   const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
   await expect(includedCompanionSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
+  const companionGlow = await includedCompanionSeat.evaluate(seat => {
+    const style = getComputedStyle(seat, "::before");
+    return { backgroundColor: style.backgroundColor, filter: style.filter };
+  });
+  expect(companionGlow.backgroundColor).toBe("rgba(37, 99, 199, 0.62)");
+  expect(companionGlow.filter).toBe("blur(2px)");
   await expect(page.getByText("Accessible seating", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
 });

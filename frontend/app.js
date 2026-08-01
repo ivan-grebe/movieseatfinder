@@ -1,7 +1,7 @@
 import { closeCombo, setupCombo } from "./combo.js";
-import { elements } from "./dom.js";
+import { elements } from "./dom.js?v=20260801-stable-sorting";
 import { createFormatPicker } from "./format-picker.js";
-import { createResultsView } from "./results.js";
+import { createResultsView } from "./results.js?v=20260801-stable-sorting";
 import { createSeatGrid } from "./seat-grid.js";
 import { setButtonBusy, setStatus, setSummary } from "./ui.js";
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
@@ -11,7 +11,8 @@ const {
   startDateInput, endDateInput, theatreStatus, theatreInput, theatreMenu, movieStatus,
   movieInput, movieMenu, formatOptions, formatStatus, startTimeInput, endTimeInput,
   adjacentSeatsInput, excludeAccessibleInput, seatPreferenceGrid, selectCenterGridButton,
-  clearGridButton, gridStatus, searchButton, summary, results, pagination,
+  clearGridButton, gridStatus, searchButton, summary, resultsToolbar, sortInput, sortStatus,
+  results, pagination,
 } = elements;
 
 const PAGE_SIZE = 20;
@@ -24,12 +25,14 @@ let theatreLoadSequence = 0;
 let movieLoadSequence = 0;
 let formatLoadSequence = 0;
 let searchLoadSequence = 0;
+let reorderScrollY = null;
 
 const formatPicker = createFormatPicker(formatOptions);
 const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton);
 const resultsView = createResultsView({
   results,
   summary,
+  resultsToolbar,
   pagination,
   pageSize: PAGE_SIZE,
   getPage: () => currentPage,
@@ -164,7 +167,18 @@ async function search() {
   await runSearch();
 }
 
-async function runSearch() {
+function finishReorder({ restoreScroll = true } = {}) {
+  if (reorderScrollY === null) return;
+  const scrollY = reorderScrollY;
+  reorderScrollY = null;
+  resultsView.endReorder();
+  sortInput.disabled = false;
+  sortStatus.textContent = "";
+  if (restoreScroll) window.requestAnimationFrame(() => window.scrollTo(window.scrollX, scrollY));
+}
+
+async function runSearch({ reorder = false } = {}) {
+  if (!reorder) finishReorder({ restoreScroll: false });
   syncEndDateBounds();
   const movieTitle = movieInput.value.trim();
   if (!hasSearchLocation()) {
@@ -178,8 +192,16 @@ async function runSearch() {
   }
 
   const loadSequence = ++searchLoadSequence;
-  setSummary(summary, "", false);
-  setButtonBusy(searchButton, true, "Searching real showtimes and seat maps…");
+  if (reorder) {
+    reorderScrollY = window.scrollY;
+    resultsView.beginReorder();
+    sortInput.disabled = true;
+    sortStatus.textContent = "Reordering…";
+  } else {
+    setSummary(summary, "", false);
+    setButtonBusy(searchButton, true, "Searching real showtimes and seat maps…");
+  }
+  let reorderError = "";
   try {
     const params = baseParams();
     params.set("movie", movieTitle);
@@ -190,16 +212,25 @@ async function runSearch() {
     params.set("page", currentPage);
     params.set("pageSize", PAGE_SIZE);
     params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
+    params.set("sort", sortInput.value);
     const selectedCells = seatGrid.values();
     if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
     const data = await getJson(`/api/search?${params}`);
     if (loadSequence !== searchLoadSequence) return;
-    resultsView.render(data);
+    resultsView.render(data, { skipEntrance: reorder });
   } catch (error) {
     if (loadSequence !== searchLoadSequence) return;
-    setSummary(summary, error.message, true);
+    if (reorder) reorderError = "Try again";
+    else setSummary(summary, error.message, true);
   } finally {
-    if (loadSequence === searchLoadSequence) setButtonBusy(searchButton, false);
+    if (loadSequence === searchLoadSequence) {
+      if (reorder) {
+        finishReorder();
+        sortStatus.textContent = reorderError;
+      } else {
+        setButtonBusy(searchButton, false);
+      }
+    }
   }
 }
 
@@ -215,6 +246,7 @@ function applyQueryParams() {
     startTime: startTimeInput,
     endTime: endTimeInput,
     adjacentSeats: adjacentSeatsInput,
+    sort: sortInput,
   };
   Object.entries(inputParams).forEach(([name, input]) => {
     if (params.has(name)) input.value = params.get(name);
@@ -292,6 +324,10 @@ function bindEvents() {
   searchForm.addEventListener("submit", event => {
     event.preventDefault();
     search();
+  });
+  sortInput.addEventListener("change", () => {
+    currentPage = 1;
+    runSearch({ reorder: true });
   });
   useLocationButton.addEventListener("click", requestLocation);
   zipInput.addEventListener("input", () => {

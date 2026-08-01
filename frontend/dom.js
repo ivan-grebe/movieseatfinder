@@ -31,6 +31,9 @@ export const elements = {
   gridStatus: byId("gridStatus"),
   searchButton: byId("searchButton"),
   summary: byId("summary"),
+  resultsToolbar: byId("resultsToolbar"),
+  sortInput: byId("sortInput"),
+  sortStatus: byId("sortStatus"),
   results: byId("results"),
   pagination: byId("pagination"),
 };

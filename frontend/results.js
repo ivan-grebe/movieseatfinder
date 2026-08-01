@@ -104,7 +104,17 @@ function makeTag(text, iconSvg) {
   return tag;
 }
 
-export function createResultsView({ results, summary, pagination, pageSize, getPage, onPageChange }) {
+export function createResultsView({ results, summary, resultsToolbar, pagination, pageSize, getPage, onPageChange }) {
+  function beginReorder() {
+    results.style.minHeight = `${Math.ceil(results.getBoundingClientRect().height)}px`;
+    results.classList.add("is-reordering");
+  }
+
+  function endReorder() {
+    results.classList.remove("is-reordering");
+    results.style.removeProperty("min-height");
+  }
+
   function renderPagination(data) {
     const hasPrevious = Boolean(data.hasPreviousPage);
     const hasNext = Boolean(data.hasNextPage);
@@ -140,7 +150,7 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
     pagination.append(previous, label, next);
   }
 
-  function render(data) {
+  function render(data, { skipEntrance = false } = {}) {
     const matches = data.matches || [];
     results.innerHTML = "";
     const showingStart = matches.length ? ((data.page || 1) - 1) * (data.pageSize || pageSize) + 1 : 0;
@@ -150,6 +160,7 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
       : "No matching showtimes";
     const summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${data.checkedSeatMaps === 1 ? "" : "s"} from ${data.checkedShowtimes} candidate showtime${data.checkedShowtimes === 1 ? "" : "s"}.`;
     setSummary(summary, summaryText, !matches.length);
+    resultsToolbar.hidden = !matches.length;
     renderPagination(data);
 
     if (!matches.length) {
@@ -165,8 +176,9 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
     matches.forEach((match, index) => {
       const item = document.createElement("article");
       item.className = "result";
+      if (skipEntrance) item.classList.add("no-enter-animation");
       item.setAttribute("aria-label", `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`);
-      item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
+      if (!skipEntrance) item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
       const body = document.createElement("div");
       body.className = "result-body";
 
@@ -246,5 +258,5 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
     });
   }
 
-  return { render };
+  return { beginReorder, endReorder, render };
 }

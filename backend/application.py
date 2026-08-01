@@ -54,6 +54,7 @@ DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
 MAX_TEXT_PARAM_LENGTH = 120
+SEARCH_SORTS = {"earliest", "latest", "nearest"}
 TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 RATE_LIMIT_MAX_KEYS = 1000
 
@@ -151,6 +152,16 @@ def validate_time(value, field_name):
     if hours > 23 or minutes > 59:
         raise ValueError(f"{field_name} must be a valid time.")
     return value
+
+
+def search_sort_key(distance, show_date, show_time, theatre_name, sort_order):
+    """Return a deterministic key for supported result sort orders."""
+    chronology = int(f"{show_date.replace('-', '')}{show_time.replace(':', '')}")
+    if sort_order == "nearest":
+        return (float(distance), chronology, theatre_name)
+    if sort_order == "latest":
+        return (-chronology, float(distance), theatre_name)
+    return (chronology, float(distance), theatre_name)
 
 
 def safe_fandango_url(value):
@@ -964,6 +975,7 @@ def api_search(
     seatArea: str = "any",
     seatGrid: str = "",
     excludeAccessible: str = "1",
+    sort: str = "earliest",
     page: int = 1,
     pageSize: int = DEFAULT_PAGE_SIZE,
     lat: float | None = None,
@@ -984,6 +996,9 @@ def api_search(
         seat_filter = validate_short_text(seatArea, "Seat area") or "any"
         selected_cells = parse_seat_grid(seatGrid)
         exclude_accessible = excludeAccessible.lower() in ("1", "true", "yes", "on")
+        sort_order = validate_short_text(sort, "Sort order").lower() or "earliest"
+        if sort_order not in SEARCH_SORTS:
+            raise ValueError("Sort order must be earliest, latest, or nearest.")
         page = max(page, 1)
         page_size = min(max(pageSize, 1), MAX_PAGE_SIZE)
         page_start = (page - 1) * page_size
@@ -1017,11 +1032,12 @@ def api_search(
                     if showtime["time"] < start_time or showtime["time"] > end_time:
                         continue
                     candidates.append((theatre_item, showtime))
-        candidates.sort(key=lambda candidate: (
+        candidates.sort(key=lambda candidate: search_sort_key(
             candidate[0]["distanceMiles"],
             candidate[1]["date"],
             candidate[1]["time"],
-            candidate[1]["movieTitle"],
+            candidate[0]["name"],
+            sort_order,
         ))
 
         def check_candidate(candidate):
@@ -1064,11 +1080,12 @@ def api_search(
                         result = future.result()
                         if result:
                             matches.append(result)
-                    matches.sort(key=lambda item: (
+                    matches.sort(key=lambda item: search_sort_key(
                         item["theatre"]["distanceMiles"],
                         item["date"],
                         item["time"],
-                        item["movieTitle"],
+                        item["theatre"]["name"],
+                        sort_order,
                     ))
                     if len(matches) > page_end:
                         break
@@ -1078,6 +1095,7 @@ def api_search(
             "matches": page_matches,
             "page": page,
             "pageSize": page_size,
+            "sort": sort_order,
             "hasPreviousPage": page > 1,
             "hasNextPage": len(matches) > page_end,
             "matchedThrough": min(len(matches), page_end),

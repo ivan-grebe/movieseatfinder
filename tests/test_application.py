@@ -31,6 +31,25 @@ class DateAndValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             application.validate_time("25:00", "Time")
 
+    def test_search_sort_orders_are_deterministic(self):
+        showtimes = [
+            {"name": "Near Late", "distance": 1, "date": "2026-08-02", "time": "21:00"},
+            {"name": "Far Early", "distance": 8, "date": "2026-08-01", "time": "10:00"},
+            {"name": "Near Early", "distance": 1, "date": "2026-08-01", "time": "18:00"},
+        ]
+
+        def ordered_names(sort_order):
+            return [
+                item["name"]
+                for item in sorted(showtimes, key=lambda item: application.search_sort_key(
+                    item["distance"], item["date"], item["time"], item["name"], sort_order,
+                ))
+            ]
+
+        self.assertEqual(ordered_names("earliest"), ["Far Early", "Near Early", "Near Late"])
+        self.assertEqual(ordered_names("latest"), ["Near Late", "Near Early", "Far Early"])
+        self.assertEqual(ordered_names("nearest"), ["Near Early", "Near Late", "Far Early"])
+
     def test_ticket_urls_are_allowlisted(self):
         self.assertEqual(
             application.safe_fandango_url("https://tickets.fandango.com/order"),
