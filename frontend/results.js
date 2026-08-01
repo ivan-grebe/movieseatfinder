@@ -14,7 +14,7 @@ function createLegendItem(label, className) {
   return item;
 }
 
-function renderRealSeatMap(seatMap) {
+function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const layout = seatMap?.layout;
   if (!layout?.seats?.length) return null;
   const hasBackground = Boolean(layout.backgroundSvg);
@@ -56,9 +56,19 @@ function renderRealSeatMap(seatMap) {
   layout.seats.forEach(seat => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    node.className = `real-seat ${isAvailable ? "available" : "unavailable"}`;
+    const accessibilityType = ["wheelchair", "companion"].includes(seat.type)
+      ? seat.type
+      : "";
+    const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
+    node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
+    if (accessibilityType) node.classList.add("accessible");
     if (seat.matched) node.classList.add("matched");
-    node.title = [seat.id || "Seat", isAvailable ? "available" : "unavailable"].join(" - ");
+    node.title = [
+      seat.id || "Seat",
+      isAvailable ? "available" : "unavailable",
+      accessibilityType,
+      isExcluded ? "excluded by filter" : "",
+    ].filter(Boolean).join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
     node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
     node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
@@ -69,9 +79,12 @@ function renderRealSeatMap(seatMap) {
 
   const legend = document.createElement("div");
   legend.className = "seat-map-legend";
+  legend.appendChild(createLegendItem("Available", ""));
+  if (!accessibleSeatsExcluded) {
+    legend.appendChild(createLegendItem("Accessible seating", "accessible"));
+  }
   legend.append(
-    createLegendItem("Available", ""),
-    createLegendItem("Unavailable", "unavailable"),
+    createLegendItem(accessibleSeatsExcluded ? "Unavailable or excluded" : "Unavailable", "unavailable"),
     createLegendItem("Matches your filter", "matched"),
   );
   wrapper.appendChild(legend);
@@ -217,7 +230,7 @@ export function createResultsView({ results, summary, pagination, pageSize, getP
         amenities.textContent = match.amenities;
         item.appendChild(amenities);
       }
-      const seatMap = renderRealSeatMap(match.seatMap);
+      const seatMap = renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded);
       if (seatMap) item.appendChild(seatMap);
       if (match.ticketUrl) {
         const link = document.createElement("a");

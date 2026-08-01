@@ -103,6 +103,7 @@ class SeatSelectionTests(unittest.TestCase):
             {"id": "A3", "row": 0, "column": 3, "x": 30, "y": 0, "status": "U", "type": "standard"},
             {"id": "B1", "row": 1, "column": 1, "x": 10, "y": 10, "status": "A", "type": "wheelchair"},
             {"id": "B2", "row": 1, "column": 2, "x": 20, "y": 10, "status": "A", "type": "standard"},
+            {"id": "B3", "row": 1, "column": 3, "x": 30, "y": 10, "status": "A", "type": "companion"},
         ]
 
     def test_grid_parser_filters_invalid_cells(self):
@@ -125,6 +126,7 @@ class SeatSelectionTests(unittest.TestCase):
         )
         seat_ids = {seat_id for block in blocks for seat_id in block["seats"]}
         self.assertNotIn("B1", seat_ids)
+        self.assertNotIn("B3", seat_ids)
         self.assertIn("B2", seat_ids)
 
 
@@ -368,9 +370,11 @@ class RouteTests(unittest.TestCase):
         seat_map.return_value = {
             "seats": [
                 {"id": "A1", "row": 0, "column": 1, "x": 0, "y": 0, "status": "A", "type": "standard"},
+                {"id": "A2", "row": 0, "column": 2, "x": 10, "y": 0, "status": "A", "type": "wheelchair"},
+                {"id": "A3", "row": 0, "column": 3, "x": 20, "y": 0, "status": "A", "type": "companion"},
             ],
-            "totalAvailableSeatCount": 1,
-            "totalSeatCount": 1,
+            "totalAvailableSeatCount": 3,
+            "totalSeatCount": 3,
         }
 
         response = self.client.get("/api/search", params={
@@ -380,6 +384,10 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["matches"]), 1)
+        self.assertTrue(response.json()["accessibleSeatsExcluded"])
+        layout_seats = response.json()["matches"][0]["seatMap"]["layout"]["seats"]
+        matched_by_id = {seat["id"]: seat["matched"] for seat in layout_seats}
+        self.assertEqual(matched_by_id, {"A1": True, "A2": False, "A3": False})
         seat_map.assert_called_once_with("showtime-1")
 
     def test_manifest_and_discovery_routes(self):

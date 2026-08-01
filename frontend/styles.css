@@ -17,6 +17,8 @@
   --good: #13956a;
   --danger: #d34d56;
   --seat-taken: #c7ced8;
+  --seat-accessible: #2563c7;
+  --seat-accessible-border: #174a97;
   --shadow-border:
     0 0 0 1px rgba(0, 0, 0, .055),
     0 1px 2px -1px rgba(0, 0, 0, .07),
@@ -917,11 +919,53 @@ a:focus-visible {
 .real-seat.available { background: #fff; border-color: #9fabbb; }
 .real-seat.unavailable { background: var(--seat-taken); border-color: #adb5c0; }
 
+.real-seat.available.accessible {
+  border-color: var(--seat-accessible-border);
+  background: var(--seat-accessible);
+}
+
 .real-seat.available.matched,
 .real-seat.unavailable.matched {
+  z-index: 1;
+  overflow: visible;
+  isolation: isolate;
   border-color: var(--accent-deep);
   background: var(--accent);
-  box-shadow: 0 0 0 2px rgba(201, 58, 58, .23);
+  box-shadow: none;
+}
+
+.real-seat.matched::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 4px 4px 6px 6px;
+  background: rgba(201, 58, 58, .62);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.real-seat.available.accessible.matched {
+  border-color: transparent;
+  background:
+    linear-gradient(
+      135deg,
+      var(--accent) 0 50%,
+      var(--seat-accessible) 50% 100%
+    ) padding-box,
+    linear-gradient(
+      135deg,
+      var(--accent-deep) 0 50%,
+      var(--seat-accessible-border) 50% 100%
+    ) border-box;
+}
+
+.real-seat.available.accessible.matched::before {
+  background: linear-gradient(
+    135deg,
+    rgba(201, 58, 58, .62) 0 50%,
+    rgba(37, 99, 199, .62) 50% 100%
+  );
 }
 
 .seat-map-legend {
@@ -944,6 +988,7 @@ a:focus-visible {
 }
 
 .legend-swatch.unavailable { background: var(--seat-taken); border-color: #adb5c0; }
+.legend-swatch.accessible { background: var(--seat-accessible); border-color: var(--seat-accessible-border); }
 .legend-swatch.matched { background: var(--accent); border-color: var(--accent-deep); }
 
 .pagination {

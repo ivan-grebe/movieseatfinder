@@ -189,7 +189,7 @@ async function runSearch() {
     params.set("adjacentSeats", adjacentSeatsInput.value);
     params.set("page", currentPage);
     params.set("pageSize", PAGE_SIZE);
-    if (excludeAccessibleInput.checked) params.set("excludeAccessible", "1");
+    params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
     const selectedCells = seatGrid.values();
     if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
     const data = await getJson(`/api/search?${params}`);
@@ -219,7 +219,9 @@ function applyQueryParams() {
   Object.entries(inputParams).forEach(([name, input]) => {
     if (params.has(name)) input.value = params.get(name);
   });
-  if (params.get("excludeAccessible") === "1") excludeAccessibleInput.checked = true;
+  if (params.has("excludeAccessible")) {
+    excludeAccessibleInput.checked = params.get("excludeAccessible") === "1";
+  }
   if (params.has("seatGrid")) seatGrid.select(params.get("seatGrid").split(","));
   if (params.has("format")) {
     formatPicker.select(params.get("format").split(","));

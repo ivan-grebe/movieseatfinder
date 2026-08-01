@@ -29,6 +29,7 @@ async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto("/");
+  await expect(page.locator("#excludeAccessibleInput")).toBeChecked();
 
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
@@ -107,6 +108,7 @@ test("mobile format chips send every selected format to the search", async ({ pa
 
   await page.locator("#searchButton").click();
   await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
+  expect(searchUrl).toContain("excludeAccessible=1");
 });
 
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
@@ -155,6 +157,7 @@ test("stale movie responses do not replace options for newer criteria", async ({
 test("mobile results visibly highlight seats that match the filter", async ({ page }) => {
   const matchingSearch = {
     ...emptySearch,
+    accessibleSeatsExcluded: true,
     matches: [{
       theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
       movieTitle: "Test Movie",
@@ -172,15 +175,21 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
           seats: [
             { id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true },
             { id: "A2", status: "A", type: "wheelchair", x: 30, y: 10, width: 10, height: 10, matched: false },
+            { id: "A3", status: "U", type: "wheelchair", x: 50, y: 10, width: 10, height: 10, matched: false },
+            { id: "A4", status: "A", type: "companion", x: 70, y: 10, width: 10, height: 10, matched: false },
+            { id: "A5", status: "U", type: "companion", x: 90, y: 10, width: 10, height: 10, matched: false },
           ],
         },
       },
     }],
   };
-  await mockSearchDependencies(page, route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify(matchingSearch),
-  }));
+  await mockSearchDependencies(page, route => {
+    const accessibleSeatsExcluded = new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded }),
+    });
+  });
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
@@ -190,6 +199,85 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   const matchedSeat = page.locator(".real-seat.matched");
   await expect(matchedSeat).toHaveCount(1);
   await expect(matchedSeat).toHaveCSS("background-color", "rgb(201, 58, 58)");
-  const accessibleSeat = page.locator('.real-seat[title="A2 - available"]');
-  await expect(accessibleSeat).toHaveClass(/available/);
+  const matchedGlow = await matchedSeat.evaluate(seat => {
+    const style = getComputedStyle(seat, "::before");
+    return { backgroundColor: style.backgroundColor, filter: style.filter };
+  });
+  expect(matchedGlow.backgroundColor).toBe("rgba(201, 58, 58, 0.62)");
+  expect(matchedGlow.filter).toBe("blur(2px)");
+  const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
+  await expect(wheelchairSeat).toHaveClass(/accessible/);
+  await expect(wheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
+  const unavailableWheelchairSeat = page.locator('.real-seat[title="A3 - unavailable - wheelchair"]');
+  await expect(unavailableWheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
+  const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
+  await expect(companionSeat).toHaveClass(/accessible/);
+  await expect(companionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
+  const unavailableCompanionSeat = page.locator('.real-seat[title="A5 - unavailable - companion"]');
+  await expect(unavailableCompanionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
+  await expect(page.getByText("Unavailable or excluded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Accessible seating", { exact: true })).toHaveCount(0);
+
+  await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
+  await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
+  await page.locator("#searchButton").click();
+
+  const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
+  await expect(includedWheelchairSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
+  const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
+  await expect(includedCompanionSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
+  await expect(page.getByText("Accessible seating", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+});
+
+test("accessible matches retain both accessible and matching states", async ({ page }) => {
+  const accessibleMatchSearch = {
+    ...emptySearch,
+    accessibleSeatsExcluded: false,
+    matches: [{
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      movieTitle: "Test Movie",
+      date: "2026-07-22",
+      displayTime: "7:00 PM",
+      format: "Standard",
+      amenities: "Reserved seating",
+      seatMap: {
+        availableSeatCount: 1,
+        totalSeatCount: 1,
+        layout: {
+          width: 50,
+          height: 30,
+          seats: [
+            { id: "WC1", status: "A", type: "wheelchair", x: 10, y: 10, width: 10, height: 10, matched: true },
+          ],
+        },
+      },
+    }],
+  };
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(accessibleMatchSearch),
+  }));
+
+  await page.goto("/?excludeAccessible=0");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  const accessibleMatch = page.locator('.real-seat[title="WC1 - available - wheelchair"]');
+  const combinedBackground = await accessibleMatch.evaluate(seat => getComputedStyle(seat).backgroundImage);
+  expect(combinedBackground).toContain("rgb(201, 58, 58)");
+  expect(combinedBackground).toContain("rgb(37, 99, 199)");
+  expect(combinedBackground).toContain("rgb(143, 31, 38)");
+  expect(combinedBackground).toContain("rgb(23, 74, 151)");
+  await expect(accessibleMatch).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
+  await expect(accessibleMatch).toHaveCSS("box-shadow", "none");
+  const combinedGlow = await accessibleMatch.evaluate(seat => {
+    const style = getComputedStyle(seat, "::before");
+    return { backgroundImage: style.backgroundImage, filter: style.filter };
+  });
+  expect(combinedGlow.backgroundImage).toContain("rgba(201, 58, 58, 0.62)");
+  expect(combinedGlow.backgroundImage).toContain("rgba(37, 99, 199, 0.62)");
+  expect(combinedGlow.filter).toBe("blur(2px)");
+  await expect(page.getByText("Accessible match", { exact: true })).toHaveCount(0);
 });

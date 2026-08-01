@@ -963,7 +963,7 @@ def api_search(
     adjacentSeats: int = 1,
     seatArea: str = "any",
     seatGrid: str = "",
-    excludeAccessible: str = "0",
+    excludeAccessible: str = "1",
     page: int = 1,
     pageSize: int = DEFAULT_PAGE_SIZE,
     lat: float | None = None,
@@ -1083,6 +1083,7 @@ def api_search(
             "matchedThrough": min(len(matches), page_end),
             "checkedShowtimes": len(candidates),
             "checkedSeatMaps": checked_seat_maps,
+            "accessibleSeatsExcluded": exclude_accessible,
             "source": "Fandango NAPI",
         }
     except HTTPException:
