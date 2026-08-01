@@ -32,6 +32,7 @@ git clone https://github.com/ivan-grebe/movieseatfinder.git
 cd movieseatfinder
 pip install -e ".[test]"
 npm ci
+npm run build:frontend
 uvicorn app:app --reload --host 127.0.0.1 --port 4173
 ```
 
@@ -41,6 +42,7 @@ Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.
 
 ```bash
 python -m unittest discover -s tests -v
+npm run check:frontend-bundle
 npm run test:frontend
 npm run test:mobile
 ```

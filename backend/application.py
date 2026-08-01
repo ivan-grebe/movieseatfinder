@@ -3,18 +3,21 @@ from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict, defaultdict, deque
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from fastapi.staticfiles import StaticFiles
+import base64
+import hashlib
 import html
 import ipaddress
 import logging
 import os
 import re
-import requests
 import sys
 import threading
 import time
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
+import requests
 
 from .location import (
     distance_miles,
@@ -33,6 +36,14 @@ SITE_DESCRIPTION = (
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "frontend"
 INDEX_HTML = STATIC_DIR / "index.html"
+STYLES_CSS = STATIC_DIR / "styles.css"
+INLINE_STYLES = STYLES_CSS.read_text(encoding="utf-8")
+INLINE_STYLE_HASH = base64.b64encode(
+    hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()
+).decode("ascii")
+VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+VERSIONED_ASSET_CDN_CACHE_CONTROL = "public, max-age=31536000, immutable"
+VERSIONED_ASSET_SUFFIXES = {".css", ".js", ".png", ".svg", ".webmanifest"}
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -732,6 +743,7 @@ def seo_context(request):
 
 def render_index(request):
     markup = INDEX_HTML.read_text(encoding="utf-8")
+    markup = markup.replace("__INLINE_STYLES__", INLINE_STYLES)
     for token, value in seo_context(request).items():
         markup = markup.replace(token, value)
     return markup
@@ -743,10 +755,20 @@ async def security_headers(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "default-src 'self'; script-src 'self'; "
+        f"style-src 'self' 'sha256-{INLINE_STYLE_HASH}'; "
         "img-src 'self' data: https://images.fandango.com; "
         "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
     )
+    suffix = Path(request.url.path).suffix.lower()
+    if (
+        response.status_code == 200
+        and request.query_params.get("v")
+        and suffix in VERSIONED_ASSET_SUFFIXES
+    ):
+        response.headers["Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
+        response.headers["CDN-Cache-Control"] = VERSIONED_ASSET_CDN_CACHE_CONTROL
+        response.headers["Vercel-CDN-Cache-Control"] = VERSIONED_ASSET_CDN_CACHE_CONTROL
     return response
 
 

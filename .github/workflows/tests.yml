@@ -27,6 +27,10 @@ jobs:
           node-version: 22
       - name: Install project
         run: python -m pip install -e ".[test]"
+      - name: Install frontend build dependencies
+        run: npm ci
+      - name: Verify production frontend bundle
+        run: npm run check:frontend-bundle
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Run frontend tests

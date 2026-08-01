@@ -1,9 +1,9 @@
 import { closeCombo, setupCombo } from "./combo.js";
-import { elements } from "./dom.js?v=20260801-stable-sorting";
+import { elements } from "./dom.js";
 import { createFormatPicker } from "./format-picker.js";
-import { createResultsView } from "./results.js?v=20260801-loading-feedback-2";
+import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
-import { setAnimatedStatus, setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js?v=20260801-loading-feedback-2";
+import { setAnimatedStatus, setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js";
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
 
 const {

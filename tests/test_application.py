@@ -234,8 +234,57 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
         self.assertNotIn("__SITE_", response.text)
+        self.assertNotIn("__INLINE_STYLES__", response.text)
+        self.assertIn(f"<style>{application.INLINE_STYLES}</style>", response.text)
+        self.assertNotIn('rel="stylesheet"', response.text)
+        self.assertIn(
+            'src="app.bundle.js?v=20260801-performance"',
+            response.text,
+        )
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
-        self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+        content_security_policy = response.headers["content-security-policy"]
+        self.assertIn("default-src 'self'", content_security_policy)
+        self.assertIn(
+            f"'sha256-{application.INLINE_STYLE_HASH}'",
+            content_security_policy,
+        )
+
+    def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
+        response = self.client.get("/app.bundle.js?v=20260801-performance")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["cache-control"],
+            "public, max-age=31536000, immutable",
+        )
+        self.assertEqual(
+            response.headers["cdn-cache-control"],
+            "public, max-age=31536000, immutable",
+        )
+        self.assertEqual(
+            response.headers["vercel-cdn-cache-control"],
+            "public, max-age=31536000, immutable",
+        )
+        self.assertNotIn("import ", response.text)
+
+    def test_unversioned_assets_are_not_cached_as_immutable(self):
+        response = self.client.get("/app.bundle.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("immutable", response.headers.get("cache-control", ""))
+
+    def test_missing_versioned_assets_are_not_cached_as_immutable(self):
+        response = self.client.get("/missing.js?v=missing")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("immutable", response.headers.get("cache-control", ""))
+
+    def test_entry_animation_uses_only_composited_properties(self):
+        enter_rule = application.INLINE_STYLES.split(".enter-item {", 1)[1].split("}", 1)[0]
+        enter_keyframes = application.INLINE_STYLES.split("@keyframes enter-up {", 1)[1].split("}", 2)[0]
+
+        self.assertNotIn("filter:", enter_rule)
+        self.assertNotIn("filter:", enter_keyframes)
 
     @patch("backend.application.LOGGER.info")
     def test_ticket_click_is_logged_without_request_data(self, logger_info):

@@ -47,6 +47,31 @@ async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/search*", onSearch);
 }
 
+test("initial render inlines CSS and loads one application bundle", async ({ page }) => {
+  const applicationAssets = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/_vercel/")) return;
+    if (["script", "stylesheet"].includes(request.resourceType())) {
+      applicationAssets.push({ path: url.pathname, type: request.resourceType() });
+    }
+  });
+
+  await page.goto("/");
+
+  expect(applicationAssets.filter(asset => asset.type === "stylesheet")).toEqual([]);
+  expect(applicationAssets.filter(asset => asset.type === "script")).toEqual([
+    { path: "/app.bundle.js", type: "script" },
+  ]);
+  await expect(page.locator("head > style")).toHaveCount(1);
+  const animatedProperties = await page.locator("h1").evaluate(element => (
+    element.getAnimations()[0]?.effect.getKeyframes().flatMap(frame => (
+      Object.keys(frame).filter(property => !["offset", "easing", "composite", "computedOffset"].includes(property))
+    )) || []
+  ));
+  expect(new Set(animatedProperties)).toEqual(new Set(["opacity", "transform"]));
+});
+
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto("/");
