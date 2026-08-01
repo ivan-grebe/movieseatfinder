@@ -204,6 +204,113 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   expect(dimensions.overflow).toBeLessThanOrEqual(0);
 });
 
+test("showtimes from one theatre share a single theatre card", async ({ page }) => {
+  const theatre = { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" };
+  const makeMatch = (time, displayTime, amenity) => ({
+    theatre,
+    movieTitle: "Test Movie",
+    date: "2026-08-01",
+    time,
+    displayTime,
+    format: "Standard",
+    amenities: `Reserved seating, ${amenity}`,
+    seatMap: {
+      availableSeatCount: 1,
+      totalSeatCount: 1,
+      layout: {
+        width: 30,
+        height: 30,
+        seats: [{ id: time, status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+      },
+    },
+  });
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...emptySearch,
+      matches: [makeMatch("19:00", "7:00 PM", "Closed caption"), makeMatch("20:00", "8:00 PM", "Open caption")],
+    }),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  await expect(page.locator(".theatre-result")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Test Cinema", exact: true })).toHaveCount(1);
+  await expect(page.locator(".result-showtime")).toHaveCount(2);
+  await expect(page.getByText("2 matching showtimes", { exact: true })).toBeVisible();
+  await expect(page.locator(".theatre-disclosure")).not.toHaveAttribute("open", "");
+  await expect(page.locator(".result-showtime").first()).toBeHidden();
+  await expect(page.locator(".result-amenities").first()).toBeHidden();
+  const theatreSummary = page.locator(".theatre-summary");
+  expect(await theatreSummary.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  await theatreSummary.click();
+  await expect(page.locator(".theatre-disclosure")).toHaveAttribute("open", "");
+  await expect(page.locator(".result-showtime")).toHaveCount(2);
+  await expect(page.locator(".result-amenities").first()).toContainText("Closed caption");
+  await expect(page.locator(".result-amenities").first()).toBeVisible();
+  await expect(page.getByText("Showtime details", { exact: true })).toHaveCount(0);
+});
+
+test("pagination counts theatre cards and keeps a theatre on one page", async ({ page }) => {
+  const makeMatch = (name, address, time) => ({
+    theatre: { name, address, distanceMiles: 1, source: "Fandango" },
+    movieTitle: "Test Movie",
+    date: "2026-08-01",
+    time,
+    displayTime: time,
+    format: "Standard",
+    amenities: "Reserved seating",
+    seatMap: {
+      availableSeatCount: 1,
+      totalSeatCount: 1,
+      layout: {
+        width: 30,
+        height: 30,
+        seats: [{ id: `${name}-${time}`, status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+      },
+    },
+  });
+  await mockSearchDependencies(page, route => {
+    const requestedPage = Number(new URL(route.request().url()).searchParams.get("page"));
+    const response = requestedPage === 2
+      ? {
+          ...emptySearch,
+          page: 2,
+          pageSize: 2,
+          hasPreviousPage: true,
+          matches: [makeMatch("Cinema C", "3 Main St", "12:00")],
+        }
+      : {
+          ...emptySearch,
+          pageSize: 2,
+          hasNextPage: true,
+          matches: [
+            makeMatch("Cinema A", "1 Main St", "10:00"),
+            makeMatch("Cinema A", "1 Main St", "13:00"),
+            makeMatch("Cinema B", "2 Main St", "11:00"),
+          ],
+        };
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  await expect(page.locator(".theatre-result")).toHaveCount(2);
+  await expect(page.locator("#summary")).toContainText("Showing 2 theatres with 3 matching showtimes");
+  await page.getByRole("button", { name: "Next page of theatres" }).click();
+
+  await expect(page.locator(".theatre-result")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Cinema C", exact: true })).toBeVisible();
+  await expect(page.locator("#summary")).toContainText("Showing 1 theatre with 1 matching showtime");
+  await expect(page.getByRole("button", { name: "Previous page of theatres" })).toBeEnabled();
+});
+
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
   let movieRequestCount = 0;
   let releaseFirstMovieRequest;
@@ -288,6 +395,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   await page.locator("#zipInput").fill("10001");
   await page.locator("#movieInput").fill("Test Movie");
   await page.locator("#searchButton").click();
+  await page.locator(".theatre-summary").click();
 
   const matchedSeat = page.locator(".real-seat.matched");
   await expect(matchedSeat).toHaveCount(1);
@@ -315,6 +423,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
   await page.locator("#searchButton").click();
+  await page.locator(".theatre-summary").click();
 
   const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
   await expect(includedWheelchairSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
@@ -369,6 +478,7 @@ test("accessible matches retain both accessible and matching states", async ({ p
   await page.locator("#zipInput").fill("10001");
   await page.locator("#movieInput").fill("Test Movie");
   await page.locator("#searchButton").click();
+  await page.locator(".theatre-summary").click();
 
   const accessibleMatch = page.locator('.real-seat[title="WC1 - available - wheelchair"]');
   const combinedBackground = await accessibleMatch.evaluate(seat => getComputedStyle(seat).backgroundImage);

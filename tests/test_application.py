@@ -50,6 +50,26 @@ class DateAndValidationTests(unittest.TestCase):
         self.assertEqual(ordered_names("latest"), ["Near Late", "Near Early", "Far Early"])
         self.assertEqual(ordered_names("nearest"), ["Near Early", "Near Late", "Far Early"])
 
+    def test_theatre_pages_bound_seat_map_work_without_splitting_groups(self):
+        def candidates(theatre_name, count):
+            theatre = {"name": theatre_name, "address": f"{theatre_name} Main St"}
+            return [(theatre, {"time": str(index)}) for index in range(count)]
+
+        pages = application.paginate_theatre_candidates(
+            [
+                *candidates("Cinema A", 4),
+                *candidates("Cinema B", 2),
+                *candidates("Cinema C", 1),
+            ],
+            theatre_page_size=20,
+            seat_map_target=3,
+        )
+
+        self.assertEqual(
+            [[(theatre_key[0], len(group)) for theatre_key, group in page] for page in pages],
+            [[("cinema a", 4)], [("cinema b", 2), ("cinema c", 1)]],
+        )
+
     def test_ticket_urls_are_allowlisted(self):
         self.assertEqual(
             application.safe_fandango_url("https://tickets.fandango.com/order"),
@@ -168,6 +188,7 @@ class CacheTests(unittest.TestCase):
         second = application.seat_map("showtime-1")
         self.assertIs(first, second)
         fandango_json.assert_called_once()
+        self.assertEqual(fandango_json.call_args.kwargs["timeout"], application.SEAT_MAP_TIMEOUT_SECONDS)
         logger_info.assert_called_once()
         self.assertEqual(
             logger_info.call_args.args[:2],
@@ -408,6 +429,94 @@ class RouteTests(unittest.TestCase):
         matched_by_id = {seat["id"]: seat["matched"] for seat in layout_seats}
         self.assertEqual(matched_by_id, {"A1": True, "A2": False, "A3": False})
         seat_map.assert_called_once_with("showtime-1")
+
+    @patch("backend.application.seat_map")
+    @patch("backend.application.fandango_theatres_by_date")
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_search_pages_complete_theatre_groups_in_the_requested_order(
+        self, resolve_search_location, fandango_theatres_by_date, seat_map
+    ):
+        def theatre(name, address, distance, showtimes):
+            return {
+                "name": name,
+                "address": address,
+                "distanceMiles": distance,
+                "website": f"https://www.fandango.com/{name.lower().replace(' ', '-')}/theater-page",
+                "source": "Fandango",
+                "rawMovies": [{
+                    "id": "movie-1",
+                    "title": "Test Movie",
+                    "variants": [{
+                        "filmFormatHeader": "Standard",
+                        "amenityGroups": [{
+                            "hasReservedSeating": True,
+                            "showtimes": [{
+                                "type": "available",
+                                "ticketingDate": f"2026-07-20+{show_time}",
+                                "showtimeHashCode": f"{name}-{show_time}",
+                            } for show_time in showtimes],
+                        }],
+                    }],
+                }],
+            }
+
+        fandango_theatres_by_date.return_value = {
+            "2026-07-20": [
+                theatre("Cinema A", "1 Main St", 5, ["10:00", "13:00"]),
+                theatre("Cinema B", "2 Main St", 1, ["11:00"]),
+                theatre("Cinema C", "3 Main St", 2, ["12:00"]),
+            ]
+        }
+        seat_map.side_effect = lambda _showtime_hash: {
+            "seats": [{
+                "id": "A1", "row": 0, "column": 1, "x": 0, "y": 0,
+                "width": 10, "height": 10, "status": "A", "type": "standard",
+            }],
+            "totalAvailableSeatCount": 1,
+            "totalSeatCount": 1,
+        }
+        common_params = {
+            "zip": "00000", "radius": 25, "movie": "Test Movie",
+            "startDate": "2026-07-20", "endDate": "2026-07-20",
+        }
+
+        first_page = self.client.get("/api/search", params={
+            **common_params, "pageSize": 2, "sort": "earliest",
+        }).json()
+        self.assertEqual(
+            [(match["theatre"]["name"], match["time"]) for match in first_page["matches"]],
+            [("Cinema A", "10:00"), ("Cinema A", "13:00"), ("Cinema B", "11:00")],
+        )
+        self.assertEqual(first_page["theatreCount"], 2)
+        self.assertEqual(first_page["showtimeCount"], 3)
+        self.assertEqual(first_page["matchedThrough"], 2)
+        self.assertTrue(first_page["hasNextPage"])
+
+        second_page = self.client.get("/api/search", params={
+            **common_params, "page": 2, "pageSize": 2, "sort": "earliest",
+        }).json()
+        self.assertEqual(
+            [match["theatre"]["name"] for match in second_page["matches"]],
+            ["Cinema C"],
+        )
+        self.assertTrue(second_page["hasPreviousPage"])
+        self.assertFalse(second_page["hasNextPage"])
+
+        latest = self.client.get("/api/search", params={
+            **common_params, "pageSize": 1, "sort": "latest",
+        }).json()
+        self.assertEqual(
+            [(match["theatre"]["name"], match["time"]) for match in latest["matches"]],
+            [("Cinema A", "13:00"), ("Cinema A", "10:00")],
+        )
+
+        nearest = self.client.get("/api/search", params={
+            **common_params, "pageSize": 2, "sort": "nearest",
+        }).json()
+        self.assertEqual(
+            [match["theatre"]["name"] for match in nearest["matches"]],
+            ["Cinema B", "Cinema C"],
+        )
 
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)

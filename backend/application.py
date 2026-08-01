@@ -52,6 +52,8 @@ THEATRES_TTL_SECONDS = 300
 THEATRES_CACHE_MAX = 240
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
+SEAT_MAPS_PER_PAGE_TARGET = 24
+SEAT_MAP_TIMEOUT_SECONDS = 12
 MAX_DATE_RANGE_DAYS = 14
 MAX_TEXT_PARAM_LENGTH = 120
 SEARCH_SORTS = {"earliest", "latest", "nearest"}
@@ -162,6 +164,39 @@ def search_sort_key(distance, show_date, show_time, theatre_name, sort_order):
     if sort_order == "latest":
         return (-chronology, float(distance), theatre_name)
     return (chronology, float(distance), theatre_name)
+
+
+def theatre_group_key(theatre):
+    """Identify one visible theatre card across dated Fandango payloads."""
+    return (
+        normalized_text(theatre.get("name", "")),
+        normalized_text(theatre.get("address", "")),
+    )
+
+
+def paginate_theatre_candidates(candidates, theatre_page_size, seat_map_target=SEAT_MAPS_PER_PAGE_TARGET):
+    """Pack complete theatre groups into pages with bounded seat-map work."""
+    grouped_candidates = OrderedDict()
+    for candidate in candidates:
+        grouped_candidates.setdefault(theatre_group_key(candidate[0]), []).append(candidate)
+
+    pages = []
+    current_page = []
+    current_candidate_count = 0
+    for theatre_key, theatre_candidates in grouped_candidates.items():
+        would_exceed_theatre_limit = len(current_page) >= theatre_page_size
+        would_exceed_seat_map_target = (
+            current_candidate_count + len(theatre_candidates) > seat_map_target
+        )
+        if current_page and (would_exceed_theatre_limit or would_exceed_seat_map_target):
+            pages.append(current_page)
+            current_page = []
+            current_candidate_count = 0
+        current_page.append((theatre_key, theatre_candidates))
+        current_candidate_count += len(theatre_candidates)
+    if current_page:
+        pages.append(current_page)
+    return pages
 
 
 def safe_fandango_url(value):
@@ -626,6 +661,7 @@ def seat_map(showtime_hash):
     data = fandango_json(
         f"/napi/seatMap/{showtime_hash}",
         referer="https://www.fandango.com/",
+        timeout=SEAT_MAP_TIMEOUT_SECONDS,
     )
     with SEAT_MAP_CACHE_LOCK:
         SEAT_MAP_CACHE[showtime_hash] = (now, data)
@@ -1001,14 +1037,11 @@ def api_search(
             raise ValueError("Sort order must be earliest, latest, or nearest.")
         page = max(page, 1)
         page_size = min(max(pageSize, 1), MAX_PAGE_SIZE)
-        page_start = (page - 1) * page_size
-        page_end = page_start + page_size
 
         search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
         if not movie_query:
             raise HTTPException(status_code=400, detail="Enter a movie title.")
 
-        matches = []
         candidates = []
         dates = list(date_range(start_date, end_date))
         theatres_by_date = fandango_theatres_by_date(search_zip, radius, dates, origin)
@@ -1040,12 +1073,13 @@ def api_search(
             sort_order,
         ))
 
-        def check_candidate(candidate):
+        def check_candidate(candidate_index):
+            candidate = candidates[candidate_index]
             theatre_item, showtime = candidate
             seat_match = showtime_seat_match(showtime, min_adjacent, seat_filter, selected_cells, exclude_accessible, seat_map_loader=seat_map)
             if not seat_match:
                 return None
-            return {
+            return candidate_index, theatre_group_key(theatre_item), {
                 "theatre": {
                     "name": theatre_item["name"],
                     "address": theatre_item["address"],
@@ -1067,38 +1101,52 @@ def api_search(
                 "seatMap": seat_match,
             }
 
-        checked_seat_maps = 0
-        if candidates:
-            worker_count = min(12, max(4, len(candidates)))
+        theatre_pages = paginate_theatre_candidates(candidates, page_size)
+        page_theatre_groups = theatre_pages[page - 1] if page <= len(theatre_pages) else []
+        page_theatre_keys = [theatre_key for theatre_key, _ in page_theatre_groups]
+        page_candidate_indices = []
+        candidate_index_by_identity = {id(candidate): index for index, candidate in enumerate(candidates)}
+        for _, theatre_candidates in page_theatre_groups:
+            page_candidate_indices.extend(
+                candidate_index_by_identity[id(candidate)] for candidate in theatre_candidates
+            )
+
+        checked_seat_maps = len(page_candidate_indices)
+        successful_matches = []
+        if page_candidate_indices:
+            worker_count = min(12, max(4, len(page_candidate_indices)))
             batch_size = worker_count * 2
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                for offset in range(0, len(candidates), batch_size):
-                    batch = candidates[offset:offset + batch_size]
-                    future_map = {executor.submit(check_candidate, candidate): candidate for candidate in batch}
-                    checked_seat_maps += len(batch)
-                    for future in as_completed(future_map):
+                for offset in range(0, len(page_candidate_indices), batch_size):
+                    batch_indices = page_candidate_indices[offset:offset + batch_size]
+                    futures = [executor.submit(check_candidate, candidate_index) for candidate_index in batch_indices]
+                    batch_matches = []
+                    for future in as_completed(futures):
                         result = future.result()
                         if result:
-                            matches.append(result)
-                    matches.sort(key=lambda item: search_sort_key(
-                        item["theatre"]["distanceMiles"],
-                        item["date"],
-                        item["time"],
-                        item["theatre"]["name"],
-                        sort_order,
-                    ))
-                    if len(matches) > page_end:
-                        break
+                            batch_matches.append(result)
+                    successful_matches.extend(sorted(batch_matches, key=lambda item: item[0]))
 
-        page_matches = matches[page_start:page_end]
+        page_matches_by_theatre = {theatre_key: [] for theatre_key in page_theatre_keys}
+        for _, theatre_key, match in sorted(successful_matches, key=lambda item: item[0]):
+            if theatre_key in page_matches_by_theatre:
+                page_matches_by_theatre[theatre_key].append(match)
+        page_matches = [
+            match
+            for theatre_key in page_theatre_keys
+            for match in page_matches_by_theatre[theatre_key]
+        ]
         return {
             "matches": page_matches,
             "page": page,
             "pageSize": page_size,
             "sort": sort_order,
             "hasPreviousPage": page > 1,
-            "hasNextPage": len(matches) > page_end,
-            "matchedThrough": min(len(matches), page_end),
+            "hasNextPage": page < len(theatre_pages),
+            "matchedThrough": sum(len(theatre_page) for theatre_page in theatre_pages[:page]),
+            "theatreCount": len([matches for matches in page_matches_by_theatre.values() if matches]),
+            "candidateTheatreCount": len(page_theatre_groups),
+            "showtimeCount": len(page_matches),
             "checkedShowtimes": len(candidates),
             "checkedSeatMaps": checked_seat_maps,
             "accessibleSeatsExcluded": exclude_accessible,

@@ -6,6 +6,7 @@ const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const python = process.platform === "win32"
   ? join(repositoryRoot, ".venv", "Scripts", "python.exe")
   : "python";
+const testPort = Number(process.env.MOVIESEATFINDER_TEST_PORT || 18765);
 
 export default defineConfig({
   testDir: ".",
@@ -13,14 +14,14 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 30_000,
   use: {
-    baseURL: "http://127.0.0.1:8765",
+    baseURL: `http://127.0.0.1:${testPort}`,
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   },
   webServer: {
-    command: `"${python}" -m uvicorn app:app --host 127.0.0.1 --port 8765`,
-    url: "http://127.0.0.1:8765",
-    reuseExistingServer: !process.env.CI,
+    command: `"${python}" -m uvicorn app:app --host 127.0.0.1 --port ${testPort}`,
+    url: `http://127.0.0.1:${testPort}`,
+    reuseExistingServer: false,
   },
 });
