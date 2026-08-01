@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { addDays, getJson, todayString } from "../frontend/utils.js";
+import { groupMatchesByTheatre } from "../frontend/results.js";
 import { logTicketClick } from "../frontend/tracking.js";
 
 function response(status, body) {
@@ -89,4 +90,38 @@ test("ticket click tracking falls back when a beacon cannot be queued", async ()
     if (originalNavigator === undefined) delete globalThis.navigator;
     else Object.defineProperty(globalThis, "navigator", { configurable: true, value: originalNavigator });
   }
+});
+
+test("matching showtimes are grouped by theatre without changing their order", () => {
+  const first = { theatre: { name: "Cinema One", address: "1 Main St" }, time: "18:00" };
+  const second = { theatre: { name: "Cinema One", address: "1 Main St" }, time: "18:15" };
+  const third = { theatre: { name: "Cinema Two", address: "2 Main St" }, time: "19:00" };
+  const matches = [first, second, third];
+  const groups = groupMatchesByTheatre(matches);
+
+  assert.deepEqual(groups, [
+    { theatre: first.theatre, matches: [first, second] },
+    { theatre: third.theatre, matches: [third] },
+  ]);
+  assert.deepEqual(groups.flatMap(group => group.matches), matches);
+});
+
+test("nonconsecutive showtimes share one theatre group", () => {
+  const first = { theatre: { name: "Cinema One", address: "1 Main St" }, time: "18:00" };
+  const second = { theatre: { name: "Cinema Two", address: "2 Main St" }, time: "18:15" };
+  const third = { theatre: { name: "Cinema One", address: "1 Main St" }, time: "19:00" };
+  const matches = [first, second, third];
+  const groups = groupMatchesByTheatre(matches);
+
+  assert.deepEqual(groups, [
+    { theatre: first.theatre, matches: [first, third] },
+    { theatre: second.theatre, matches: [second] },
+  ]);
+});
+
+test("theatres with the same name at different addresses stay separate", () => {
+  const first = { theatre: { name: "Neighborhood Cinema", address: "1 Main St" } };
+  const second = { theatre: { name: "Neighborhood Cinema", address: "99 Broad St" } };
+
+  assert.equal(groupMatchesByTheatre([first, second]).length, 2);
 });

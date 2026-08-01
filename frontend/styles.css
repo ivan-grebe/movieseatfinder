@@ -709,6 +709,7 @@ a:focus-visible {
 #results {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 14px;
   margin-top: 15px;
 }
@@ -851,6 +852,94 @@ a:focus-visible {
   font-size: 11px;
 }
 
+.theatre-summary {
+  display: block;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 11px;
+  user-select: none;
+}
+
+.theatre-summary::-webkit-details-marker { display: none; }
+
+.theatre-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.theatre-summary .result-title {
+  transition-property: color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+@media (hover: hover) {
+  .theatre-summary:hover .result-title { color: var(--accent-deep); }
+}
+
+.theatre-match-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 7px 0 0;
+  color: var(--accent-deep);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.theatre-match-count::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 3px 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition-property: transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(.2, 0, 0, 1);
+}
+
+.theatre-disclosure[open] .theatre-match-count::after {
+  transform: translateY(3px) rotate(225deg);
+}
+
+.result-showtimes {
+  margin-top: 12px;
+  border-top: 1px solid rgba(104, 130, 164, .16);
+}
+
+.result-showtime {
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.result-showtime + .result-showtime {
+  margin-top: 15px;
+  border-top: 1px solid rgba(104, 130, 164, .16);
+}
+
+.showtime-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 5px 10px;
+}
+
+.showtime-title {
+  margin: 0;
+  color: #1f2a3b;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 850;
+  letter-spacing: -.015em;
+  text-wrap: balance;
+}
+
 .result-meta {
   display: flex;
   flex-wrap: wrap;
@@ -889,9 +978,11 @@ a:focus-visible {
 }
 
 .result-amenities {
-  margin: 9px 0 0;
+  margin: 7px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.4;
+  text-wrap: pretty;
 }
 
 .real-seat-map {
@@ -1102,6 +1193,7 @@ a:focus-visible {
 
 .status,
 .result-open,
+.theatre-match-count,
 .summary,
 input[type="number"],
 input[type="date"],
@@ -1433,7 +1525,13 @@ input[type="time"] {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .05), 0 18px 38px rgba(0, 0, 0, .45);
   }
   .result-title { color: #eef2f8; }
-  .result-movie { color: #dde5f0; }
+  .result-movie,
+  .showtime-title { color: #dde5f0; }
+
+  .result-showtimes,
+  .result-showtime + .result-showtime {
+    border-color: rgba(255, 255, 255, .09);
+  }
 
   .tag {
     color: #c2cddc;

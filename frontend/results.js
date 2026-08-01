@@ -3,7 +3,6 @@ import { setSummary } from "./ui.js";
 import { logTicketClick } from "./tracking.js";
 
 const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
-const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>';
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
@@ -104,7 +103,72 @@ function makeTag(text, iconSvg) {
   return tag;
 }
 
-export function createResultsView({ results, summary, resultsToolbar, pagination, pageSize, getPage, onPageChange }) {
+export function groupMatchesByTheatre(matches) {
+  const groups = [];
+  const groupsByKey = new Map();
+
+  matches.forEach(match => {
+    const theatre = match.theatre || {};
+    const name = String(theatre.name || "").trim().toLowerCase();
+    const address = String(theatre.address || "").trim().toLowerCase();
+    const key = `${name}\u0000${address}`;
+    if (!groupsByKey.has(key)) {
+      const group = { theatre, matches: [] };
+      groupsByKey.set(key, group);
+      groups.push(group);
+    }
+    groupsByKey.get(key).matches.push(match);
+  });
+
+  return groups;
+}
+
+function renderShowtime(match, accessibleSeatsExcluded) {
+  const showtime = document.createElement("section");
+  showtime.className = "result-showtime";
+  showtime.setAttribute("aria-label", `${formatNiceDate(match.date)} ${match.displayTime}`);
+
+  const heading = document.createElement("div");
+  heading.className = "showtime-heading";
+  const time = document.createElement("h4");
+  time.className = "showtime-title";
+  time.textContent = `${formatNiceDate(match.date)} · ${match.displayTime}`;
+  const open = document.createElement("span");
+  open.className = "result-open";
+  open.textContent = `${match.seatMap.availableSeatCount} of ${match.seatMap.totalSeatCount} seats open`;
+  heading.append(time, open);
+  showtime.appendChild(heading);
+
+  if (match.format) {
+    const meta = document.createElement("div");
+    meta.className = "result-meta";
+    meta.appendChild(makeTag(match.format, ICON_FILM));
+    showtime.appendChild(meta);
+  }
+
+  if (match.amenities) {
+    const amenities = document.createElement("p");
+    amenities.className = "result-amenities";
+    amenities.textContent = match.amenities;
+    showtime.appendChild(amenities);
+  }
+
+  const seatMap = renderRealSeatMap(match.seatMap, accessibleSeatsExcluded);
+  if (seatMap) showtime.appendChild(seatMap);
+  if (match.ticketUrl) {
+    const link = document.createElement("a");
+    link.className = "buy-btn";
+    link.href = match.ticketUrl;
+    link.textContent = "Get tickets";
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.addEventListener("click", logTicketClick);
+    showtime.appendChild(link);
+  }
+  return showtime;
+}
+
+export function createResultsView({ results, summary, resultsToolbar, pagination, getPage, onPageChange }) {
   function beginReorder() {
     results.style.minHeight = `${Math.ceil(results.getBoundingClientRect().height)}px`;
     results.classList.add("is-reordering");
@@ -130,7 +194,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     previous.type = "button";
     previous.className = "btn-small";
     previous.textContent = "Previous";
-    previous.setAttribute("aria-label", "Previous page of results");
+    previous.setAttribute("aria-label", "Previous page of theatres");
     previous.disabled = !hasPrevious;
     previous.addEventListener("click", () => {
       if (getPage() > 1) onPageChange(getPage() - 1);
@@ -144,7 +208,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     next.type = "button";
     next.className = "btn-small";
     next.textContent = "Next";
-    next.setAttribute("aria-label", "Next page of results");
+    next.setAttribute("aria-label", "Next page of theatres");
     next.disabled = !hasNext;
     next.addEventListener("click", () => onPageChange(getPage() + 1));
     pagination.append(previous, label, next);
@@ -152,11 +216,10 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
 
   function render(data, { skipEntrance = false } = {}) {
     const matches = data.matches || [];
+    const theatreGroups = groupMatchesByTheatre(matches);
     results.innerHTML = "";
-    const showingStart = matches.length ? ((data.page || 1) - 1) * (data.pageSize || pageSize) + 1 : 0;
-    const showingEnd = showingStart + matches.length - 1;
-    const pageText = matches.length
-      ? `Showing ${showingStart}-${showingEnd} matching showtime${matches.length === 1 ? "" : "s"}`
+    const pageText = theatreGroups.length
+      ? `Showing ${theatreGroups.length} theatre${theatreGroups.length === 1 ? "" : "s"} with ${matches.length} matching showtime${matches.length === 1 ? "" : "s"}`
       : "No matching showtimes";
     const summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${data.checkedSeatMaps === 1 ? "" : "s"} from ${data.checkedShowtimes} candidate showtime${data.checkedShowtimes === 1 ? "" : "s"}.`;
     setSummary(summary, summaryText, !matches.length);
@@ -173,12 +236,17 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
       return;
     }
 
-    matches.forEach((match, index) => {
+    theatreGroups.forEach((group, index) => {
+      const match = group.matches[0];
       const item = document.createElement("article");
-      item.className = "result";
+      item.className = "result theatre-result";
       if (skipEntrance) item.classList.add("no-enter-animation");
-      item.setAttribute("aria-label", `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`);
+      item.setAttribute("aria-label", `${match.movieTitle} at ${match.theatre.name}, ${group.matches.length} matching showtime${group.matches.length === 1 ? "" : "s"}`);
       if (!skipEntrance) item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
+      const disclosure = document.createElement("details");
+      disclosure.className = "theatre-disclosure";
+      const theatreSummary = document.createElement("summary");
+      theatreSummary.className = "theatre-summary";
       const body = document.createElement("div");
       body.className = "result-body";
 
@@ -224,36 +292,21 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
         details.appendChild(submeta);
       }
 
-      const meta = document.createElement("div");
-      meta.className = "result-meta";
-      if (match.format) meta.appendChild(makeTag(match.format, ICON_FILM));
-      meta.appendChild(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
-      const open = document.createElement("span");
-      open.className = "result-open";
-      open.textContent = `${match.seatMap.availableSeatCount} of ${match.seatMap.totalSeatCount} seats open`;
-      meta.appendChild(open);
-      details.appendChild(meta);
+      const matchCount = document.createElement("p");
+      matchCount.className = "theatre-match-count";
+      matchCount.textContent = `${group.matches.length} matching showtime${group.matches.length === 1 ? "" : "s"}`;
+      details.appendChild(matchCount);
       body.appendChild(details);
-      item.appendChild(body);
+      theatreSummary.appendChild(body);
+      disclosure.appendChild(theatreSummary);
 
-      if (match.amenities) {
-        const amenities = document.createElement("p");
-        amenities.className = "result-amenities";
-        amenities.textContent = match.amenities;
-        item.appendChild(amenities);
-      }
-      const seatMap = renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded);
-      if (seatMap) item.appendChild(seatMap);
-      if (match.ticketUrl) {
-        const link = document.createElement("a");
-        link.className = "buy-btn";
-        link.href = match.ticketUrl;
-        link.textContent = "Get tickets";
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        link.addEventListener("click", logTicketClick);
-        item.appendChild(link);
-      }
+      const showtimes = document.createElement("div");
+      showtimes.className = "result-showtimes";
+      group.matches.forEach(showtime => {
+        showtimes.appendChild(renderShowtime(showtime, data.accessibleSeatsExcluded));
+      });
+      disclosure.appendChild(showtimes);
+      item.appendChild(disclosure);
       results.appendChild(item);
     });
   }

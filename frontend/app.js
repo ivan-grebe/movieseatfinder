@@ -1,7 +1,7 @@
 import { closeCombo, setupCombo } from "./combo.js";
 import { elements } from "./dom.js?v=20260801-stable-sorting";
 import { createFormatPicker } from "./format-picker.js";
-import { createResultsView } from "./results.js?v=20260801-stable-sorting";
+import { createResultsView } from "./results.js?v=20260801-theatre-pagination";
 import { createSeatGrid } from "./seat-grid.js";
 import { setButtonBusy, setStatus, setSummary } from "./ui.js";
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
@@ -34,7 +34,6 @@ const resultsView = createResultsView({
   summary,
   resultsToolbar,
   pagination,
-  pageSize: PAGE_SIZE,
   getPage: () => currentPage,
   onPageChange: page => {
     currentPage = page;
