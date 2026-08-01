@@ -500,6 +500,34 @@ a:focus-visible {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.loading-label {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.loading-dots {
+  display: inline-flex;
+  width: 1.25em;
+  margin-left: .08em;
+  text-align: left;
+}
+
+.loading-dot { opacity: 0; }
+.loading-dot-1 { opacity: 1; }
+.loading-dot-2 { animation: loading-dot-two 1.2s steps(1, end) infinite; }
+.loading-dot-3 { animation: loading-dot-three 1.2s steps(1, end) infinite; }
+
+@keyframes loading-dot-two {
+  0%, 32% { opacity: 0; }
+  33%, 100% { opacity: 1; }
+}
+
+@keyframes loading-dot-three {
+  0%, 65% { opacity: 0; }
+  66%, 100% { opacity: 1; }
+}
+
 .combo { position: relative; }
 
 .combo-menu {
@@ -1062,22 +1090,39 @@ a:focus-visible {
 .legend-swatch.matched { background: var(--accent); border-color: var(--accent-deep); }
 
 .pagination {
-  display: flex;
+  display: grid;
+  grid-template-columns: 88px minmax(76px, 1fr) 88px;
   align-items: center;
-  justify-content: center;
   gap: 10px;
+  width: min(100%, 416px);
   margin-top: 18px;
+  margin-right: auto;
+  margin-left: auto;
 }
 
 .pagination[hidden] { display: none; }
 
+.pagination .btn-small { width: 100%; }
+
 .pagination-label {
-  min-width: 76px;
+  min-width: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.pagination.is-loading .pagination-label {
+  color: var(--accent-deep);
+}
+
+.pagination.is-loading .btn-small:disabled {
+  cursor: progress;
+}
+
+.pagination.has-error .pagination-label {
+  color: var(--danger);
 }
 
 .buy-btn {
@@ -1146,6 +1191,7 @@ input[type="time"] {
   .combo-option {
     transition-duration: 0ms;
   }
+
 }
 
 @media (max-width: 980px) {

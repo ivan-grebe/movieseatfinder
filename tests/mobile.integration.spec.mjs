@@ -10,6 +10,27 @@ const emptySearch = {
   checkedSeatMaps: 1,
 };
 
+function makeSimpleMatch(theatreName, time) {
+  return {
+    theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+    movieTitle: "Test Movie",
+    date: "2026-08-01",
+    time,
+    displayTime: time,
+    format: "Standard",
+    amenities: "Reserved seating",
+    seatMap: {
+      availableSeatCount: 1,
+      totalSeatCount: 1,
+      layout: {
+        width: 30,
+        height: 30,
+        seats: [{ id: `${theatreName}-${time}`, status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+      },
+    },
+  };
+}
+
 async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/theatres*", route => route.fulfill({
     contentType: "application/json",
@@ -66,11 +87,16 @@ test("mobile search keeps content stable while loading and then renders its resp
   await searchStarted;
 
   await expect(searchButton).toBeDisabled();
-  await expect(searchButton).toContainText("Searching real showtimes and seat maps");
+  await expect(searchButton).toHaveAttribute("aria-busy", "true");
+  await expect(searchButton).toContainText("Loading theatres");
+  await expect(searchButton.locator(".loading-dot")).toHaveCount(3);
   await expect(emptyState).toBeVisible();
+  await expect(searchButton).toContainText("Checking showtimes");
+  await expect(searchButton).toContainText("Checking seat maps");
 
   releaseSearch();
   await expect(page.locator("#summary")).toContainText("No matching showtimes");
+  await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -114,6 +140,7 @@ test("mobile format chips send every selected format to the search", async ({ pa
 });
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const searchSorts = [];
   let releaseLatestSearch;
   let markLatestSearchStarted;
@@ -167,7 +194,13 @@ test("result sorting defaults to earliest and reruns the search when changed", a
 
   await sortInput.selectOption("latest");
   await latestSearchStarted;
-  await expect(page.locator("#sortStatus")).toHaveText("Reordering…");
+  const reorderScrollY = await page.evaluate(() => window.scrollY);
+  const sortStatus = page.locator("#sortStatus");
+  await expect(sortStatus).toContainText("Reordering");
+  await expect(sortStatus.locator(".loading-dot")).toHaveCount(3);
+  await expect(sortStatus.locator(".loading-dot-1")).toHaveCSS("opacity", "1");
+  expect(await sortStatus.locator(".loading-dot-2").evaluate(dot => getComputedStyle(dot).animationName)).toBe("loading-dot-two");
+  expect(await sortStatus.locator(".loading-dot-3").evaluate(dot => getComputedStyle(dot).animationName)).toBe("loading-dot-three");
   await expect(sortInput).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeEnabled();
   await expect(page.locator("#searchButton")).toHaveText("Find matching seats");
@@ -178,7 +211,7 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   }));
   expect(duringReorder.resultsMarkup).toBe(beforeReorder.resultsMarkup);
   expect(duringReorder.minHeight).toBeGreaterThanOrEqual(beforeReorder.resultsHeight);
-  expect(duringReorder.scrollY).toBe(beforeReorder.scrollY);
+  expect(duringReorder.scrollY).toBe(reorderScrollY);
 
   releaseLatestSearch();
   await expect.poll(() => searchSorts.at(-1)).toBe("latest");
@@ -189,7 +222,7 @@ test("result sorting defaults to earliest and reruns the search when changed", a
     scrollY: window.scrollY,
     animationName: getComputedStyle(document.querySelector(".result")).animationName,
   }));
-  expect(afterReorder.scrollY).toBe(beforeReorder.scrollY);
+  expect(afterReorder.scrollY).toBe(reorderScrollY);
   expect(afterReorder.animationName).toBe("none");
 
   await sortInput.selectOption("nearest");
@@ -202,6 +235,84 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   }));
   expect(dimensions.height).toBeGreaterThanOrEqual(44);
   expect(dimensions.overflow).toBeLessThanOrEqual(0);
+});
+
+test("pagination shows generic loading feedback beside the page controls", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  let markSecondPageStarted;
+  let releaseSecondPage;
+  const secondPageStarted = new Promise(resolve => { markSecondPageStarted = resolve; });
+  const secondPageGate = new Promise(resolve => { releaseSecondPage = resolve; });
+  await mockSearchDependencies(page, async route => {
+    const requestedPage = Number(new URL(route.request().url()).searchParams.get("page"));
+    if (requestedPage === 2) {
+      markSecondPageStarted();
+      await secondPageGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...emptySearch,
+          page: 2,
+          hasPreviousPage: true,
+          matches: [makeSimpleMatch("Page Two Cinema", "20:00")],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...emptySearch,
+        hasNextPage: true,
+        matches: [makeSimpleMatch("Page One Cinema", "19:00")],
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await page.locator("#movieInput").fill("Test Movie");
+  await page.locator("#searchButton").click();
+  await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
+
+  const pagination = page.locator("#pagination");
+  const previousPage = page.getByRole("button", { name: "Previous page of results" });
+  const nextPage = page.getByRole("button", { name: "Next page of results" });
+  await nextPage.scrollIntoViewIfNeeded();
+  const controlsBeforeLoading = await page.evaluate(() => {
+    const controls = [...document.querySelectorAll("#pagination button")];
+    return controls.map(control => {
+      const rect = control.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+  });
+  await nextPage.click();
+  await secondPageStarted;
+
+  await expect(pagination).toHaveAttribute("aria-busy", "true");
+  await expect(pagination.locator("button:disabled")).toHaveCount(2);
+  await expect(previousPage).toBeDisabled();
+  await expect(nextPage).toBeDisabled();
+  const controlsDuringLoading = await page.evaluate(() => {
+    const controls = [...document.querySelectorAll("#pagination button")];
+    return controls.map(control => {
+      const rect = control.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+  });
+  expect(controlsDuringLoading).toEqual(controlsBeforeLoading);
+  await expect(page.locator("#sortInput")).toBeDisabled();
+  await expect(pagination.locator(".pagination-label")).toHaveText("Loading...");
+  await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
+  await expect(page.locator("#searchButton")).toContainText("Checking showtimes");
+  await expect(pagination.locator(".pagination-label")).toHaveText("Loading...");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
+  releaseSecondPage();
+  await expect(page.getByRole("heading", { name: "Page Two Cinema", exact: true })).toBeVisible();
+  await expect(pagination.locator(".pagination-label")).toHaveText("Page 2");
+  await expect(pagination).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#sortInput")).toBeEnabled();
 });
 
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {

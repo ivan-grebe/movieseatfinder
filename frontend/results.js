@@ -1,5 +1,5 @@
 import { formatNiceDate } from "./utils.js";
-import { setSummary } from "./ui.js";
+import { setAnimatedStatus, setSummary } from "./ui.js?v=20260801-loading-feedback-2";
 import { logTicketClick } from "./tracking.js";
 
 const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
@@ -105,6 +105,8 @@ function makeTag(text, iconSvg) {
 }
 
 export function createResultsView({ results, summary, resultsToolbar, pagination, pageSize, getPage, onPageChange }) {
+  let lastPaginationData = null;
+
   function beginReorder() {
     results.style.minHeight = `${Math.ceil(results.getBoundingClientRect().height)}px`;
     results.classList.add("is-reordering");
@@ -116,6 +118,9 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
   }
 
   function renderPagination(data) {
+    lastPaginationData = data;
+    pagination.classList.remove("is-loading", "has-error");
+    pagination.removeAttribute("aria-busy");
     const hasPrevious = Boolean(data.hasPreviousPage);
     const hasNext = Boolean(data.hasNextPage);
     if (!hasPrevious && !hasNext) {
@@ -138,6 +143,8 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
 
     const label = document.createElement("span");
     label.className = "pagination-label";
+    label.setAttribute("role", "status");
+    label.setAttribute("aria-live", "polite");
     label.textContent = `Page ${data.page || getPage()}`;
 
     const next = document.createElement("button");
@@ -148,6 +155,26 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     next.disabled = !hasNext;
     next.addEventListener("click", () => onPageChange(getPage() + 1));
     pagination.append(previous, label, next);
+  }
+
+  function setPageLoading() {
+    pagination.hidden = false;
+    pagination.classList.add("is-loading");
+    pagination.classList.remove("has-error");
+    pagination.setAttribute("aria-busy", "true");
+    pagination.querySelectorAll("button").forEach(button => {
+      button.disabled = true;
+    });
+    const label = pagination.querySelector(".pagination-label");
+    if (label) setAnimatedStatus(label, "Loading");
+  }
+
+  function endPageLoading(errorMessage = "") {
+    if (lastPaginationData) renderPagination(lastPaginationData);
+    if (!errorMessage) return;
+    pagination.classList.add("has-error");
+    const label = pagination.querySelector(".pagination-label");
+    if (label) label.textContent = errorMessage;
   }
 
   function render(data, { skipEntrance = false } = {}) {
@@ -258,5 +285,5 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     });
   }
 
-  return { beginReorder, endReorder, render };
+  return { beginReorder, endReorder, endPageLoading, render, setPageLoading };
 }

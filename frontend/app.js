@@ -1,9 +1,9 @@
 import { closeCombo, setupCombo } from "./combo.js";
 import { elements } from "./dom.js?v=20260801-stable-sorting";
 import { createFormatPicker } from "./format-picker.js";
-import { createResultsView } from "./results.js?v=20260801-stable-sorting";
+import { createResultsView } from "./results.js?v=20260801-loading-feedback-2";
 import { createSeatGrid } from "./seat-grid.js";
-import { setButtonBusy, setStatus, setSummary } from "./ui.js";
+import { setAnimatedStatus, setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js?v=20260801-loading-feedback-2";
 import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
 
 const {
@@ -37,8 +37,9 @@ const resultsView = createResultsView({
   pageSize: PAGE_SIZE,
   getPage: () => currentPage,
   onPageChange: page => {
+    const previousPage = currentPage;
     currentPage = page;
-    runSearch();
+    runSearch({ pageChange: true, previousPage });
   },
 });
 
@@ -177,29 +178,40 @@ function finishReorder({ restoreScroll = true } = {}) {
   if (restoreScroll) window.requestAnimationFrame(() => window.scrollTo(window.scrollX, scrollY));
 }
 
-async function runSearch({ reorder = false } = {}) {
+async function runSearch({ reorder = false, pageChange = false, previousPage = currentPage } = {}) {
   if (!reorder) finishReorder({ restoreScroll: false });
   syncEndDateBounds();
   const movieTitle = movieInput.value.trim();
   if (!hasSearchLocation()) {
+    if (pageChange) currentPage = previousPage;
     reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
     return;
   }
-  if (!enforceRadius(true)) return;
+  if (!enforceRadius(true)) {
+    if (pageChange) currentPage = previousPage;
+    return;
+  }
   if (!movieTitle) {
+    if (pageChange) currentPage = previousPage;
     reportRequiredField(movieInput, "Choose a movie first.");
     return;
   }
 
   const loadSequence = ++searchLoadSequence;
+  let stopLoadingStages = () => {};
   if (reorder) {
     reorderScrollY = window.scrollY;
     resultsView.beginReorder();
     sortInput.disabled = true;
-    sortStatus.textContent = "Reordering…";
+    setAnimatedStatus(sortStatus, "Reordering");
   } else {
-    setSummary(summary, "", false);
-    setButtonBusy(searchButton, true, "Searching real showtimes and seat maps…");
+    sortInput.disabled = true;
+    if (!pageChange) setSummary(summary, "", false);
+    if (pageChange) resultsView.setPageLoading();
+    stopLoadingStages = startLoadingStages(stage => {
+      if (loadSequence !== searchLoadSequence) return;
+      setButtonBusy(searchButton, true, stage);
+    });
   }
   let reorderError = "";
   try {
@@ -221,14 +233,20 @@ async function runSearch({ reorder = false } = {}) {
   } catch (error) {
     if (loadSequence !== searchLoadSequence) return;
     if (reorder) reorderError = "Try again";
-    else setSummary(summary, error.message, true);
+    else if (pageChange) {
+      const failedPage = currentPage;
+      currentPage = previousPage;
+      resultsView.endPageLoading(`Couldn't load page ${failedPage}`);
+    } else setSummary(summary, error.message, true);
   } finally {
+    stopLoadingStages();
     if (loadSequence === searchLoadSequence) {
       if (reorder) {
         finishReorder();
         sortStatus.textContent = reorderError;
       } else {
         setButtonBusy(searchButton, false);
+        sortInput.disabled = false;
       }
     }
   }
