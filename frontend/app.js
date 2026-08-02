@@ -159,7 +159,7 @@ async function loadMovies() {
     movies = data.movies;
     const typedMovie = movieInput.value.trim();
     if (typedMovie && !typedMovieIsShowing(typedMovie)) {
-      setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres — pick a different movie.`, "error");
+      setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres - pick a different movie.`, "error");
     } else {
       setStatus(movieStatus, `${movies.length} movies showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`, "success");
     }

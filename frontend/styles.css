@@ -291,7 +291,7 @@ select {
 
 .format-option:hover { border-color: var(--accent-hover-border); }
 
-/* Selection is shown by fill only — no width change, so selecting chips never
+/* Selection is shown by fill only - no width change, so selecting chips never
    reflows or re-wraps the row. */
 .format-option.is-selected {
   border-color: var(--accent-deep);

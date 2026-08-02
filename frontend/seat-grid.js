@@ -38,7 +38,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
     if (count) {
       setStatus(status, `${count} seat area${count === 1 ? "" : "s"} highlighted.`, "success");
     } else {
-      setStatus(status, "No area highlighted — matching seats anywhere.");
+      setStatus(status, "No area highlighted - matching seats anywhere.");
     }
   }
 
