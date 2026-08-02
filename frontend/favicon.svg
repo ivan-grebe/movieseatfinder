@@ -1,6 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Movie Seat Finder">
-  <circle cx="32" cy="32" r="32" fill="#0b0b0c"/>
-  <path d="M19 32V24a8 8 0 0 1 8-8h10a8 8 0 0 1 8 8v8" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M15 32a5 5 0 0 1 5 5v8h24v-8a5 5 0 0 1 5-5" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M20 45h24M22 51v3M42 51v3" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+  <style>
+    /* A near-black disc vanishes into a dark browser tab strip, leaving only
+       the seat glyph visible and the icon looking half its actual size, so
+       invert the mark to keep the full circle readable on dark chrome. */
+    .disc { fill: #0b0b0c }
+    .seat { stroke: #fff }
+    @media (prefers-color-scheme: dark) {
+      .disc { fill: #fff }
+      .seat { stroke: #0b0b0c }
+    }
+  </style>
+  <circle class="disc" cx="32" cy="32" r="32"/>
+  <path class="seat" d="M19 32V24a8 8 0 0 1 8-8h10a8 8 0 0 1 8 8v8" fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="seat" d="M15 32a5 5 0 0 1 5 5v8h24v-8a5 5 0 0 1 5-5" fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="seat" d="M20 45h24M22 51v3M42 51v3" fill="none" stroke-width="4.5" stroke-linecap="round"/>
 </svg>
