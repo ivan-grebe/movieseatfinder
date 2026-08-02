@@ -15,7 +15,7 @@ import threading
 import time
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import requests
 
@@ -23,6 +23,10 @@ from .location import (
     distance_miles,
     filter_theatres_within_radius,
     resolve_search_location,
+)
+from .seat_matching import (
+    parse_seat_grid,
+    showtime_seat_match,
 )
 
 
@@ -44,6 +48,15 @@ INLINE_STYLE_HASH = base64.b64encode(
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_CDN_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_SUFFIXES = {".css", ".js", ".png", ".svg", ".webmanifest"}
+# The only frontend files the site serves; source modules stay private and the
+# raw index.html template is only reachable through the rendered "/" route.
+PUBLIC_ASSETS = {"app.bundle.js", "favicon.svg", "og-image.png"}
+# Content-derived ?v= values, so cached assets roll over automatically on deploy
+# instead of relying on hand-bumped version strings.
+ASSET_VERSIONS = {
+    name: hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:12]
+    for name in ("app.bundle.js", "favicon.svg")
+}
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -71,7 +84,9 @@ RATE_LIMIT_MAX_KEYS = 1000
 
 RATE_LIMITS = {
     "/api/events/ticket-click": (60, 60),
-    "/api/search": (10, 60),
+    # Sort changes and pagination each re-run a full search, so a normal
+    # browsing session can issue a burst of these; upstream fetches are cached.
+    "/api/search": (30, 60),
     "/api/formats": (30, 60),
     "/api/movies": (30, 60),
     "/api/theatres": (30, 60),
@@ -646,10 +661,6 @@ def seat_map(showtime_hash):
     return data
 
 
-from .seat_matching import (
-    parse_seat_grid,
-    showtime_seat_match,
-)
 def title_from_slug(slug):
     words = slug.split("-")
     if words and re.fullmatch(r"20\d\d", words[-1]):
@@ -744,6 +755,8 @@ def seo_context(request):
 def render_index(request):
     markup = INDEX_HTML.read_text(encoding="utf-8")
     markup = markup.replace("__INLINE_STYLES__", INLINE_STYLES)
+    markup = markup.replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
+    markup = markup.replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
     for token, value in seo_context(request).items():
         markup = markup.replace(token, value)
     return markup
@@ -791,6 +804,12 @@ def index(request: Request):
     return HTMLResponse(render_index(request))
 
 
+@app.get("/index.html", include_in_schema=False)
+def index_html():
+    # The on-disk file is an unrendered template; never serve it raw.
+    return RedirectResponse("/", status_code=308)
+
+
 @app.get("/robots.txt", include_in_schema=False)
 def robots(request: Request):
     origin = site_origin(request)
@@ -827,20 +846,35 @@ def webmanifest():
         "description": SITE_DESCRIPTION,
         "start_url": "/",
         "display": "standalone",
-        "background_color": "#e7e4dd",
-        "theme_color": "#0b0b0c",
+        # Match the page's own light background and dark chrome tint.
+        "background_color": "#fff7f6",
+        "theme_color": "#12151c",
         "icons": [{
-            "src": "/favicon.svg?v=20260722-monochrome",
+            "src": f"/favicon.svg?v={ASSET_VERSIONS['favicon.svg']}",
             "sizes": "any",
             "type": "image/svg+xml",
         }],
     })
 
 
+def rate_limit_client_key(request):
+    """Key limits by the real client, not the fronting proxy.
+
+    Behind Vercel/other proxies request.client.host is the proxy address, which
+    would make every user share one bucket. The platform sets the caller as the
+    first x-forwarded-for hop. Note the history still lives in process memory,
+    so on serverless it only bounds each instance rather than global traffic.
+    """
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    first_hop = forwarded_for.split(",")[0].strip()
+    if first_hop:
+        return first_hop
+    return request.client.host if request.client else "unknown"
+
+
 def enforce_rate_limit(request, path):
     limit, window = RATE_LIMITS[path]
-    client_host = request.client.host if request.client else "unknown"
-    key = (client_host, path)
+    key = (rate_limit_client_key(request), path)
     now = time.monotonic()
     with RATE_LIMIT_LOCK:
         if len(RATE_LIMIT_HISTORY) > RATE_LIMIT_MAX_KEYS:
@@ -1134,4 +1168,13 @@ def api_search(
         upstream_error("Could not search real showtimes/seats", error)
 
 
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+class PublicAssetFiles(StaticFiles):
+    """Serve only the allowlisted production assets, not frontend sources."""
+
+    async def get_response(self, path, scope):
+        if path.replace("\\", "/") not in PUBLIC_ASSETS:
+            raise HTTPException(status_code=404, detail="Not found")
+        return await super().get_response(path, scope)
+
+
+app.mount("/", PublicAssetFiles(directory=STATIC_DIR), name="static")

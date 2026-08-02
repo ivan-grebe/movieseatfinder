@@ -6,9 +6,10 @@
   <title>Movie Seat Finder</title>
   <meta name="description" content="__SITE_DESCRIPTION__">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#0b0b0c">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff7f6">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12151c">
   <link rel="canonical" href="__CANONICAL_URL__">
-  <link rel="icon" href="/favicon.svg?v=20260722-monochrome" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg?v=__FAVICON_VERSION__" type="image/svg+xml">
   <link rel="manifest" href="/site.webmanifest">
 
   <meta property="og:type" content="website">
@@ -97,7 +98,7 @@
             <label>
               ZIP code
               <span class="zip-row">
-                <input id="zipInput" type="text" inputmode="numeric" maxlength="10" placeholder="Enter ZIP">
+                <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="Enter ZIP">
                 <button id="useLocationButton" class="location-btn" type="button" title="Use my current location" aria-label="Use my current location">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
                 </button>
@@ -192,7 +193,7 @@
     </section>
 
     <section id="results-section" class="results-section">
-      <div id="summary" class="summary is-muted"></div>
+      <div id="summary" class="summary is-muted" role="status" aria-live="polite"></div>
       <div id="resultsToolbar" class="results-toolbar" hidden>
         <label class="sort-label" for="sortInput">Sort by</label>
         <span class="select-wrap sort-select-wrap">
@@ -232,6 +233,6 @@
     <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
   </a>
 
-  <script src="app.bundle.js?v=20260801-performance" type="module"></script>
+  <script src="app.bundle.js?v=__BUNDLE_VERSION__" type="module"></script>
 </body>
 </html>

@@ -223,7 +223,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
       details.className = "result-details";
       const top = document.createElement("div");
       top.className = "result-top";
-      const title = document.createElement("h3");
+      const title = document.createElement("h2");
       title.className = "result-title";
       title.textContent = match.theatre.name;
       const distance = document.createElement("span");

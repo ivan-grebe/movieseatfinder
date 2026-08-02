@@ -223,9 +223,12 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   const sortStatus = page.locator("#sortStatus");
   await expect(sortStatus).toContainText("Reordering");
   await expect(sortStatus.locator(".loading-dot")).toHaveCount(3);
+  // Under reduced motion the dots stop cycling and stay visible instead.
   await expect(sortStatus.locator(".loading-dot-1")).toHaveCSS("opacity", "1");
-  expect(await sortStatus.locator(".loading-dot-2").evaluate(dot => getComputedStyle(dot).animationName)).toBe("loading-dot-two");
-  expect(await sortStatus.locator(".loading-dot-3").evaluate(dot => getComputedStyle(dot).animationName)).toBe("loading-dot-three");
+  await expect(sortStatus.locator(".loading-dot-2")).toHaveCSS("opacity", "1");
+  await expect(sortStatus.locator(".loading-dot-3")).toHaveCSS("opacity", "1");
+  expect(await sortStatus.locator(".loading-dot-2").evaluate(dot => getComputedStyle(dot).animationName)).toBe("none");
+  expect(await sortStatus.locator(".loading-dot-3").evaluate(dot => getComputedStyle(dot).animationName)).toBe("none");
   await expect(sortInput).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeEnabled();
   await expect(page.locator("#searchButton")).toHaveText("Find matching seats");

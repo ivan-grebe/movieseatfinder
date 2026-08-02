@@ -42,12 +42,14 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       option.classList.remove("is-active");
       option.setAttribute("aria-selected", "false");
     });
-    if (!choices.length || index < 0) {
+    if (!choices.length) {
       activeIndex = -1;
       input.removeAttribute("aria-activedescendant");
       return;
     }
-    activeIndex = (index + choices.length) % choices.length;
+    // Negative indexes wrap, so ArrowUp from the top lands on the last option
+    // just as ArrowDown from the bottom lands on the first.
+    activeIndex = ((index % choices.length) + choices.length) % choices.length;
     const active = choices[activeIndex];
     active.classList.add("is-active");
     active.setAttribute("aria-selected", "true");

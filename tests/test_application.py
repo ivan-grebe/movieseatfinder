@@ -238,9 +238,15 @@ class RouteTests(unittest.TestCase):
         self.assertIn(f"<style>{application.INLINE_STYLES}</style>", response.text)
         self.assertNotIn('rel="stylesheet"', response.text)
         self.assertIn(
-            'src="app.bundle.js?v=20260801-performance"',
+            f'src="app.bundle.js?v={application.ASSET_VERSIONS["app.bundle.js"]}"',
             response.text,
         )
+        self.assertIn(
+            f'href="/favicon.svg?v={application.ASSET_VERSIONS["favicon.svg"]}"',
+            response.text,
+        )
+        self.assertNotIn("__BUNDLE_VERSION__", response.text)
+        self.assertNotIn("__FAVICON_VERSION__", response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
@@ -248,6 +254,15 @@ class RouteTests(unittest.TestCase):
             f"'sha256-{application.INLINE_STYLE_HASH}'",
             content_security_policy,
         )
+
+    def test_raw_template_and_frontend_sources_are_not_served(self):
+        redirect = self.client.get("/index.html", follow_redirects=False)
+        self.assertEqual(redirect.status_code, 308)
+        self.assertEqual(redirect.headers["location"], "/")
+        for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css"):
+            self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
+        for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png"):
+            self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
         response = self.client.get("/app.bundle.js?v=20260801-performance")

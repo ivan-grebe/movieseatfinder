@@ -47,6 +47,21 @@ function hasValidZip() {
   return /^\d{5}$/.test(zipInput.value.trim());
 }
 
+function normalizedTitle(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Mirrors the backend's two-way substring match, so the warning only fires
+// when a search for the typed title genuinely cannot match anything.
+function typedMovieIsShowing(typed) {
+  const query = normalizedTitle(typed);
+  if (!query) return true;
+  return movies.some(movie => {
+    const title = normalizedTitle(movie.title);
+    return title.includes(query) || query.includes(title);
+  });
+}
+
 function hasSearchLocation() {
   return hasValidZip() || preciseLocation !== null;
 }
@@ -130,7 +145,12 @@ async function loadMovies() {
     if (loadSequence !== movieLoadSequence) return;
     movies = data.movies || [];
     movieInput.value = currentMovie;
-    setStatus(movieStatus, `${movies.length} movies showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`, "success");
+    const typedMovie = movieInput.value.trim();
+    if (typedMovie && !typedMovieIsShowing(typedMovie)) {
+      setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres — pick a different movie.`, "error");
+    } else {
+      setStatus(movieStatus, `${movies.length} movies showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`, "success");
+    }
     closeCombo(movieInput, movieMenu);
   } catch (error) {
     if (loadSequence !== movieLoadSequence) return;
@@ -206,7 +226,12 @@ async function runSearch({ reorder = false, pageChange = false, previousPage = c
     setAnimatedStatus(sortStatus, "Reordering");
   } else {
     sortInput.disabled = true;
-    if (!pageChange) setSummary(summary, "", false);
+    if (!pageChange) {
+      setSummary(summary, "", false);
+      // A fresh search can supersede an in-flight page change; clear any
+      // pagination loading state so it cannot outlive that request.
+      resultsView.endPageLoading();
+    }
     if (pageChange) resultsView.setPageLoading();
     stopLoadingStages = startLoadingStages(stage => {
       if (loadSequence !== searchLoadSequence) return;
@@ -350,9 +375,14 @@ function bindEvents() {
   useLocationButton.addEventListener("click", requestLocation);
   zipInput.addEventListener("input", () => {
     zipInput.setCustomValidity("");
-    if (zipInput.value.trim()) {
+    const zip = zipInput.value.trim();
+    if (zip) {
       preciseLocation = null;
-      setStatus(locationStatus, "Searching from your ZIP code.");
+      if (/^\d{0,5}$/.test(zip)) {
+        setStatus(locationStatus, "Searching from your ZIP code.");
+      } else {
+        setStatus(locationStatus, "US ZIP codes are 5 digits, like 90210.", "error");
+      }
     } else if (!preciseLocation) {
       setStatus(locationStatus, "Enter a ZIP code or use your location.");
     }

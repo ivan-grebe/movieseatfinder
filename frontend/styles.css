@@ -132,7 +132,6 @@ h1 {
     0 18px 46px rgba(35, 67, 106, .1),
     0 1px 2px rgba(24, 41, 65, .05);
   backdrop-filter: blur(20px) saturate(1.12);
-  overflow: hidden;
 }
 
 .card-body {
@@ -1154,10 +1153,13 @@ input[type="time"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* The fade starts from .01 rather than 0 so the browser records the first
+   paint: content whose first paint happens at opacity 0 never registers an
+   LCP candidate, which breaks Lighthouse/PageSpeed (NO_LCP). Animating from a
+   "from" frame with backwards fill also leaves no lingering transform on the
+   hero or card once the entrance finishes. */
 .enter-item {
-  opacity: 0;
-  transform: translateY(12px);
-  animation: enter-up 440ms cubic-bezier(.2, 0, 0, 1) forwards;
+  animation: enter-up 440ms cubic-bezier(.2, 0, 0, 1) backwards;
 }
 
 .enter-item-1 { animation-delay: 20ms; }
@@ -1165,9 +1167,9 @@ input[type="time"] {
 .enter-item-3 { animation-delay: 220ms; }
 
 @keyframes enter-up {
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  from {
+    opacity: .01;
+    transform: translateY(12px);
   }
 }
 
@@ -1189,6 +1191,12 @@ input[type="time"] {
     transition-duration: 0ms;
   }
 
+  .spinner { animation: none; }
+
+  .loading-dot {
+    opacity: 1;
+    animation: none;
+  }
 }
 
 @media (max-width: 980px) {
