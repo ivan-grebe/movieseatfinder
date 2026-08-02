@@ -1,0 +1,5 @@
+{
+  "entry": ["frontend/app.js"],
+  "project": ["frontend/**/*.js"],
+  "ignore": ["frontend/app.bundle.js"]
+}

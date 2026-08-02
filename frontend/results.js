@@ -103,7 +103,7 @@ function makeTag(text, iconSvg) {
   return tag;
 }
 
-export function createResultsView({ results, summary, resultsToolbar, pagination, pageSize, getPage, onPageChange }) {
+export function createResultsView({ results, summary, resultsToolbar, pagination, getPage, onPageChange }) {
   let lastPaginationData = null;
 
   function beginReorder() {
@@ -144,7 +144,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     label.className = "pagination-label";
     label.setAttribute("role", "status");
     label.setAttribute("aria-live", "polite");
-    label.textContent = `Page ${data.page || getPage()}`;
+    label.textContent = `Page ${data.page}`;
 
     const next = document.createElement("button");
     next.type = "button";
@@ -177,9 +177,9 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
   }
 
   function render(data, { skipEntrance = false } = {}) {
-    const matches = data.matches || [];
+    const matches = data.matches;
     results.innerHTML = "";
-    const showingStart = matches.length ? ((data.page || 1) - 1) * (data.pageSize || pageSize) + 1 : 0;
+    const showingStart = matches.length ? (data.page - 1) * data.pageSize + 1 : 0;
     const showingEnd = showingStart + matches.length - 1;
     const pageText = matches.length
       ? `Showing ${showingStart}-${showingEnd} matching showtime${matches.length === 1 ? "" : "s"}`
@@ -242,7 +242,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
       movie.className = "result-movie";
       movie.textContent = match.movieTitle;
       details.appendChild(movie);
-      const submetaParts = [match.rating, match.runtime, match.genres?.join(", ")].filter(Boolean);
+      const submetaParts = [match.rating, match.runtime, match.genres.join(", ")].filter(Boolean);
       if (submetaParts.length) {
         const submeta = document.createElement("p");
         submeta.className = "result-submeta";

@@ -5,12 +5,14 @@
   "scripts": {
     "build:frontend": "esbuild frontend/app.js --bundle --format=esm --minify --legal-comments=none --outfile=frontend/app.bundle.js",
     "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- frontend/app.bundle.js",
+    "lint:frontend": "knip --no-config-hints",
     "test:frontend": "node --test tests/frontend-utils.test.mjs",
     "pretest:mobile": "npm run build:frontend",
     "test:mobile": "playwright test --config=tests/playwright.mobile.config.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "knip": "6.31.0"
   }
 }

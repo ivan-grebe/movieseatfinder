@@ -49,7 +49,6 @@ const resultsView = createResultsView({
   summary,
   resultsToolbar,
   pagination,
-  pageSize: PAGE_SIZE,
   getPage: () => currentPage,
   onPageChange: page => runPageChange(page),
 });
@@ -133,7 +132,7 @@ async function loadTheatres() {
     }));
     const data = await getJson(`/api/theatres?${params}`);
     if (!isCurrent()) return;
-    theatres = data.theatres || [];
+    theatres = data.theatres;
     setStatus(theatreStatus, `${theatres.length} theatres found near ${data.place}.`, "success");
     closeCombo(theatreInput, theatreMenu);
   } catch (error) {
@@ -157,7 +156,7 @@ async function loadMovies() {
   try {
     const data = await getJson(`/api/movies?${baseParams()}`);
     if (!isCurrent()) return;
-    movies = data.movies || [];
+    movies = data.movies;
     const typedMovie = movieInput.value.trim();
     if (typedMovie && !typedMovieIsShowing(typedMovie)) {
       setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres — pick a different movie.`, "error");
@@ -186,7 +185,7 @@ async function loadFormats() {
     params.set("movie", movieTitle);
     const data = await getJson(`/api/formats?${params}`);
     if (!isCurrent() || movieInput.value.trim() !== movieTitle) return;
-    const formats = data.formats || [];
+    const formats = data.formats;
     formatPicker.setOptions(formats);
     setStatus(formatStatus, `${formats.length} format${formats.length === 1 ? "" : "s"} for this movie.`, "success");
   } catch (error) {

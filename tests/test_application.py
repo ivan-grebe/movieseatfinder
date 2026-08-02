@@ -110,8 +110,8 @@ class MovieAndFormatTests(unittest.TestCase):
         showtime = application.normalize_showtimes({}, [movie])[0]
 
         self.assertEqual(showtime["format"], "IMAX")
-        self.assertEqual(showtime["screenReaderTime"], "6:00 PM")
-        self.assertNotIn("o'clock", showtime["screenReaderTime"])
+        self.assertEqual(showtime["displayTime"], "6:00 PM")
+        self.assertNotIn("o'clock", showtime["displayTime"])
 
 
 class SeatSelectionTests(unittest.TestCase):
@@ -385,9 +385,7 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/api/theatres", params={"zip": "00000", "radius": 5})
 
         self.assertEqual(response.status_code, 200)
-        theatres = response.json()["theatres"]
-        self.assertEqual([theatre["name"] for theatre in theatres], ["Nearby Cinema"])
-        self.assertTrue(all(theatre["distanceMiles"] <= 5 for theatre in theatres))
+        self.assertEqual(response.json()["theatres"], [{"name": "Nearby Cinema"}])
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.reverse_geocode_zip", return_value="00000")

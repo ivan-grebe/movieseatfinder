@@ -45,7 +45,7 @@ INLINE_STYLE_HASH = base64.b64encode(
     hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()
 ).decode("ascii")
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-VERSIONED_ASSET_SUFFIXES = {".css", ".js", ".png", ".svg", ".webmanifest"}
+VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg"}
 # The only frontend files the site serves; source modules stay private and the
 # raw index.html template is only reachable through the rendered "/" route.
 PUBLIC_ASSETS = {"app.bundle.js", "favicon.svg", "og-image.png"}
@@ -207,10 +207,10 @@ def search_sort_key(distance, show_date, show_time, theatre_name, sort_order):
     """
     chronology = int(show_date.replace("-", "") + show_time.replace(":", ""))
     if sort_order == "nearest":
-        return (float(distance), chronology, theatre_name)
+        return (distance, chronology, theatre_name)
     if sort_order == "latest":
-        return (-chronology, float(distance), theatre_name)
-    return (chronology, float(distance), theatre_name)
+        return (-chronology, distance, theatre_name)
+    return (chronology, distance, theatre_name)
 
 
 def safe_fandango_url(value):
@@ -242,12 +242,13 @@ def movie_matches(title, query):
 
 
 def format_matches(format_name, amenity_text, requested):
-    requested_formats = [normalized_text(value) for value in (requested or "any").split(",")]
-    requested_formats = [value for value in requested_formats if value]
-    if not requested_formats or "any" in requested_formats:
+    if not requested or requested == "any":
         return True
-
-    return any(format_matches_one(format_name, amenity_text, requested_format) for requested_format in requested_formats)
+    requested_formats = [normalized_text(value) for value in requested.split(",")]
+    return any(
+        format_matches_one(format_name, amenity_text, requested_format)
+        for requested_format in requested_formats if requested_format
+    )
 
 
 # Requested formats whose match set is more than the literal requested value.
@@ -279,8 +280,7 @@ def format_matches_one(format_name, amenity_text, requested):
 
 
 def fandango_theatres(zip_code, radius, show_date=None, origin=None):
-    origin_key = tuple(round(value, 5) for value in origin) if origin else ()
-    key = (str(zip_code), str(radius), show_date or "", origin_key)
+    key = (zip_code, radius, show_date or "", origin or ())
     cached = THEATRES_CACHE.get(key)
     if cached is not None:
         return cached
@@ -300,16 +300,12 @@ def fandango_theatres(zip_code, radius, show_date=None, origin=None):
 def fandango_theatres_by_date(zip_code, radius, dates, origin=None):
     """Fetch (and cache) theatre+showtime payloads for many dates in parallel."""
     results = {}
-    unique_dates = list(dict.fromkeys(dates))
-    if not unique_dates:
-        return results
-    workers = min(8, len(unique_dates))
     successful_dates = 0
     last_error = None
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    with ThreadPoolExecutor(max_workers=min(8, len(dates))) as executor:
         future_map = {
             executor.submit(fandango_theatres, zip_code, radius, show_date, origin): show_date
-            for show_date in unique_dates
+            for show_date in dates
         }
         for future in as_completed(future_map):
             show_date = future_map[future]
@@ -348,13 +344,6 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
             "distanceMiles": float(theatre.get("distance") or 0),
             "latitude": float(theatre["geo"]["latitude"]) if theatre.get("geo", {}).get("latitude") is not None else None,
             "longitude": float(theatre["geo"]["longitude"]) if theatre.get("geo", {}).get("longitude") is not None else None,
-            "website": f'{FANDANGO_ORIGIN}{theatre.get("theaterPageUrl", "")}',
-            "source": "Fandango",
-            "fandangoId": theatre.get("id", ""),
-            "chainCode": theatre.get("chainCode", ""),
-            "hasReservedSeating": bool(theatre.get("hasReservedSeating")),
-            "hasShowtimes": bool(theatre.get("hasShowtimes")),
-            "formats": theatre.get("formats") or [],
             "rawMovies": theatre.get("movies") or [],
         })
     return sorted(theatres, key=lambda item: item["distanceMiles"])
@@ -376,17 +365,12 @@ def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, t
     movies = []
     for _, theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
         for movie in theatre.get("rawMovies", []):
-            movie_id = str(movie.get("id") or "")
             title = clean_title(movie.get("title", ""))
-            key = movie_id or normalized_text(title)
+            key = normalized_text(title)
             if not title or key in seen:
                 continue
             seen.add(key)
-            movies.append({
-                "title": title,
-                "fandangoId": movie_id,
-                "source": f"Fandango live showtimes {start_date} to {end_date}",
-            })
+            movies.append({"title": title})
     return sorted(movies, key=lambda movie: movie["title"])
 
 
@@ -535,7 +519,7 @@ def normalize_showtimes(theatre, movies):
                         "movieTitle": movie_title,
                         "date": show_date,
                         "time": show_time,
-                        "screenReaderTime": display_showtime_time(show_time) or showtime.get("date", ""),
+                        "displayTime": display_showtime_time(show_time),
                         "format": format_label,
                         "amenities": amenity_text,
                         "formatTags": format_tags,
@@ -796,7 +780,8 @@ def api_theatres(
                 detail="We could not determine a nearby ZIP for your location. Enter a ZIP code instead.",
             )
         theatres = fandango_theatres(search_zip, radius, origin=origin)
-        return {"place": place, "theatres": theatres}
+        # The UI only needs names for its theatre picker.
+        return {"place": place, "theatres": [{"name": theatre["name"]} for theatre in theatres]}
     except HTTPException:
         raise
     except ValueError as error:
@@ -897,27 +882,32 @@ def collect_candidate_showtimes(
 def seat_checked_matches(candidates, page_end, check_candidate):
     """Seat-check candidates in parallel until one page past page_end is filled.
 
-    Candidates must arrive pre-sorted: stopping early is then safe because
-    every unchecked candidate sorts after every checked one.
+    Candidates must arrive pre-sorted. Matches keep the candidate order, so
+    stopping early is safe: every unchecked candidate sorts after every
+    checked one.
     """
-    matches = []
+    indexed_matches = []
     checked = 0
     if not candidates:
-        return matches, checked
+        return [], 0
     worker_count = min(12, max(4, len(candidates)))
     batch_size = worker_count * 2
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         for offset in range(0, len(candidates), batch_size):
             batch = candidates[offset:offset + batch_size]
             checked += len(batch)
-            futures = [executor.submit(check_candidate, candidate) for candidate in batch]
-            for future in as_completed(futures):
+            future_map = {
+                executor.submit(check_candidate, candidate): offset + position
+                for position, candidate in enumerate(batch)
+            }
+            for future in as_completed(future_map):
                 result = future.result()
                 if result:
-                    matches.append(result)
-            if len(matches) > page_end:
+                    indexed_matches.append((future_map[future], result))
+            if len(indexed_matches) > page_end:
                 break
-    return matches, checked
+    indexed_matches.sort(key=lambda pair: pair[0])
+    return [match for _, match in indexed_matches], checked
 
 
 @app.get("/api/search")
@@ -956,7 +946,7 @@ def api_search(
         end_time = validate_time(endTime, "End time")
         min_adjacent = min(max(adjacentSeats, 1), 10)
         selected_cells = parse_seat_grid(seatGrid)
-        exclude_accessible = excludeAccessible.lower() in ("1", "true", "yes", "on")
+        exclude_accessible = excludeAccessible == "1"
         sort_order = validate_short_text(sort, "Sort order").lower() or "earliest"
         if sort_order not in SEARCH_SORTS:
             raise ValueError("Sort order must be earliest, latest, or nearest.")
@@ -993,44 +983,31 @@ def api_search(
                     "name": theatre_item["name"],
                     "address": theatre_item["address"],
                     "distanceMiles": theatre_item["distanceMiles"],
-                    "website": theatre_item["website"],
-                    "source": theatre_item["source"],
                 },
                 "movieTitle": showtime["movieTitle"],
                 "date": showtime["date"],
-                "time": showtime["time"],
-                "displayTime": showtime["screenReaderTime"],
+                "displayTime": showtime["displayTime"],
                 "format": showtime["format"],
                 "amenities": showtime["amenities"],
                 "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
-                "poster": showtime.get("poster", ""),
-                "rating": showtime.get("rating", ""),
-                "runtime": showtime.get("runtime", ""),
-                "genres": showtime.get("genres", []),
+                "poster": showtime["poster"],
+                "rating": showtime["rating"],
+                "runtime": showtime["runtime"],
+                "genres": showtime["genres"],
                 "seatMap": seat_match,
             }
 
         matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
-        matches.sort(key=lambda item: search_sort_key(
-            item["theatre"]["distanceMiles"],
-            item["date"],
-            item["time"],
-            item["theatre"]["name"],
-            sort_order,
-        ))
 
         return {
             "matches": matches[page_start:page_end],
             "page": page,
             "pageSize": page_size,
-            "sort": sort_order,
             "hasPreviousPage": page > 1,
             "hasNextPage": len(matches) > page_end,
-            "matchedThrough": min(len(matches), page_end),
             "checkedShowtimes": len(candidates),
             "checkedSeatMaps": checked_seat_maps,
             "accessibleSeatsExcluded": exclude_accessible,
-            "source": "Fandango NAPI",
         }
     except HTTPException:
         raise
