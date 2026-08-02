@@ -24,16 +24,13 @@ def parse_seat_grid(value):
 def seat_matches_grid(row_position, x_position, selected_cells):
     if not selected_cells:
         return True
-    row = min(GRID_SIZE - 1, max(0, int(row_position * GRID_SIZE)))
-    col = min(GRID_SIZE - 1, max(0, int(x_position * GRID_SIZE)))
+    row = min(GRID_SIZE - 1, int(row_position * GRID_SIZE))
+    col = min(GRID_SIZE - 1, int(x_position * GRID_SIZE))
     return (row, col) in selected_cells
 
 
 def normalized_seat_layout(data, matching_blocks):
-    seats = data.get("seats") or []
-    if not seats:
-        return None
-
+    seats = data["seats"]
     matched_ids = {seat_id for block in matching_blocks for seat_id in block}
     background_svg = data.get("backgroundSvg") or ""
     background_width = data.get("backgroundWidth")
@@ -82,7 +79,7 @@ def normalized_seat_layout(data, matching_blocks):
     return layout
 
 
-def adjacent_blocks(seats, min_adjacent, selected_cells=None, exclude_accessible=False):
+def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     """Return runs of adjacent available seat ids, one list per run."""
     available = [
         seat for seat in seats

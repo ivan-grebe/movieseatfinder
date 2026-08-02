@@ -47,8 +47,8 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
     const cell = cells.get(key);
     if (isSelected) selected.add(key);
     else selected.delete(key);
-    cell?.classList.toggle("selected", isSelected);
-    cell?.setAttribute("aria-pressed", String(isSelected));
+    cell.classList.toggle("selected", isSelected);
+    cell.setAttribute("aria-pressed", String(isSelected));
   }
 
   function clear() {
@@ -77,12 +77,12 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
     }
   }
 
-  function setRovingCell(row, col, shouldFocus = true) {
+  function setRovingCell(row, col) {
     focus = { row, col };
     cells.forEach(cell => {
       cell.tabIndex = cell.dataset.cell === cellKey(row, col) ? 0 : -1;
     });
-    if (shouldFocus) cells.get(cellKey(row, col))?.focus();
+    cells.get(cellKey(row, col)).focus();
   }
 
   function cellFromEvent(event) {
@@ -91,7 +91,6 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   }
 
   function applyRectangle(cell) {
-    if (!cell || !grid.contains(cell)) return;
     const current = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
     restoreSelection(selectionBeforeDrag);
     for (let row = Math.min(dragStart.row, current.row); row <= Math.max(dragStart.row, current.row); row += 1) {
@@ -118,7 +117,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
         button.setAttribute("aria-pressed", "false");
         button.tabIndex = row === 0 && col === 0 ? 0 : -1;
         button.addEventListener("click", () => {
-          if (suppressNextClick || isPainting) return;
+          if (suppressNextClick) return;
           setCell(row, col, !selected.has(cellKey(row, col)));
           setAnchor(row, col);
           updateStatus();
@@ -166,7 +165,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   grid.addEventListener("pointerup", event => {
     if (!isPainting) return;
     const cell = cellFromEvent(event);
-    if (!dragMoved && dragStart) {
+    if (!dragMoved) {
       restoreSelection(selectionBeforeDrag);
       const key = cellKey(dragStart.row, dragStart.col);
       setCell(dragStart.row, dragStart.col, paintMode ? !selectionBeforeDrag.has(key) : false);
@@ -200,7 +199,6 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
 
   grid.addEventListener("focusin", event => {
     const cell = event.target.closest(".seat-cell");
-    if (!cell) return;
     focus = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
     cells.forEach(other => {
       other.tabIndex = other === cell ? 0 : -1;

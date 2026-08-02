@@ -15,7 +15,7 @@ export function setStatus(element, text, state = "") {
 }
 
 export function setSummary(element, text, muted) {
-  element.classList.toggle("is-muted", Boolean(muted));
+  element.classList.toggle("is-muted", muted);
   element.textContent = text;
 }
 
@@ -44,7 +44,7 @@ function appendAnimatedLabel(element, text) {
 
 export function setAnimatedStatus(element, text) {
   element.textContent = "";
-  if (text) appendAnimatedLabel(element, text);
+  appendAnimatedLabel(element, text);
 }
 
 export function startLoadingStages(onStage) {
@@ -65,11 +65,11 @@ export function setButtonBusy(button, busy, busyLabel) {
     const spinner = document.createElement("span");
     spinner.className = "spinner";
     button.appendChild(spinner);
-    appendAnimatedLabel(button, busyLabel || button.dataset.label);
+    appendAnimatedLabel(button, busyLabel);
     return;
   }
 
   button.disabled = false;
   button.removeAttribute("aria-busy");
-  if (button.dataset.label) button.textContent = button.dataset.label;
+  button.textContent = button.dataset.label;
 }

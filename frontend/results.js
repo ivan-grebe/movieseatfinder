@@ -16,8 +16,7 @@ function createLegendItem(label, className) {
 }
 
 function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
-  const layout = seatMap?.layout;
-  if (!layout?.seats?.length) return null;
+  const layout = seatMap.layout;
   const hasBackground = Boolean(layout.backgroundSvg);
 
   const wrapper = document.createElement("div");
@@ -42,8 +41,7 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const stage = document.createElement("div");
   stage.className = "real-seat-map-stage";
   if (hasBackground) stage.classList.add("has-background");
-  const width = Math.max(Number(layout.width) || 1, 1);
-  const height = Math.max(Number(layout.height) || 1, 1);
+  const { width, height } = layout;
   stage.style.aspectRatio = `${width} / ${height}`;
   stage.style.minHeight = "150px";
   if (hasBackground) {
@@ -93,12 +91,10 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
 function makeTag(text, iconSvg) {
   const tag = document.createElement("span");
   tag.className = "tag";
-  if (iconSvg) {
-    const icon = document.createElement("span");
-    icon.className = "tag-icon";
-    icon.innerHTML = iconSvg;
-    tag.appendChild(icon);
-  }
+  const icon = document.createElement("span");
+  icon.className = "tag-icon";
+  icon.innerHTML = iconSvg;
+  tag.appendChild(icon);
   tag.appendChild(document.createTextNode(text));
   return tag;
 }
@@ -120,8 +116,8 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     lastPaginationData = data;
     pagination.classList.remove("is-loading", "has-error");
     pagination.removeAttribute("aria-busy");
-    const hasPrevious = Boolean(data.hasPreviousPage);
-    const hasNext = Boolean(data.hasNextPage);
+    const hasPrevious = data.hasPreviousPage;
+    const hasNext = data.hasNextPage;
     if (!hasPrevious && !hasNext) {
       pagination.hidden = true;
       pagination.innerHTML = "";
@@ -136,9 +132,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     previous.textContent = "Previous";
     previous.setAttribute("aria-label", "Previous page of results");
     previous.disabled = !hasPrevious;
-    previous.addEventListener("click", () => {
-      if (getPage() > 1) onPageChange(getPage() - 1);
-    });
+    previous.addEventListener("click", () => onPageChange(getPage() - 1));
 
     const label = document.createElement("span");
     label.className = "pagination-label";
@@ -165,7 +159,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
       button.disabled = true;
     });
     const label = pagination.querySelector(".pagination-label");
-    if (label) setAnimatedStatus(label, "Loading");
+    setAnimatedStatus(label, "Loading");
   }
 
   function endPageLoading(errorMessage = "") {
@@ -173,7 +167,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     if (!errorMessage) return;
     pagination.classList.add("has-error");
     const label = pagination.querySelector(".pagination-label");
-    if (label) label.textContent = errorMessage;
+    label.textContent = errorMessage;
   }
 
   function render(data, { skipEntrance = false } = {}) {
@@ -252,7 +246,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
 
       const meta = document.createElement("div");
       meta.className = "result-meta";
-      if (match.format) meta.appendChild(makeTag(match.format, ICON_FILM));
+      meta.appendChild(makeTag(match.format, ICON_FILM));
       meta.appendChild(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
       const open = document.createElement("span");
       open.className = "result-open";
@@ -268,8 +262,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
         amenities.textContent = match.amenities;
         item.appendChild(amenities);
       }
-      const seatMap = renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded);
-      if (seatMap) item.appendChild(seatMap);
+      item.appendChild(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
       if (match.ticketUrl) {
         const link = document.createElement("a");
         link.className = "buy-btn";

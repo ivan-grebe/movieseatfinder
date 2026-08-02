@@ -1,11 +1,10 @@
 """Location resolution and exact-radius calculations for theatre searches."""
 
-import math
 import re
 import threading
 
 import requests
-
+from geopy.distance import geodesic
 
 USER_AGENT = "MovieSeatFinder/1.0 (location lookup)"
 _LOCAL = threading.local()
@@ -21,13 +20,7 @@ def http_session():
 
 
 def distance_miles(lat1, lon1, lat2, lon2):
-    radius = 3958.8
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lambda = math.radians(lon2 - lon1)
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return geodesic((lat1, lon1), (lat2, lon2)).miles
 
 
 def geocode_zip(zip_code):
@@ -43,7 +36,7 @@ def geocode_zip(zip_code):
         raise KeyError("No location found for that ZIP code")
     place = places[0]
     return {
-        "label": f'{place["place name"]}, {place["state abbreviation"]} {data["post code"]}',
+        "label": f"{place['place name']}, {place['state abbreviation']} {data['post code']}",
         "lat": float(place["latitude"]),
         "lon": float(place["longitude"]),
     }
@@ -66,25 +59,12 @@ def reverse_geocode_zip(lat, lon):
     return zip_code
 
 
-def validate_coordinates(lat, lon):
-    if lat is None and lon is None:
-        return None
-    if lat is None or lon is None:
-        raise ValueError("Location must include both latitude and longitude.")
-    try:
-        lat = float(lat)
-        lon = float(lon)
-    except (TypeError, ValueError):
-        raise ValueError("Location coordinates must be valid numbers.")
-    if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-        raise ValueError("Location coordinates are out of range.")
-    return lat, lon
-
-
-def resolve_search_location(zip_code, lat=None, lon=None):
+def resolve_search_location(zip_code, lat, lon):
     """Use opt-in browser coordinates, otherwise use the ZIP centroid."""
-    origin = validate_coordinates(lat, lon)
-    if origin:
+    if (lat is None) != (lon is None):
+        raise ValueError("Location must include both latitude and longitude.")
+    if lat is not None:
+        origin = (lat, lon)
         return reverse_geocode_zip(*origin), origin, "your current location"
     if not re.fullmatch(r"\d{5}", zip_code):
         raise ValueError("Enter a valid 5 digit US ZIP code or use your location.")

@@ -32,7 +32,7 @@ export function createFormatPicker(container) {
   }
 
   function setOptions(formats) {
-    const available = [...new Set(formats.filter(Boolean))];
+    const available = [...new Set(formats)];
     const retained = [...selected].filter(format => available.includes(format));
     selected.clear();
     (retained.length ? retained : ["any"]).forEach(format => selected.add(format));
@@ -44,7 +44,7 @@ export function createFormatPicker(container) {
 
   function select(values) {
     selected.clear();
-    values.filter(Boolean).forEach(format => selected.add(format));
+    values.forEach(format => selected.add(format));
     if (!selected.size) selected.add("any");
     container.querySelectorAll(".format-option").forEach(syncOption);
   }
@@ -53,6 +53,5 @@ export function createFormatPicker(container) {
     setOptions,
     select,
     value: () => selected.has("any") ? "any" : [...selected].join(","),
-    values: () => [...selected],
   };
 }

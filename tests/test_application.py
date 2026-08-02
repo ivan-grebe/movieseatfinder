@@ -1,35 +1,27 @@
 import sys
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import application
-from backend import seat_matching
+from backend import application, seat_matching
 
 
 class DateAndValidationTests(unittest.TestCase):
     def test_date_range_is_inclusive(self):
         self.assertEqual(
-            list(application.date_range("2026-06-01", "2026-06-03")),
+            list(application.date_range(date(2026, 6, 1), date(2026, 6, 3))),
             ["2026-06-01", "2026-06-02", "2026-06-03"],
         )
 
     def test_date_range_rejects_backwards_dates(self):
         with self.assertRaisesRegex(ValueError, "on or after"):
-            list(application.date_range("2026-06-03", "2026-06-01"))
+            list(application.date_range(date(2026, 6, 3), date(2026, 6, 1)))
 
     def test_date_range_rejects_more_than_two_weeks(self):
         with self.assertRaisesRegex(ValueError, "14 days"):
-            list(application.date_range("2026-06-01", "2026-06-16"))
-
-    def test_radius_and_time_validation(self):
-        self.assertEqual(application.validate_radius(25), 25)
-        self.assertEqual(application.validate_time("23:59", "Time"), "23:59")
-        with self.assertRaises(ValueError):
-            application.validate_radius(0)
-        with self.assertRaises(ValueError):
-            application.validate_time("25:00", "Time")
+            list(application.date_range(date(2026, 6, 1), date(2026, 6, 16)))
 
     def test_search_sort_orders_are_deterministic(self):
         showtimes = [
@@ -62,6 +54,7 @@ class DateAndValidationTests(unittest.TestCase):
 class MovieAndFormatTests(unittest.TestCase):
     def test_movie_matching_is_case_and_punctuation_insensitive(self):
         self.assertTrue(application.movie_matches("Spider-Man: Homecoming", "spider man"))
+        self.assertFalse(application.movie_matches("", "spider man"))
 
     def test_format_matching_distinguishes_imax_variants(self):
         self.assertTrue(application.format_matches("IMAX", "", "imax"))
@@ -107,7 +100,7 @@ class MovieAndFormatTests(unittest.TestCase):
             }],
         }
 
-        showtime = application.normalize_showtimes({}, [movie])[0]
+        showtime = application.normalize_showtimes([movie])[0]
 
         self.assertEqual(showtime["format"], "IMAX")
         self.assertEqual(showtime["displayTime"], "6:00 PM")
@@ -132,12 +125,12 @@ class SeatSelectionTests(unittest.TestCase):
         )
 
     def test_adjacent_blocks_require_available_contiguous_seats(self):
-        blocks = seat_matching.adjacent_blocks(self.seats, 2)
+        blocks = seat_matching.adjacent_blocks(self.seats, 2, [], False)
         self.assertIn(["A1", "A2"], blocks)
         self.assertNotIn(["A2", "A3"], blocks)
 
     def test_accessible_seats_can_be_excluded(self):
-        blocks = seat_matching.adjacent_blocks(self.seats, 1, exclude_accessible=True)
+        blocks = seat_matching.adjacent_blocks(self.seats, 1, [], True)
         seat_ids = {seat_id for block in blocks for seat_id in block}
         self.assertNotIn("B1", seat_ids)
         self.assertNotIn("B3", seat_ids)
@@ -146,8 +139,20 @@ class SeatSelectionTests(unittest.TestCase):
 
 class CacheTests(unittest.TestCase):
     def setUp(self):
-        application.SEAT_MAP_CACHE.clear()
-        application.THEATRES_CACHE.clear()
+        seat_cache = patch.object(
+            application,
+            "SEAT_MAP_CACHE",
+            application.TtlCache("seat_map", ttl_seconds=300, max_entries=200),
+        )
+        theatres_cache = patch.object(
+            application,
+            "THEATRES_CACHE",
+            application.TtlCache("theatres", ttl_seconds=300, max_entries=240),
+        )
+        seat_cache.start()
+        theatres_cache.start()
+        self.addCleanup(seat_cache.stop)
+        self.addCleanup(theatres_cache.stop)
 
     def test_application_info_logs_use_stdout(self):
         self.assertTrue(any(
@@ -172,8 +177,9 @@ class CacheTests(unittest.TestCase):
     @patch("backend.application.LOGGER.info")
     @patch("backend.application._fetch_fandango_theatres", return_value=[])
     def test_theatre_payloads_are_cached(self, fetch_theatres, logger_info):
-        first = application.fandango_theatres("10001", 25)
-        second = application.fandango_theatres("10001", 25)
+        origin = (40.75, -73.99)
+        first = application.fandango_theatres("10001", 25, origin)
+        second = application.fandango_theatres("10001", 25, origin)
 
         self.assertIs(first, second)
         fetch_theatres.assert_called_once()
@@ -185,15 +191,18 @@ class CacheTests(unittest.TestCase):
 
     @patch("backend.application._fetch_fandango_theatres", return_value=[])
     def test_large_radius_uses_fandangos_full_supported_range(self, fetch_theatres):
-        application.fandango_theatres("10001", 100, origin=(40.75, -73.99))
+        application.fandango_theatres("10001", 100, (40.75, -73.99))
 
         self.assertEqual(fetch_theatres.call_args.args[1], 100)
 
-    @patch("backend.application.fandango_theatres", side_effect=TimeoutError("upstream down"))
+    @patch(
+        "backend.application.fandango_theatres",
+        side_effect=application.requests.RequestException("upstream down"),
+    )
     def test_all_date_failures_are_propagated(self, fandango_theatres):
-        with self.assertRaisesRegex(TimeoutError, "upstream down"):
+        with self.assertRaisesRegex(application.requests.RequestException, "upstream down"):
             application.fandango_theatres_by_date(
-                "10001", 25, ["2026-07-22", "2026-07-23"]
+                "10001", 25, ["2026-07-22", "2026-07-23"], (40.75, -73.99)
             )
 
 
@@ -222,7 +231,20 @@ class RouteTests(unittest.TestCase):
         cls.client = TestClient(application.app)
 
     def setUp(self):
-        application.RATE_LIMIT_HISTORY.clear()
+        rate_limiter = patch.object(
+            application,
+            "RATE_LIMITER",
+            application.MovingWindowRateLimiter(application.MemoryStorage()),
+        )
+        theatres_cache = patch.object(
+            application,
+            "THEATRES_CACHE",
+            application.TtlCache("theatres", ttl_seconds=300, max_entries=240),
+        )
+        rate_limiter.start()
+        theatres_cache.start()
+        self.addCleanup(rate_limiter.stop)
+        self.addCleanup(theatres_cache.stop)
 
     def test_homepage_renders_context_and_security_headers(self):
         response = self.client.get("/", headers={"host": "example.test"})
@@ -325,7 +347,10 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.json(), {"movies": []})
         self.assertEqual(movies_from_payloads.call_args.args[4], "selected cinema")
 
-    @patch("backend.application.movies_from_dated_theatre_payloads", side_effect=TimeoutError("upstream down"))
+    @patch(
+        "backend.application.movies_from_dated_theatre_payloads",
+        side_effect=application.requests.RequestException("upstream down"),
+    )
     @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
     def test_movie_endpoint_reports_total_upstream_failure(
         self, resolve_search_location, movies_from_payloads
@@ -345,21 +370,57 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
 
-    def test_missing_radius_returns_a_clear_error(self):
+    def test_missing_radius_uses_the_standard_validation_error(self):
         response = self.client.get("/api/theatres", params={"zip": "10001"})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"error": "Enter a search radius."})
+        self.assertEqual(
+            response.json(),
+            {"error": "One of the search values is invalid. Adjust the form and try again."},
+        )
 
     def test_unparseable_params_use_the_same_error_shape(self):
         response = self.client.get("/api/theatres", params={"zip": "10001", "radius": "abc"})
         self.assertEqual(response.status_code, 400)
         self.assertIn("error", response.json())
 
-    @patch("backend.application.LOGGER.exception")
+    def test_search_constraints_are_enforced_before_upstream_work(self):
+        base_params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
+        invalid_params = [
+            {"startTime": "25:00"},
+            {"adjacentSeats": 0},
+            {"page": 0},
+            {"pageSize": 51},
+            {"sort": "random"},
+            {"movie": "   "},
+        ]
+
+        for invalid in invalid_params:
+            with self.subTest(invalid=invalid):
+                response = self.client.get("/api/search", params={**base_params, **invalid})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {"error": "One of the search values is invalid. Adjust the form and try again."},
+                )
+
+    @patch("backend.application.LOGGER.info")
+    def test_ticket_click_rate_limit_uses_a_moving_window(self, logger_info):
+        for _ in range(60):
+            self.assertEqual(self.client.post("/api/events/ticket-click").status_code, 204)
+
+        response = self.client.post("/api/events/ticket-click")
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(
+            response.json(),
+            {"error": "Too many requests. Please wait a moment and try again."},
+        )
+        self.assertEqual(logger_info.call_count, 60)
+
+    @patch("backend.application.LOGGER.error")
     @patch("backend.application.fandango_theatres", side_effect=RuntimeError("unexpected upstream shape"))
     @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
     def test_unexpected_api_errors_are_returned_as_json(
-        self, resolve_search_location, fandango_theatres, logger_exception
+        self, resolve_search_location, fandango_theatres, logger_error
     ):
         client = TestClient(application.app, raise_server_exceptions=False)
 
@@ -368,12 +429,11 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.headers["content-type"].split(";")[0], "application/json")
         self.assertEqual(response.json(), {"error": "We could not complete that search. Please try again."})
-        logger_exception.assert_called_once()
+        logger_error.assert_called_once()
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.geocode_zip")
     def test_five_mile_zip_search_excludes_theatres_outside_the_radius(self, geocode_zip, fandango_json):
-        application.THEATRES_CACHE.clear()
         geocode_zip.return_value = {"label": "Testville, TS 00000", "lat": 40.0, "lon": -75.0}
         fandango_json.return_value = {
             "theaters": [
@@ -390,7 +450,6 @@ class RouteTests(unittest.TestCase):
     @patch("backend.application.fandango_json")
     @patch("backend.location.reverse_geocode_zip", return_value="00000")
     def test_location_search_integration_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
-        application.THEATRES_CACHE.clear()
         fandango_json.return_value = {
             "theaters": [
                 {"name": "Nearby Cinema", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75.0}},
@@ -422,15 +481,11 @@ class RouteTests(unittest.TestCase):
                 "name": "Test Cinema",
                 "address": "1 Main St",
                 "distanceMiles": 1.2,
-                "website": "https://www.fandango.com/test/theater-page",
-                "source": "Fandango",
                 "rawMovies": [{
-                    "id": "1",
                     "title": "Test Movie",
                     "variants": [{
                         "filmFormatHeader": "Standard",
                         "amenityGroups": [{
-                            "hasReservedSeating": True,
                             "showtimes": [{
                                 "type": "available",
                                 "ticketingDate": "2026-07-20+19:00",

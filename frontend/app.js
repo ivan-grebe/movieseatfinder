@@ -278,7 +278,7 @@ async function runPageChange(page) {
     const data = await fetchSearchResults();
     if (!isCurrent()) return;
     resultsView.render(data);
-  } catch (error) {
+  } catch {
     if (!isCurrent()) return;
     currentPage = previousPage;
     resultsView.endPageLoading(`Couldn't load page ${page}`);
@@ -303,7 +303,7 @@ async function runReorder() {
     const data = await fetchSearchResults();
     if (!isCurrent()) return;
     resultsView.render(data, { skipEntrance: true });
-  } catch (error) {
+  } catch {
     if (!isCurrent()) return;
     errorMessage = "Try again";
   } finally {
