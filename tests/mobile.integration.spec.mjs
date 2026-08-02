@@ -12,13 +12,13 @@ const emptySearch = {
 
 function makeSimpleMatch(theatreName, time) {
   return {
-    theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+    theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1 },
     movieTitle: "Test Movie",
     date: "2026-08-01",
-    time,
     displayTime: time,
     format: "Standard",
     amenities: "Reserved seating",
+    genres: [],
     seatMap: {
       availableSeatCount: 1,
       totalSeatCount: 1,
@@ -174,13 +174,13 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   const matchingSearch = {
     ...emptySearch,
     matches: [{
-      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1 },
       movieTitle: "Test Movie",
       date: "2026-08-01",
-      time: "19:00",
       displayTime: "7:00 PM",
       format: "Standard",
       amenities: "Reserved seating",
+      genres: [],
       seatMap: {
         availableSeatCount: 1,
         totalSeatCount: 1,
@@ -391,13 +391,13 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
     ...emptySearch,
     accessibleSeatsExcluded: true,
     matches: [{
-      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1 },
       movieTitle: "Test Movie",
       date: "2026-07-22",
-      time: "19:00",
       displayTime: "7:00 PM",
       format: "IMAX",
       amenities: "Reserved seating",
+      genres: [],
       seatMap: {
         availableSeatCount: 2,
         totalSeatCount: 2,
@@ -480,12 +480,13 @@ test("accessible matches retain both accessible and matching states", async ({ p
     ...emptySearch,
     accessibleSeatsExcluded: false,
     matches: [{
-      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1, source: "Fandango" },
+      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1 },
       movieTitle: "Test Movie",
       date: "2026-07-22",
       displayTime: "7:00 PM",
       format: "Standard",
       amenities: "Reserved seating",
+      genres: [],
       seatMap: {
         availableSeatCount: 1,
         totalSeatCount: 1,
