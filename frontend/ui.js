@@ -1,6 +1,8 @@
+const STATE_CLASSES = ["is-loading", "is-error", "is-success"];
+
 export function setStatus(element, text, state = "") {
-  const baseClass = element.id === "gridStatus" ? "status grid-status" : "status";
-  element.className = baseClass + (state ? ` is-${state}` : "");
+  element.classList.remove(...STATE_CLASSES);
+  if (state) element.classList.add(`is-${state}`);
   element.textContent = "";
   if (!text) return;
 
@@ -13,18 +15,12 @@ export function setStatus(element, text, state = "") {
 }
 
 export function setSummary(element, text, muted) {
-  element.className = "summary" + (muted ? " is-muted" : "");
-  element.textContent = "";
-  if (muted === "loading") {
-    const spinner = document.createElement("span");
-    spinner.className = "spinner";
-    element.appendChild(spinner);
-  }
-  element.appendChild(document.createTextNode(text));
+  element.classList.toggle("is-muted", Boolean(muted));
+  element.textContent = text;
 }
 
-export const SEARCH_LOADING_STAGES = [
-  { label: "Loading theatres", delay: 0 },
+const SEARCH_LOADING_STAGES = [
+  { label: "Loading theatres" },
   { label: "Checking showtimes", delay: 650 },
   { label: "Checking seat maps", delay: 1500 },
 ];

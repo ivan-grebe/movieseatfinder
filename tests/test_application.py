@@ -107,7 +107,7 @@ class MovieAndFormatTests(unittest.TestCase):
             }],
         }
 
-        showtime = application.normalize_showtimes({}, [movie], "2026-07-20")[0]
+        showtime = application.normalize_showtimes({}, [movie])[0]
 
         self.assertEqual(showtime["format"], "IMAX")
         self.assertEqual(showtime["screenReaderTime"], "6:00 PM")
@@ -132,18 +132,13 @@ class SeatSelectionTests(unittest.TestCase):
         )
 
     def test_adjacent_blocks_require_available_contiguous_seats(self):
-        blocks = seat_matching.adjacent_blocks(self.seats, 2, "any")
-        self.assertIn(["A1", "A2"], [block["seats"] for block in blocks])
-        self.assertNotIn(["A2", "A3"], [block["seats"] for block in blocks])
+        blocks = seat_matching.adjacent_blocks(self.seats, 2)
+        self.assertIn(["A1", "A2"], blocks)
+        self.assertNotIn(["A2", "A3"], blocks)
 
     def test_accessible_seats_can_be_excluded(self):
-        blocks = seat_matching.adjacent_blocks(
-            self.seats,
-            1,
-            "any",
-            exclude_accessible=True,
-        )
-        seat_ids = {seat_id for block in blocks for seat_id in block["seats"]}
+        blocks = seat_matching.adjacent_blocks(self.seats, 1, exclude_accessible=True)
+        seat_ids = {seat_id for block in blocks for seat_id in block}
         self.assertNotIn("B1", seat_ids)
         self.assertNotIn("B3", seat_ids)
         self.assertIn("B2", seat_ids)
@@ -294,13 +289,6 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertNotIn("immutable", response.headers.get("cache-control", ""))
 
-    def test_entry_animation_uses_only_composited_properties(self):
-        enter_rule = application.INLINE_STYLES.split(".enter-item {", 1)[1].split("}", 1)[0]
-        enter_keyframes = application.INLINE_STYLES.split("@keyframes enter-up {", 1)[1].split("}", 2)[0]
-
-        self.assertNotIn("filter:", enter_rule)
-        self.assertNotIn("filter:", enter_keyframes)
-
     @patch("backend.application.LOGGER.info")
     def test_ticket_click_is_logged_without_request_data(self, logger_info):
         response = self.client.post("/api/events/ticket-click")
@@ -361,6 +349,11 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/api/theatres", params={"zip": "10001"})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "Enter a search radius."})
+
+    def test_unparseable_params_use_the_same_error_shape(self):
+        response = self.client.get("/api/theatres", params={"zip": "10001", "radius": "abc"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
 
     @patch("backend.application.LOGGER.exception")
     @patch("backend.application.fandango_theatres", side_effect=RuntimeError("unexpected upstream shape"))

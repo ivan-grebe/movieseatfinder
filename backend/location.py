@@ -11,7 +11,8 @@ USER_AGENT = "MovieSeatFinder/1.0 (location lookup)"
 _LOCAL = threading.local()
 
 
-def _session():
+def http_session():
+    """One requests.Session per thread, shared by every upstream call."""
     session = getattr(_LOCAL, "session", None)
     if session is None:
         session = requests.Session()
@@ -30,14 +31,17 @@ def distance_miles(lat1, lon1, lat2, lon2):
 
 
 def geocode_zip(zip_code):
-    response = _session().get(
+    response = http_session().get(
         f"https://api.zippopotam.us/us/{zip_code}",
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=20,
     )
     response.raise_for_status()
     data = response.json()
-    place = data["places"][0]
+    places = data.get("places") or []
+    if not places:
+        raise KeyError("No location found for that ZIP code")
+    place = places[0]
     return {
         "label": f'{place["place name"]}, {place["state abbreviation"]} {data["post code"]}',
         "lat": float(place["latitude"]),
@@ -47,7 +51,7 @@ def geocode_zip(zip_code):
 
 def reverse_geocode_zip(lat, lon):
     """Find a ZIP for Fandango's ZIP-only API without retaining location data."""
-    response = _session().get(
+    response = http_session().get(
         "https://nominatim.openstreetmap.org/reverse",
         # City-level results (zoom 10) omit postcodes in many places. Street/
         # neighbourhood detail reliably includes the ZIP needed by Fandango.
@@ -63,8 +67,10 @@ def reverse_geocode_zip(lat, lon):
 
 
 def validate_coordinates(lat, lon):
-    if lat is None or lon is None:
+    if lat is None and lon is None:
         return None
+    if lat is None or lon is None:
+        raise ValueError("Location must include both latitude and longitude.")
     try:
         lat = float(lat)
         lon = float(lon)

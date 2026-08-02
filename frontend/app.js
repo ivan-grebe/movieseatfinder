@@ -21,11 +21,26 @@ let theatres = [];
 let movies = [];
 let preciseLocation = null;
 let currentPage = 1;
-let theatreLoadSequence = 0;
-let movieLoadSequence = 0;
-let formatLoadSequence = 0;
-let searchLoadSequence = 0;
 let reorderScrollY = null;
+
+// Tracks the latest run of an async loader so stale responses can be dropped.
+function createRunGuard() {
+  let current = 0;
+  return {
+    start() {
+      const id = ++current;
+      return () => id === current;
+    },
+    cancel() {
+      current += 1;
+    },
+  };
+}
+
+const theatreLoad = createRunGuard();
+const movieLoad = createRunGuard();
+const formatLoad = createRunGuard();
+const searchLoad = createRunGuard();
 
 const formatPicker = createFormatPicker(formatOptions);
 const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton);
@@ -36,11 +51,7 @@ const resultsView = createResultsView({
   pagination,
   pageSize: PAGE_SIZE,
   getPage: () => currentPage,
-  onPageChange: page => {
-    const previousPage = currentPage;
-    currentPage = page;
-    runSearch({ pageChange: true, previousPage });
-  },
+  onPageChange: page => runPageChange(page),
 });
 
 function hasValidZip() {
@@ -84,6 +95,10 @@ function enforceRadius(report = false) {
   return valid;
 }
 
+function hasSearchBasics() {
+  return hasSearchLocation() && enforceRadius();
+}
+
 function locationParams(params) {
   if (preciseLocation) {
     params.set("lat", preciseLocation.latitude);
@@ -103,8 +118,8 @@ function baseParams() {
 }
 
 async function loadTheatres() {
-  const loadSequence = ++theatreLoadSequence;
-  if (!hasSearchLocation() || !enforceRadius()) {
+  const isCurrent = theatreLoad.start();
+  if (!hasSearchBasics()) {
     theatres = [];
     setStatus(theatreStatus, "");
     return;
@@ -117,20 +132,20 @@ async function loadTheatres() {
       radius: radiusInput.value,
     }));
     const data = await getJson(`/api/theatres?${params}`);
-    if (loadSequence !== theatreLoadSequence) return;
+    if (!isCurrent()) return;
     theatres = data.theatres || [];
     setStatus(theatreStatus, `${theatres.length} theatres found near ${data.place}.`, "success");
     closeCombo(theatreInput, theatreMenu);
   } catch (error) {
-    if (loadSequence !== theatreLoadSequence) return;
+    if (!isCurrent()) return;
     theatres = [];
     setStatus(theatreStatus, error.message, "error");
   }
 }
 
 async function loadMovies() {
-  const loadSequence = ++movieLoadSequence;
-  if (!hasSearchLocation() || !enforceRadius()) {
+  const isCurrent = movieLoad.start();
+  if (!hasSearchBasics()) {
     movies = [];
     formatPicker.setOptions([]);
     setStatus(movieStatus, "");
@@ -138,13 +153,11 @@ async function loadMovies() {
   }
 
   setStatus(movieStatus, "Loading movies for selected dates…", "loading");
-  const currentMovie = movieInput.value;
   movies = [];
   try {
     const data = await getJson(`/api/movies?${baseParams()}`);
-    if (loadSequence !== movieLoadSequence) return;
+    if (!isCurrent()) return;
     movies = data.movies || [];
-    movieInput.value = currentMovie;
     const typedMovie = movieInput.value.trim();
     if (typedMovie && !typedMovieIsShowing(typedMovie)) {
       setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres — pick a different movie.`, "error");
@@ -153,16 +166,16 @@ async function loadMovies() {
     }
     closeCombo(movieInput, movieMenu);
   } catch (error) {
-    if (loadSequence !== movieLoadSequence) return;
+    if (!isCurrent()) return;
     setStatus(movieStatus, error.message, "error");
   }
 }
 
 async function loadFormats() {
   const movieTitle = movieInput.value.trim();
-  const loadSequence = ++formatLoadSequence;
+  const isCurrent = formatLoad.start();
   setStatus(formatStatus, "");
-  if (!movieTitle || !hasSearchLocation() || !enforceRadius()) {
+  if (!movieTitle || !hasSearchBasics()) {
     formatPicker.setOptions([]);
     return;
   }
@@ -172,20 +185,15 @@ async function loadFormats() {
     const params = baseParams();
     params.set("movie", movieTitle);
     const data = await getJson(`/api/formats?${params}`);
-    if (loadSequence !== formatLoadSequence || movieInput.value.trim() !== movieTitle) return;
+    if (!isCurrent() || movieInput.value.trim() !== movieTitle) return;
     const formats = data.formats || [];
     formatPicker.setOptions(formats);
     setStatus(formatStatus, `${formats.length} format${formats.length === 1 ? "" : "s"} for this movie.`, "success");
   } catch (error) {
-    if (loadSequence !== formatLoadSequence || movieInput.value.trim() !== movieTitle) return;
+    if (!isCurrent() || movieInput.value.trim() !== movieTitle) return;
     formatPicker.setOptions([]);
     setStatus(formatStatus, error.message, "error");
   }
-}
-
-async function search() {
-  currentPage = 1;
-  await runSearch();
 }
 
 function finishReorder({ restoreScroll = true } = {}) {
@@ -198,81 +206,111 @@ function finishReorder({ restoreScroll = true } = {}) {
   if (restoreScroll) window.requestAnimationFrame(() => window.scrollTo(window.scrollX, scrollY));
 }
 
-async function runSearch({ reorder = false, pageChange = false, previousPage = currentPage } = {}) {
-  if (!reorder) finishReorder({ restoreScroll: false });
+function validateSearchInputs() {
   syncEndDateBounds();
-  const movieTitle = movieInput.value.trim();
   if (!hasSearchLocation()) {
-    if (pageChange) currentPage = previousPage;
     reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
-    return;
+    return false;
   }
-  if (!enforceRadius(true)) {
-    if (pageChange) currentPage = previousPage;
-    return;
-  }
-  if (!movieTitle) {
-    if (pageChange) currentPage = previousPage;
+  if (!enforceRadius(true)) return false;
+  if (!movieInput.value.trim()) {
     reportRequiredField(movieInput, "Choose a movie first.");
-    return;
+    return false;
   }
+  return true;
+}
 
-  const loadSequence = ++searchLoadSequence;
-  let stopLoadingStages = () => {};
-  if (reorder) {
-    reorderScrollY = window.scrollY;
-    resultsView.beginReorder();
-    sortInput.disabled = true;
-    setAnimatedStatus(sortStatus, "Reordering");
-  } else {
-    sortInput.disabled = true;
-    if (!pageChange) {
-      setSummary(summary, "", false);
-      // A fresh search can supersede an in-flight page change; clear any
-      // pagination loading state so it cannot outlive that request.
-      resultsView.endPageLoading();
-    }
-    if (pageChange) resultsView.setPageLoading();
-    stopLoadingStages = startLoadingStages(stage => {
-      if (loadSequence !== searchLoadSequence) return;
-      setButtonBusy(searchButton, true, stage);
-    });
-  }
-  let reorderError = "";
+function fetchSearchResults() {
+  const params = baseParams();
+  params.set("movie", movieInput.value.trim());
+  params.set("format", formatPicker.value());
+  params.set("startTime", startTimeInput.value);
+  params.set("endTime", endTimeInput.value);
+  params.set("adjacentSeats", adjacentSeatsInput.value);
+  params.set("page", currentPage);
+  params.set("pageSize", PAGE_SIZE);
+  params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
+  params.set("sort", sortInput.value);
+  const selectedCells = seatGrid.values();
+  if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
+  return getJson(`/api/search?${params}`);
+}
+
+async function runNewSearch() {
+  finishReorder({ restoreScroll: false });
+  if (!validateSearchInputs()) return;
+  const isCurrent = searchLoad.start();
+  sortInput.disabled = true;
+  setSummary(summary, "", false);
+  // A fresh search can supersede an in-flight page change; clear any
+  // pagination loading state so it cannot outlive that request.
+  resultsView.endPageLoading();
+  const stopLoadingStages = startLoadingStages(stage => {
+    if (isCurrent()) setButtonBusy(searchButton, true, stage);
+  });
   try {
-    const params = baseParams();
-    params.set("movie", movieTitle);
-    params.set("format", formatPicker.value());
-    params.set("startTime", startTimeInput.value);
-    params.set("endTime", endTimeInput.value);
-    params.set("adjacentSeats", adjacentSeatsInput.value);
-    params.set("page", currentPage);
-    params.set("pageSize", PAGE_SIZE);
-    params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
-    params.set("sort", sortInput.value);
-    const selectedCells = seatGrid.values();
-    if (selectedCells.length) params.set("seatGrid", selectedCells.join(","));
-    const data = await getJson(`/api/search?${params}`);
-    if (loadSequence !== searchLoadSequence) return;
-    resultsView.render(data, { skipEntrance: reorder });
+    const data = await fetchSearchResults();
+    if (!isCurrent()) return;
+    resultsView.render(data);
   } catch (error) {
-    if (loadSequence !== searchLoadSequence) return;
-    if (reorder) reorderError = "Try again";
-    else if (pageChange) {
-      const failedPage = currentPage;
-      currentPage = previousPage;
-      resultsView.endPageLoading(`Couldn't load page ${failedPage}`);
-    } else setSummary(summary, error.message, true);
+    if (!isCurrent()) return;
+    setSummary(summary, error.message, true);
   } finally {
     stopLoadingStages();
-    if (loadSequence === searchLoadSequence) {
-      if (reorder) {
-        finishReorder();
-        sortStatus.textContent = reorderError;
-      } else {
-        setButtonBusy(searchButton, false);
-        sortInput.disabled = false;
-      }
+    if (isCurrent()) {
+      setButtonBusy(searchButton, false);
+      sortInput.disabled = false;
+    }
+  }
+}
+
+async function runPageChange(page) {
+  finishReorder({ restoreScroll: false });
+  if (!validateSearchInputs()) return;
+  const previousPage = currentPage;
+  currentPage = page;
+  const isCurrent = searchLoad.start();
+  sortInput.disabled = true;
+  resultsView.setPageLoading();
+  const stopLoadingStages = startLoadingStages(stage => {
+    if (isCurrent()) setButtonBusy(searchButton, true, stage);
+  });
+  try {
+    const data = await fetchSearchResults();
+    if (!isCurrent()) return;
+    resultsView.render(data);
+  } catch (error) {
+    if (!isCurrent()) return;
+    currentPage = previousPage;
+    resultsView.endPageLoading(`Couldn't load page ${page}`);
+  } finally {
+    stopLoadingStages();
+    if (isCurrent()) {
+      setButtonBusy(searchButton, false);
+      sortInput.disabled = false;
+    }
+  }
+}
+
+async function runReorder() {
+  if (!validateSearchInputs()) return;
+  const isCurrent = searchLoad.start();
+  reorderScrollY = window.scrollY;
+  resultsView.beginReorder();
+  sortInput.disabled = true;
+  setAnimatedStatus(sortStatus, "Reordering");
+  let errorMessage = "";
+  try {
+    const data = await fetchSearchResults();
+    if (!isCurrent()) return;
+    resultsView.render(data, { skipEntrance: true });
+  } catch (error) {
+    if (!isCurrent()) return;
+    errorMessage = "Try again";
+  } finally {
+    if (isCurrent()) {
+      finishReorder();
+      sortStatus.textContent = errorMessage;
     }
   }
 }
@@ -294,13 +332,16 @@ function applyQueryParams() {
   Object.entries(inputParams).forEach(([name, input]) => {
     if (params.has(name)) input.value = params.get(name);
   });
+  // An unknown sort value would otherwise leave the select showing no option.
+  if (sortInput.selectedIndex === -1) sortInput.value = "earliest";
   if (params.has("excludeAccessible")) {
     excludeAccessibleInput.checked = params.get("excludeAccessible") === "1";
   }
   if (params.has("seatGrid")) seatGrid.select(params.get("seatGrid").split(","));
   if (params.has("format")) {
-    formatPicker.select(params.get("format").split(","));
-    formatPicker.setOptions(formatPicker.values().filter(format => format !== "any"));
+    const formats = params.get("format").split(",").filter(Boolean);
+    formatPicker.setOptions(formats.filter(format => format !== "any"));
+    formatPicker.select(formats);
   }
   return params.has("movie");
 }
@@ -317,9 +358,9 @@ function syncEndDateBounds() {
 
 async function refreshTheatresAndMovies() {
   if (!hasSearchLocation() || !hasValidRadius()) {
-    theatreLoadSequence += 1;
-    movieLoadSequence += 1;
-    formatLoadSequence += 1;
+    theatreLoad.cancel();
+    movieLoad.cancel();
+    formatLoad.cancel();
     theatres = [];
     movies = [];
     formatPicker.setOptions([]);
@@ -366,11 +407,12 @@ function bindEvents() {
   setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, loadFormats);
   searchForm.addEventListener("submit", event => {
     event.preventDefault();
-    search();
+    currentPage = 1;
+    runNewSearch();
   });
   sortInput.addEventListener("change", () => {
     currentPage = 1;
-    runSearch({ reorder: true });
+    runReorder();
   });
   useLocationButton.addEventListener("click", requestLocation);
   zipInput.addEventListener("input", () => {
@@ -407,18 +449,17 @@ async function initialize() {
   const today = todayString();
   startDateInput.value = today;
   endDateInput.value = addDays(today, 7);
-  startDateInput.min = today;
-  syncEndDateBounds();
   formatPicker.setOptions([]);
   bindEvents();
 
   const shouldSearchFromUrl = applyQueryParams();
   syncEndDateBounds();
-  if (hasSearchLocation() && enforceRadius()) {
+  if (hasSearchBasics()) {
     await Promise.all([loadTheatres(), loadMovies()]);
     if (shouldSearchFromUrl) {
       await loadFormats();
-      search();
+      currentPage = 1;
+      runNewSearch();
     }
   } else {
     setStatus(locationStatus, "Enter a ZIP code or use your location.");

@@ -239,8 +239,11 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   });
 
   centerButton.addEventListener("click", () => {
-    selectBox(5, 9, 5, 9);
-    setAnchor(5, 5);
+    // The middle third of the grid in both directions.
+    const start = Math.floor(GRID_SIZE / 3);
+    const end = GRID_SIZE - start - 1;
+    selectBox(start, end, start, end);
+    setAnchor(start, start);
   });
   clearButton.addEventListener("click", () => {
     keyboardRectBase = null;

@@ -46,6 +46,7 @@ export function createFormatPicker(container) {
     selected.clear();
     values.filter(Boolean).forEach(format => selected.add(format));
     if (!selected.size) selected.add("any");
+    container.querySelectorAll(".format-option").forEach(syncOption);
   }
 
   return {

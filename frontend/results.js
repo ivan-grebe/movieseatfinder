@@ -4,6 +4,7 @@ import { logTicketClick } from "./tracking.js";
 
 const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
 const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>';
+const ACCESSIBLE_SEAT_TYPES = ["wheelchair", "companion"];
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
@@ -56,9 +57,7 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   layout.seats.forEach(seat => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    const accessibilityType = ["wheelchair", "companion"].includes(seat.type)
-      ? seat.type
-      : "";
+    const accessibilityType = ACCESSIBLE_SEAT_TYPES.includes(seat.type) ? seat.type : "";
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
     node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
     if (accessibilityType) node.classList.add("accessible");

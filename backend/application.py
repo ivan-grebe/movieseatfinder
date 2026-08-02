@@ -1,11 +1,10 @@
-﻿from pathlib import Path
+from pathlib import Path
 from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import OrderedDict, defaultdict, deque
 import base64
 import hashlib
-import html
 import ipaddress
 import logging
 import os
@@ -14,14 +13,15 @@ import sys
 import threading
 import time
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import requests
 
 from .location import (
-    distance_miles,
     filter_theatres_within_radius,
+    http_session,
     resolve_search_location,
 )
 from .seat_matching import (
@@ -30,7 +30,8 @@ from .seat_matching import (
 )
 
 
-USER_AGENT = "MovieSeatFinder/1.0 (local development app)"
+# The Mozilla prefix matters: Fandango's WAF rejects obviously non-browser UAs.
+FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
 SITE_NAME = "Movie Seat Finder"
 SITE_DESCRIPTION = (
@@ -39,14 +40,11 @@ SITE_DESCRIPTION = (
 )
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "frontend"
-INDEX_HTML = STATIC_DIR / "index.html"
-STYLES_CSS = STATIC_DIR / "styles.css"
-INLINE_STYLES = STYLES_CSS.read_text(encoding="utf-8")
+INLINE_STYLES = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 INLINE_STYLE_HASH = base64.b64encode(
     hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()
 ).decode("ascii")
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-VERSIONED_ASSET_CDN_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_SUFFIXES = {".css", ".js", ".png", ".svg", ".webmanifest"}
 # The only frontend files the site serves; source modules stay private and the
 # raw index.html template is only reachable through the rendered "/" route.
@@ -57,23 +55,14 @@ ASSET_VERSIONS = {
     name: hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:12]
     for name in ("app.bundle.js", "favicon.svg")
 }
-OVERPASS_ENDPOINTS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
-]
-SEAT_MAP_CACHE = OrderedDict()
-SEAT_MAP_CACHE_LOCK = threading.Lock()
-SEAT_MAP_TTL_SECONDS = 300
-SEAT_MAP_CACHE_MAX = 200
-
-# Cache of theatre+showtime payloads keyed by (zip, radius, date). Showtimes do
-# not change second to second, so a short TTL lets the theatres/movies/formats/
-# search endpoints share one fetch instead of each re-downloading the same data.
-THEATRES_CACHE = OrderedDict()
-THEATRES_CACHE_LOCK = threading.Lock()
-THEATRES_TTL_SECONDS = 300
-THEATRES_CACHE_MAX = 240
+# Static tokens are substituted once at import; only the origin-dependent SEO
+# tokens vary per request.
+INDEX_TEMPLATE = (
+    (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    .replace("__INLINE_STYLES__", INLINE_STYLES)
+    .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
+    .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
+)
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
@@ -93,7 +82,8 @@ RATE_LIMITS = {
 }
 RATE_LIMIT_HISTORY = defaultdict(deque)
 RATE_LIMIT_LOCK = threading.Lock()
-HTTP_LOCAL = threading.local()
+# Errors that mean an upstream service failed rather than a bug in this app.
+UPSTREAM_ERRORS = (requests.RequestException, TimeoutError, KeyError)
 LOGGER = logging.getLogger(__name__)
 if not LOGGER.handlers:
     LOGGER.addHandler(logging.StreamHandler(sys.stdout))
@@ -110,18 +100,47 @@ def log_cache_hit(cache_name, age_seconds):
     )
 
 
-def http_session():
-    session = getattr(HTTP_LOCAL, "session", None)
-    if session is None:
-        session = requests.Session()
-        HTTP_LOCAL.session = session
-    return session
+class TtlCache:
+    """Thread-safe TTL + LRU cache for upstream payloads."""
+
+    def __init__(self, name, ttl_seconds, max_entries):
+        self.name = name
+        self.ttl_seconds = ttl_seconds
+        self.max_entries = max_entries
+        self._entries = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        now = time.monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            stored_at, value = entry
+            if now - stored_at >= self.ttl_seconds:
+                self._entries.pop(key, None)
+                return None
+            self._entries.move_to_end(key)
+        log_cache_hit(self.name, now - stored_at)
+        return value
+
+    def set(self, key, value):
+        with self._lock:
+            self._entries[key] = (time.monotonic(), value)
+            self._entries.move_to_end(key)
+            while len(self._entries) > self.max_entries:
+                self._entries.popitem(last=False)
+
+    def clear(self):
+        with self._lock:
+            self._entries.clear()
 
 
-def fetch_text(url, timeout=20):
-    response = http_session().get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
-    response.raise_for_status()
-    return response.text
+SEAT_MAP_CACHE = TtlCache("seat_map", ttl_seconds=300, max_entries=200)
+# Theatre+showtime payloads keyed by (zip, radius, date, origin). Showtimes do
+# not change second to second, so a short TTL lets the theatres/movies/formats/
+# search endpoints share one fetch instead of each re-downloading the same data.
+THEATRES_CACHE = TtlCache("theatres", ttl_seconds=300, max_entries=240)
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
@@ -129,7 +148,7 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
         f"{FANDANGO_ORIGIN}{path}",
         params=params,
         headers={
-            "User-Agent": "Mozilla/5.0 MovieSeatFinder/1.0",
+            "User-Agent": FANDANGO_USER_AGENT,
             "Accept": "application/json",
             "Referer": referer,
             "X-Requested-With": "XMLHttpRequest",
@@ -181,8 +200,12 @@ def validate_time(value, field_name):
 
 
 def search_sort_key(distance, show_date, show_time, theatre_name, sort_order):
-    """Return a deterministic key for supported result sort orders."""
-    chronology = int(f"{show_date.replace('-', '')}{show_time.replace(':', '')}")
+    """Return a deterministic key for supported result sort orders.
+
+    Date and time are fixed-width, so their digits concatenate into one
+    integer that sorts chronologically and negates cleanly for "latest".
+    """
+    chronology = int(show_date.replace("-", "") + show_time.replace(":", ""))
     if sort_order == "nearest":
         return (float(distance), chronology, theatre_name)
     if sort_order == "latest":
@@ -202,76 +225,6 @@ def safe_fandango_url(value):
     if parts.netloc not in {"www.fandango.com", "tickets.fandango.com"}:
         return ""
     return value
-
-
-def overpass_theatres(lat, lon, radius_miles):
-    radius_meters = int(float(radius_miles) * 1609.344)
-    query = f"""
-    [out:json][timeout:25];
-    (
-      node["amenity"="cinema"](around:{radius_meters},{lat},{lon});
-      way["amenity"="cinema"](around:{radius_meters},{lat},{lon});
-      relation["amenity"="cinema"](around:{radius_meters},{lat},{lon});
-    );
-    out center tags;
-    """
-    last_error = None
-    data = None
-    for endpoint in OVERPASS_ENDPOINTS:
-        try:
-            response = http_session().post(
-                endpoint,
-                data=query.encode("utf-8"),
-                headers={
-                "User-Agent": USER_AGENT,
-                "Content-Type": "application/x-www-form-urlencoded",
-                },
-                timeout=30,
-            )
-            response.raise_for_status()
-            data = response.json()
-            break
-        except (requests.RequestException, TimeoutError) as error:
-            last_error = error
-
-    if data is None:
-        raise last_error
-
-    theatres = []
-    seen = set()
-    for element in data.get("elements", []):
-        tags = element.get("tags", {})
-        name = tags.get("name")
-        if not name:
-            continue
-
-        element_lat = element.get("lat") or element.get("center", {}).get("lat")
-        element_lon = element.get("lon") or element.get("center", {}).get("lon")
-        if element_lat is None or element_lon is None:
-            continue
-
-        key = (name.lower(), round(float(element_lat), 4), round(float(element_lon), 4))
-        if key in seen:
-            continue
-        seen.add(key)
-
-        street = " ".join(part for part in [
-            tags.get("addr:housenumber", ""),
-            tags.get("addr:street", ""),
-        ] if part).strip()
-        city = tags.get("addr:city", "")
-        state = tags.get("addr:state", "")
-        address = ", ".join(part for part in [street, city, state] if part)
-
-        theatres.append({
-            "name": name,
-            "address": address,
-            "website": tags.get("website") or tags.get("contact:website") or "",
-            "distanceMiles": distance_miles(lat, lon, float(element_lat), float(element_lon)),
-            "source": "OpenStreetMap",
-        })
-
-    return sorted(theatres, key=lambda theatre: theatre["distanceMiles"])
 
 
 def clean_title(value):
@@ -297,59 +250,40 @@ def format_matches(format_name, amenity_text, requested):
     return any(format_matches_one(format_name, amenity_text, requested_format) for requested_format in requested_formats)
 
 
-def format_matches_one(format_name, amenity_text, requested):
+# Requested formats whose match set is more than the literal requested value.
+FORMAT_ALIASES = {
+    "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
+    "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
+    "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
+    "imax with laser": {"imax with laser", "imax laser"},
+    "dolby": {"dolby", "dolby cinema"},
+}
 
+
+def format_matches_one(format_name, amenity_text, requested):
     values = [
         normalized_text(value)
         for value in [format_name, *(amenity_text or "").split(",")]
         if normalized_text(value)
     ]
     value_set = set(values)
-    exact_checks = {
-        "standard": {"standard"},
-        "imax": {"imax"},
-        "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
-        "imax with laser": {"imax with laser", "imax laser"},
-        "dolby": {"dolby", "dolby cinema"},
-        "screenx": {"screenx"},
-        "4dx": {"4dx"},
-        "35mm": {"35mm", "35 mm"},
-        "35 mm": {"35mm", "35 mm"},
-        "70mm": {"70mm", "70 mm"},
-        "70 mm": {"70mm", "70 mm"},
-    }
-    if requested == "imax" and "imax" in value_set:
-        return True
-    if requested == "imax" and any(value.startswith("imax ") for value in values):
-        return False
+    if requested == "imax":
+        # Plain IMAX must not match the premium IMAX variants.
+        return "imax" in value_set and not any(value.startswith("imax ") for value in values)
     combined = normalized_text(f"{format_name} {amenity_text}")
     if requested in ("35mm", "35 mm"):
         return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
     if requested in ("70mm", "70 mm"):
         return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
-    return bool(value_set & exact_checks.get(requested, {requested}))
+    return bool(value_set & FORMAT_ALIASES.get(requested, {requested}))
 
 
 def fandango_theatres(zip_code, radius, show_date=None, origin=None):
     origin_key = tuple(round(value, 5) for value in origin) if origin else ()
     key = (str(zip_code), str(radius), show_date or "", origin_key)
-    now = time.monotonic()
-    with THEATRES_CACHE_LOCK:
-        entry = THEATRES_CACHE.get(key)
-        if entry is not None and now - entry[0] < THEATRES_TTL_SECONDS:
-            THEATRES_CACHE.move_to_end(key)
-            cached_theatres = entry[1]
-            cache_age = now - entry[0]
-        else:
-            cached_theatres = None
-            cache_age = None
-            if entry is not None:
-                THEATRES_CACHE.pop(key, None)
-    if cache_age is not None:
-        log_cache_hit("theatres", cache_age)
-        return cached_theatres
+    cached = THEATRES_CACHE.get(key)
+    if cached is not None:
+        return cached
     # Fandango accepts a ZIP rather than coordinates. For a browser-location
     # search, get a broad candidate set and enforce the exact circle locally.
     # Over-fetch around the ZIP used by Fandango so an exact coordinate search
@@ -359,11 +293,7 @@ def fandango_theatres(zip_code, radius, show_date=None, origin=None):
     theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
     if origin:
         theatres = filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
-    with THEATRES_CACHE_LOCK:
-        THEATRES_CACHE[key] = (now, theatres)
-        THEATRES_CACHE.move_to_end(key)
-        while len(THEATRES_CACHE) > THEATRES_CACHE_MAX:
-            THEATRES_CACHE.popitem(last=False)
+    THEATRES_CACHE.set(key, theatres)
     return theatres
 
 
@@ -386,7 +316,7 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin=None):
             try:
                 results[show_date] = future.result()
                 successful_dates += 1
-            except (requests.RequestException, TimeoutError, KeyError, ValueError) as error:
+            except (*UPSTREAM_ERRORS, ValueError) as error:
                 last_error = error
                 results[show_date] = []
     if successful_dates == 0 and last_error is not None:
@@ -430,80 +360,21 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
     return sorted(theatres, key=lambda item: item["distanceMiles"])
 
 
-def should_list_amenity_format(name, visible_terms):
-    normalized_name = normalized_text(name)
-    visible = {normalized_text(term) for term in visible_terms if normalized_text(term)}
-    if normalized_name == "imax" and any(term.startswith("imax ") for term in visible):
-        return False
-    return True
+def dated_theatres(zip_code, radius, start_date, end_date, theatre_query="", origin=None):
+    """Yield (show_date, theatre) for each fetched date, filtered by theatre name."""
+    dates = list(date_range(start_date, end_date))
+    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
+    for show_date in dates:
+        for theatre in theatres_by_date.get(show_date, []):
+            if theatre_query and theatre_query not in theatre["name"].lower():
+                continue
+            yield show_date, theatre
 
 
 def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query="", origin=None):
     seen = set()
     movies = []
-    dates = list(date_range(start_date, end_date))
-    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
-    for show_date in dates:
-        theatres = [
-            theatre for theatre in theatres_by_date.get(show_date, [])
-            if not theatre_query or theatre_query in theatre["name"].lower()
-        ]
-        for theatre in theatres:
-            for movie in theatre.get("rawMovies", []):
-                movie_id = str(movie.get("id") or "")
-                title = clean_title(movie.get("title", ""))
-                key = movie_id or normalized_text(title)
-                if not title or key in seen:
-                    continue
-                seen.add(key)
-                movies.append({
-                    "title": title,
-                    "fandangoId": movie_id,
-                    "source": f"Fandango live showtimes {start_date} to {end_date}",
-                })
-    return sorted(movies, key=lambda movie: movie["title"])
-
-
-def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query="", origin=None):
-    formats = set()
-    dates = list(date_range(start_date, end_date))
-    theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
-    for show_date in dates:
-        theatres = [
-            theatre for theatre in theatres_by_date.get(show_date, [])
-            if not theatre_query or theatre_query in theatre["name"].lower()
-        ]
-        for theatre in theatres:
-            for movie in theatre.get("rawMovies", []):
-                if not movie_matches(movie.get("title", ""), movie_query):
-                    continue
-                for variant in movie.get("variants") or []:
-                    format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
-                    for group in variant.get("amenityGroups") or []:
-                        group_showtimes = group.get("showtimes") or [{}]
-                        for showtime in group_showtimes:
-                            formats.add(showtime_format(format_name, group, showtime))
-                        amenity_text = clean_title(group.get("amenityString", ""))
-                        visible_terms = [format_name, *(showtime_format(format_name, group, showtime) for showtime in group_showtimes)]
-                        for amenity in amenity_text.split(","):
-                            amenity = amenity.strip()
-                            if any(term in amenity.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")):
-                                formats.add(amenity)
-                                visible_terms.append(amenity)
-                        for amenity in group.get("amenities") or []:
-                            name = clean_title(amenity.get("name", ""))
-                            if (
-                                any(term in name.lower() for term in ("imax", "dolby", "4dx", "screenx", "35mm", "70mm"))
-                                and should_list_amenity_format(name, visible_terms)
-                            ):
-                                formats.add(name)
-    return sorted(formats)
-
-
-def normalize_movie_list_from_theatres(theatres):
-    seen = set()
-    movies = []
-    for theatre in theatres:
+    for _, theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
         for movie in theatre.get("rawMovies", []):
             movie_id = str(movie.get("id") or "")
             title = clean_title(movie.get("title", ""))
@@ -514,17 +385,61 @@ def normalize_movie_list_from_theatres(theatres):
             movies.append({
                 "title": title,
                 "fandangoId": movie_id,
-                "source": "Fandango live theatre showtimes",
+                "source": f"Fandango live showtimes {start_date} to {end_date}",
             })
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def poster_url(movie, size="300"):
+PREMIUM_FORMAT_TERMS = ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")
+
+
+def should_list_amenity_format(name, visible_terms):
+    normalized_name = normalized_text(name)
+    visible = {normalized_text(term) for term in visible_terms if normalized_text(term)}
+    if normalized_name == "imax" and any(term.startswith("imax ") for term in visible):
+        return False
+    return True
+
+
+def group_formats(format_name, group):
+    """Every format label a single amenity group exposes for its showtimes."""
+    group_showtimes = group.get("showtimes") or [{}]
+    labels = {showtime_format(format_name, group, showtime) for showtime in group_showtimes}
+    visible = [format_name, *labels]
+    for amenity in clean_title(group.get("amenityString", "")).split(","):
+        amenity = amenity.strip()
+        if any(term in amenity.lower() for term in PREMIUM_FORMAT_TERMS):
+            labels.add(amenity)
+            visible.append(amenity)
+    for amenity in group.get("amenities") or []:
+        name = clean_title(amenity.get("name", ""))
+        if (
+            any(term in name.lower() for term in PREMIUM_FORMAT_TERMS)
+            and should_list_amenity_format(name, visible)
+        ):
+            labels.add(name)
+    return labels
+
+
+def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query="", origin=None):
+    formats = set()
+    for _, theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
+        for movie in theatre.get("rawMovies", []):
+            if not movie_matches(movie.get("title", ""), movie_query):
+                continue
+            for variant in movie.get("variants") or []:
+                format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+                for group in variant.get("amenityGroups") or []:
+                    formats.update(group_formats(format_name, group))
+    return sorted(formats)
+
+
+def poster_url(movie):
     poster = movie.get("poster")
     if isinstance(poster, dict):
         sizes = poster.get("size")
         if isinstance(sizes, dict):
-            return sizes.get(size) or sizes.get("200") or sizes.get("full") or ""
+            return sizes.get("300") or sizes.get("200") or sizes.get("full") or ""
     return ""
 
 
@@ -585,7 +500,7 @@ def showtime_format(format_header, group, showtime):
     return header or "Standard"
 
 
-def normalize_showtimes(theatre, movies, show_date):
+def normalize_showtimes(theatre, movies):
     normalized = []
     for movie in movies or []:
         movie_title = clean_title(movie.get("title", ""))
@@ -594,35 +509,36 @@ def normalize_showtimes(theatre, movies, show_date):
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
                 amenity_text = clean_title(group.get("amenityString", ""))
-                amenities = [clean_title(item.get("name", "")) for item in group.get("amenities") or []]
+                amenities = [
+                    name for name in (
+                        clean_title(item.get("name", "")) for item in group.get("amenities") or []
+                    ) if name
+                ]
                 if not amenity_text:
-                    amenity_text = ", ".join(item for item in amenities if item)
-                format_tags = ", ".join(
-                    dict.fromkeys(
-                        [part.strip() for part in amenity_text.split(",") if part.strip()] +
-                        [item for item in amenities if item]
-                    )
-                )
+                    amenity_text = ", ".join(amenities)
                 for showtime in group.get("showtimes") or []:
                     if showtime.get("type") != "available" or showtime.get("expired"):
                         continue
                     ticketing_date = showtime.get("ticketingDate") or ""
-                    if "+" in ticketing_date:
-                        show_date_part, show_time_part = ticketing_date.split("+", 1)
-                    else:
-                        show_date_part, show_time_part = show_date, ""
+                    if "+" not in ticketing_date:
+                        # Without a ticketing date the showtime has no time and
+                        # could never pass the search's time-window filter.
+                        continue
+                    show_date, show_time = ticketing_date.split("+", 1)
                     format_label = showtime_format(format_name, group, showtime)
+                    format_tags = ", ".join(dict.fromkeys(
+                        [format_label]
+                        + [part.strip() for part in amenity_text.split(",") if part.strip()]
+                        + amenities
+                    ))
                     normalized.append({
-                        "theatre": theatre,
                         "movieTitle": movie_title,
-                        "movieId": movie.get("id"),
-                        "date": show_date_part,
-                        "time": show_time_part,
-                        "screenReaderTime": display_showtime_time(show_time_part) or showtime.get("date", ""),
+                        "date": show_date,
+                        "time": show_time,
+                        "screenReaderTime": display_showtime_time(show_time) or showtime.get("date", ""),
                         "format": format_label,
                         "amenities": amenity_text,
-                        "formatTags": ", ".join(dict.fromkeys([format_label, format_tags])),
-                        "reservedSeating": bool(group.get("hasReservedSeating")),
+                        "formatTags": format_tags,
                         "showtimeHashCode": showtime.get("showtimeHashCode"),
                         "ticketUrl": showtime.get("ticketingJumpPageURL"),
                         **meta,
@@ -633,65 +549,15 @@ def normalize_showtimes(theatre, movies, show_date):
 def seat_map(showtime_hash):
     if not showtime_hash:
         return None
-    now = time.monotonic()
-    with SEAT_MAP_CACHE_LOCK:
-        cached = SEAT_MAP_CACHE.get(showtime_hash)
-        if cached and now - cached[0] < SEAT_MAP_TTL_SECONDS:
-            SEAT_MAP_CACHE.move_to_end(showtime_hash)
-            cached_seat_map = cached[1]
-            cache_age = now - cached[0]
-        else:
-            cached_seat_map = None
-            cache_age = None
-            if cached:
-                SEAT_MAP_CACHE.pop(showtime_hash, None)
-    if cache_age is not None:
-        log_cache_hit("seat_map", cache_age)
-        return cached_seat_map
-
+    cached = SEAT_MAP_CACHE.get(showtime_hash)
+    if cached is not None:
+        return cached
     data = fandango_json(
         f"/napi/seatMap/{showtime_hash}",
         referer="https://www.fandango.com/",
     )
-    with SEAT_MAP_CACHE_LOCK:
-        SEAT_MAP_CACHE[showtime_hash] = (now, data)
-        SEAT_MAP_CACHE.move_to_end(showtime_hash)
-        while len(SEAT_MAP_CACHE) > SEAT_MAP_CACHE_MAX:
-            SEAT_MAP_CACHE.popitem(last=False)
+    SEAT_MAP_CACHE.set(showtime_hash, data)
     return data
-
-
-def title_from_slug(slug):
-    words = slug.split("-")
-    if words and re.fullmatch(r"20\d\d", words[-1]):
-        words = words[:-1]
-    small_words = {"a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"}
-    title_words = []
-    for index, word in enumerate(words):
-        if index > 0 and word in small_words:
-            title_words.append(word)
-        else:
-            title_words.append(word.capitalize())
-    return " ".join(title_words)
-
-
-def fandango_movies():
-    page = fetch_text("https://www.fandango.com/movies-in-theaters")
-    seen = set()
-    movies = []
-    pattern = re.compile(r'href="/(?P<slug>[a-z0-9-]+)-(?P<id>\d+)/movie-overview"', re.IGNORECASE)
-    for match in pattern.finditer(page):
-        movie_id = match.group("id")
-        if movie_id in seen:
-            continue
-        seen.add(movie_id)
-        slug = html.unescape(match.group("slug"))
-        movies.append({
-            "title": title_from_slug(slug),
-            "fandangoId": movie_id,
-            "source": "Fandango public movies page",
-        })
-    return sorted(movies, key=lambda movie: movie["title"])
 
 
 app = FastAPI(title="Movie Seat Finder")
@@ -753,10 +619,7 @@ def seo_context(request):
 
 
 def render_index(request):
-    markup = INDEX_HTML.read_text(encoding="utf-8")
-    markup = markup.replace("__INLINE_STYLES__", INLINE_STYLES)
-    markup = markup.replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
-    markup = markup.replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
+    markup = INDEX_TEMPLATE
     for token, value in seo_context(request).items():
         markup = markup.replace(token, value)
     return markup
@@ -780,14 +643,22 @@ async def security_headers(request, call_next):
         and suffix in VERSIONED_ASSET_SUFFIXES
     ):
         response.headers["Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
-        response.headers["CDN-Cache-Control"] = VERSIONED_ASSET_CDN_CACHE_CONTROL
-        response.headers["Vercel-CDN-Cache-Control"] = VERSIONED_ASSET_CDN_CACHE_CONTROL
+        response.headers["CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
+        response.headers["Vercel-CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
     return response
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request, exc):
+    return JSONResponse(
+        status_code=400,
+        content={"error": "One of the search values is invalid. Adjust the form and try again."},
+    )
 
 
 @app.exception_handler(Exception)
@@ -906,50 +777,38 @@ def ticket_click(request: Request):
 
 
 @app.get("/api/theatres")
-def api_theatres(request: Request, zip: str = "", radius: float | None = None, lat: float | None = None, lon: float | None = None):
+def api_theatres(
+    request: Request,
+    zip_code: str = Query("", alias="zip"),
+    radius: float | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+):
     enforce_rate_limit(request, "/api/theatres")
     try:
-        zip_code = zip.strip()
+        zip_code = zip_code.strip()
         radius = validate_radius(radius)
         try:
             search_zip, origin, place = resolve_search_location(zip_code, lat, lon)
-        except (requests.RequestException, TimeoutError, KeyError):
+        except UPSTREAM_ERRORS:
             raise HTTPException(
                 status_code=400,
                 detail="We could not determine a nearby ZIP for your location. Enter a ZIP code instead.",
             )
-
-        try:
-            theatres = fandango_theatres(search_zip, radius, origin=origin)
-            limited_radius = radius
-        except (requests.RequestException, TimeoutError, KeyError):
-            try:
-                theatres = overpass_theatres(origin[0], origin[1], radius)
-                limited_radius = radius
-            except (requests.RequestException, TimeoutError):
-                if radius <= 3:
-                    raise
-                limited_radius = 3
-                theatres = overpass_theatres(origin[0], origin[1], limited_radius)
-
-        return {
-            "place": place,
-            "requestedRadius": radius,
-            "searchedRadius": limited_radius,
-            "theatres": theatres,
-        }
+        theatres = fandango_theatres(search_zip, radius, origin=origin)
+        return {"place": place, "theatres": theatres}
     except HTTPException:
         raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (requests.RequestException, TimeoutError, KeyError) as error:
+    except UPSTREAM_ERRORS as error:
         upstream_error("Could not load real theatre data", error)
 
 
 @app.get("/api/movies")
 def api_movies(
     request: Request,
-    zip: str = "",
+    zip_code: str = Query("", alias="zip"),
     radius: float | None = None,
     startDate: str = "",
     endDate: str = "",
@@ -959,12 +818,11 @@ def api_movies(
 ):
     enforce_rate_limit(request, "/api/movies")
     try:
-        zip_code = zip.strip()
+        zip_code = zip_code.strip()
         radius = validate_radius(radius)
         start_date = startDate or date.today().isoformat()
         end_date = endDate or start_date
         theatre_query = validate_short_text(theatre, "Theatre").lower()
-        list(date_range(start_date, end_date))
         search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
         movies = movies_from_dated_theatre_payloads(
             search_zip, radius, start_date, end_date, theatre_query, origin
@@ -972,14 +830,14 @@ def api_movies(
         return {"movies": movies}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (requests.RequestException, TimeoutError, KeyError) as error:
+    except UPSTREAM_ERRORS as error:
         upstream_error("Could not load real movie data", error)
 
 
 @app.get("/api/formats")
 def api_formats(
     request: Request,
-    zip: str = "",
+    zip_code: str = Query("", alias="zip"),
     radius: float | None = None,
     movie: str = "",
     startDate: str = "",
@@ -990,7 +848,7 @@ def api_formats(
 ):
     enforce_rate_limit(request, "/api/formats")
     try:
-        zip_code = zip.strip()
+        zip_code = zip_code.strip()
         radius = validate_radius(radius)
         movie_query = validate_short_text(movie, "Movie")
         start_date = startDate or date.today().isoformat()
@@ -1008,27 +866,73 @@ def api_formats(
             theatre_query,
             origin,
         )
-        return {"formats": sorted(formats)}
+        return {"formats": formats}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (requests.RequestException, TimeoutError, KeyError) as error:
+    except UPSTREAM_ERRORS as error:
         upstream_error("Could not load real format data", error)
+
+
+def collect_candidate_showtimes(
+    search_zip, radius, start_date, end_date,
+    theatre_query, movie_query, requested_format, start_time, end_time, origin,
+):
+    """Gather (theatre, showtime) pairs that pass every non-seat filter."""
+    candidates = []
+    for _, theatre in dated_theatres(search_zip, radius, start_date, end_date, theatre_query, origin):
+        raw_movies = theatre.get("rawMovies", [])
+        if not any(movie_matches(movie.get("title", ""), movie_query) for movie in raw_movies):
+            continue
+        for showtime in normalize_showtimes(theatre, raw_movies):
+            if not movie_matches(showtime["movieTitle"], movie_query):
+                continue
+            if not format_matches(showtime["format"], showtime["formatTags"], requested_format):
+                continue
+            if showtime["time"] < start_time or showtime["time"] > end_time:
+                continue
+            candidates.append((theatre, showtime))
+    return candidates
+
+
+def seat_checked_matches(candidates, page_end, check_candidate):
+    """Seat-check candidates in parallel until one page past page_end is filled.
+
+    Candidates must arrive pre-sorted: stopping early is then safe because
+    every unchecked candidate sorts after every checked one.
+    """
+    matches = []
+    checked = 0
+    if not candidates:
+        return matches, checked
+    worker_count = min(12, max(4, len(candidates)))
+    batch_size = worker_count * 2
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        for offset in range(0, len(candidates), batch_size):
+            batch = candidates[offset:offset + batch_size]
+            checked += len(batch)
+            futures = [executor.submit(check_candidate, candidate) for candidate in batch]
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    matches.append(result)
+            if len(matches) > page_end:
+                break
+    return matches, checked
 
 
 @app.get("/api/search")
 def api_search(
     request: Request,
-    zip: str = "",
+    zip_code: str = Query("", alias="zip"),
     radius: float | None = None,
     theatre: str = "",
     movie: str = "",
-    format: str = "any",
+    requested_format: str = Query("any", alias="format"),
     startDate: str = "",
     endDate: str = "",
     startTime: str = "00:00",
     endTime: str = "23:59",
     adjacentSeats: int = 1,
-    seatArea: str = "any",
     seatGrid: str = "",
     excludeAccessible: str = "1",
     sort: str = "earliest",
@@ -1039,17 +943,18 @@ def api_search(
 ):
     enforce_rate_limit(request, "/api/search")
     try:
-        zip_code = zip.strip()
+        zip_code = zip_code.strip()
         radius = validate_radius(radius)
         theatre_query = validate_short_text(theatre, "Theatre").lower()
         movie_query = validate_short_text(movie, "Movie")
-        requested_format = validate_short_text(format, "Format") or "any"
+        if not movie_query:
+            raise ValueError("Enter a movie title.")
+        requested_format = validate_short_text(requested_format, "Format") or "any"
         start_date = startDate or date.today().isoformat()
         end_date = endDate or start_date
         start_time = validate_time(startTime, "Start time")
         end_time = validate_time(endTime, "End time")
         min_adjacent = min(max(adjacentSeats, 1), 10)
-        seat_filter = validate_short_text(seatArea, "Seat area") or "any"
         selected_cells = parse_seat_grid(seatGrid)
         exclude_accessible = excludeAccessible.lower() in ("1", "true", "yes", "on")
         sort_order = validate_short_text(sort, "Sort order").lower() or "earliest"
@@ -1061,33 +966,10 @@ def api_search(
         page_end = page_start + page_size
 
         search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
-        if not movie_query:
-            raise HTTPException(status_code=400, detail="Enter a movie title.")
-
-        matches = []
-        candidates = []
-        dates = list(date_range(start_date, end_date))
-        theatres_by_date = fandango_theatres_by_date(search_zip, radius, dates, origin)
-        for show_date in dates:
-            dated_theatres = [
-                theatre_item for theatre_item in theatres_by_date.get(show_date, [])
-                if not theatre_query or theatre_query in theatre_item["name"].lower()
-            ]
-            for theatre_item in dated_theatres:
-                has_candidate_movie = any(
-                    movie_matches(movie_item.get("title", ""), movie_query)
-                    for movie_item in theatre_item.get("rawMovies", [])
-                )
-                if not has_candidate_movie:
-                    continue
-                for showtime in normalize_showtimes(theatre_item, theatre_item.get("rawMovies", []), show_date):
-                    if not movie_matches(showtime["movieTitle"], movie_query):
-                        continue
-                    if not format_matches(showtime["format"], showtime.get("formatTags", showtime["amenities"]), requested_format):
-                        continue
-                    if showtime["time"] < start_time or showtime["time"] > end_time:
-                        continue
-                    candidates.append((theatre_item, showtime))
+        candidates = collect_candidate_showtimes(
+            search_zip, radius, start_date, end_date,
+            theatre_query, movie_query, requested_format, start_time, end_time, origin,
+        )
         candidates.sort(key=lambda candidate: search_sort_key(
             candidate[0]["distanceMiles"],
             candidate[1]["date"],
@@ -1098,7 +980,12 @@ def api_search(
 
         def check_candidate(candidate):
             theatre_item, showtime = candidate
-            seat_match = showtime_seat_match(showtime, min_adjacent, seat_filter, selected_cells, exclude_accessible, seat_map_loader=seat_map)
+            try:
+                seat_match = showtime_seat_match(
+                    showtime, min_adjacent, selected_cells, exclude_accessible, seat_map
+                )
+            except (*UPSTREAM_ERRORS, ValueError):
+                return None
             if not seat_match:
                 return None
             return {
@@ -1123,32 +1010,17 @@ def api_search(
                 "seatMap": seat_match,
             }
 
-        checked_seat_maps = 0
-        if candidates:
-            worker_count = min(12, max(4, len(candidates)))
-            batch_size = worker_count * 2
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                for offset in range(0, len(candidates), batch_size):
-                    batch = candidates[offset:offset + batch_size]
-                    future_map = {executor.submit(check_candidate, candidate): candidate for candidate in batch}
-                    checked_seat_maps += len(batch)
-                    for future in as_completed(future_map):
-                        result = future.result()
-                        if result:
-                            matches.append(result)
-                    matches.sort(key=lambda item: search_sort_key(
-                        item["theatre"]["distanceMiles"],
-                        item["date"],
-                        item["time"],
-                        item["theatre"]["name"],
-                        sort_order,
-                    ))
-                    if len(matches) > page_end:
-                        break
+        matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
+        matches.sort(key=lambda item: search_sort_key(
+            item["theatre"]["distanceMiles"],
+            item["date"],
+            item["time"],
+            item["theatre"]["name"],
+            sort_order,
+        ))
 
-        page_matches = matches[page_start:page_end]
         return {
-            "matches": page_matches,
+            "matches": matches[page_start:page_end],
             "page": page,
             "pageSize": page_size,
             "sort": sort_order,
@@ -1164,7 +1036,7 @@ def api_search(
         raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
-    except (requests.RequestException, TimeoutError, KeyError) as error:
+    except UPSTREAM_ERRORS as error:
         upstream_error("Could not search real showtimes/seats", error)
 
 

@@ -1,37 +1,11 @@
 export function closeCombo(input, menu) {
   menu.hidden = true;
-  menu._items = [];
   input.setAttribute("aria-expanded", "false");
   input.removeAttribute("aria-activedescendant");
 }
 
-function renderCombo(menu, items, input, getLabel, onSelect) {
-  menu.innerHTML = "";
-  menu._items = items;
-  if (!items.length) {
-    closeCombo(input, menu);
-    return;
-  }
-
-  items.forEach((item, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "combo-option";
-    button.id = `${menu.id}-option-${index}`;
-    button.setAttribute("role", "option");
-    button.setAttribute("aria-selected", "false");
-    button.textContent = getLabel(item);
-    button.addEventListener("mousedown", event => {
-      event.preventDefault();
-      onSelect(item);
-    });
-    menu.appendChild(button);
-  });
-  menu.hidden = false;
-  input.setAttribute("aria-expanded", "true");
-}
-
 export function setupCombo(input, menu, source, getLabel, onPick) {
+  let items = [];
   let activeIndex = -1;
 
   const options = () => Array.from(menu.querySelectorAll(".combo-option"));
@@ -65,10 +39,35 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
     onPick(item);
   }
 
+  function render() {
+    menu.innerHTML = "";
+    if (!items.length) {
+      closeCombo(input, menu);
+      return;
+    }
+
+    items.forEach((item, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "combo-option";
+      button.id = `${menu.id}-option-${index}`;
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", "false");
+      button.textContent = getLabel(item);
+      button.addEventListener("mousedown", event => {
+        event.preventDefault();
+        pick(item);
+      });
+      menu.appendChild(button);
+    });
+    menu.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
   function update() {
     const query = input.value.trim().toLowerCase();
-    const items = source().filter(item => getLabel(item).toLowerCase().includes(query));
-    renderCombo(menu, items, input, getLabel, pick);
+    items = source().filter(item => getLabel(item).toLowerCase().includes(query));
+    render();
     activeIndex = -1;
   }
 
@@ -84,9 +83,9 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       if (menu.hidden) update();
       setActive(activeIndex === -1 ? -1 : activeIndex - 1);
     } else if (event.key === "Enter") {
-      if (!menu.hidden && activeIndex >= 0 && menu._items?.[activeIndex]) {
+      if (!menu.hidden && activeIndex >= 0 && items[activeIndex]) {
         event.preventDefault();
-        pick(menu._items[activeIndex]);
+        pick(items[activeIndex]);
       }
     } else if (event.key === "Escape" && !menu.hidden) {
       event.preventDefault();

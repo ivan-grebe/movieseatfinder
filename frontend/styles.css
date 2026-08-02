@@ -198,18 +198,6 @@ h1 {
 .grid.thirds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .full { grid-column: 1 / -1; }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 label {
   display: block;
   min-width: 0;
