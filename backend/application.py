@@ -769,6 +769,76 @@ def api_search_location(zip_code, lat, lon):
         ) from error
 
 
+def location_movie_info(
+    radius,
+    zip_code,
+    start_date,
+    end_date=None,
+    theatre="",
+    lat=None,
+    lon=None,
+):
+    """Return canonical live theatre, movie, and format values for agents."""
+    try:
+        end_date = end_date or start_date
+        dates = list(date_range(start_date, end_date))
+        theatre_query = theatre.lower()
+        search_zip, origin, place = api_search_location(zip_code, lat, lon)
+        theatres_by_date = fandango_theatres_by_date(search_zip, radius, dates, origin)
+        theatres = {}
+        movies = {}
+
+        for show_date in dates:
+            for theatre_item in theatres_by_date[show_date]:
+                if theatre_query and theatre_query not in theatre_item["name"].lower():
+                    continue
+                theatre_name = theatre_item["name"]
+                theatre_key = normalized_text(theatre_name)
+                theatres.setdefault(theatre_key, {
+                    "name": theatre_name,
+                    "address": theatre_item["address"],
+                    "distanceMiles": theatre_item["distanceMiles"],
+                })
+                for movie in theatre_item["rawMovies"]:
+                    title = clean_title(movie.get("title", ""))
+                    movie_key = normalized_text(title)
+                    if not title:
+                        continue
+                    movie_info = movies.setdefault(movie_key, {
+                        "title": title,
+                        "dates": set(),
+                        "formats": set(),
+                        "theatres": set(),
+                    })
+                    movie_info["dates"].add(show_date)
+                    movie_info["theatres"].add(theatre_name)
+                    for variant in movie.get("variants") or []:
+                        format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+                        for group in variant.get("amenityGroups") or []:
+                            movie_info["formats"].update(group_formats(format_name, group))
+
+        return {
+            "place": place,
+            "zipCode": search_zip,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "theatres": sorted(theatres.values(), key=lambda item: (item["distanceMiles"], item["name"])),
+            "movies": sorted(
+                ({
+                    "title": movie["title"],
+                    "dates": sorted(movie["dates"]),
+                    "formats": sorted(movie["formats"]),
+                    "theatres": sorted(movie["theatres"]),
+                } for movie in movies.values()),
+                key=lambda movie: movie["title"],
+            ),
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except UPSTREAM_ERRORS as error:
+        upstream_error("Could not load real theatre and movie data", error)
+
+
 @app.post("/api/events/ticket-click", status_code=204)
 def ticket_click(request: Request):
     enforce_rate_limit(request, "/api/events/ticket-click")
@@ -921,40 +991,34 @@ def seat_checked_matches(candidates, page_end, check_candidate):
     return [match for _, match in indexed_matches], checked
 
 
-@app.get("/api/search")
-def api_search(
-    request: Request,
+def find_seat_matches(
     radius: Radius,
     movie: RequiredShortText,
-    zip_code: Annotated[ShortText, Query(alias="zip")] = "",
+    zip_code: ShortText = "",
     theatre: ShortText = "",
-    requested_format: Annotated[RequiredShortText, Query(alias="format")] = "any",
-    startDate: date | None = None,
-    endDate: date | None = None,
-    startTime: TimeText = "00:00",
-    endTime: TimeText = "23:59",
-    adjacentSeats: AdjacentSeatCount = 1,
-    seatGrid: str = "",
-    excludeAccessible: bool = True,
+    requested_format: RequiredShortText = "any",
+    start_date: date | None = None,
+    end_date: date | None = None,
+    start_time: TimeText = "00:00",
+    end_time: TimeText = "23:59",
+    adjacent_seats: AdjacentSeatCount = 1,
+    seat_grid: str = "",
+    exclude_accessible: bool = True,
     sort: SearchSort = "earliest",
     page: PageNumber = 1,
-    pageSize: PageSize = DEFAULT_PAGE_SIZE,
-    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
-    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    page_size: PageSize = DEFAULT_PAGE_SIZE,
+    lat: float | None = None,
+    lon: float | None = None,
 ):
-    enforce_rate_limit(request, "/api/search")
+    """Run the shared live showtime and seat-map search operation."""
     try:
         theatre_query = theatre.lower()
         movie_query = movie
-        start_date = startDate or date.today()
-        end_date = endDate or start_date
-        start_time = startTime
-        end_time = endTime
-        min_adjacent = adjacentSeats
-        selected_cells = parse_seat_grid(seatGrid)
-        exclude_accessible = excludeAccessible
+        start_date = start_date or date.today()
+        end_date = end_date or start_date
+        min_adjacent = adjacent_seats
+        selected_cells = parse_seat_grid(seat_grid)
         sort_order = sort
-        page_size = pageSize
         page_start = (page - 1) * page_size
         page_end = page_start + page_size
 
@@ -1024,6 +1088,49 @@ def api_search(
         raise HTTPException(status_code=400, detail=str(error)) from error
     except UPSTREAM_ERRORS as error:
         upstream_error("Could not search real showtimes/seats", error)
+
+
+@app.get("/api/search")
+def api_search(
+    request: Request,
+    radius: Radius,
+    movie: RequiredShortText,
+    zip_code: Annotated[ShortText, Query(alias="zip")] = "",
+    theatre: ShortText = "",
+    requested_format: Annotated[RequiredShortText, Query(alias="format")] = "any",
+    startDate: date | None = None,
+    endDate: date | None = None,
+    startTime: TimeText = "00:00",
+    endTime: TimeText = "23:59",
+    adjacentSeats: AdjacentSeatCount = 1,
+    seatGrid: str = "",
+    excludeAccessible: bool = True,
+    sort: SearchSort = "earliest",
+    page: PageNumber = 1,
+    pageSize: PageSize = DEFAULT_PAGE_SIZE,
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+):
+    enforce_rate_limit(request, "/api/search")
+    return find_seat_matches(
+        radius=radius,
+        movie=movie,
+        zip_code=zip_code,
+        theatre=theatre,
+        requested_format=requested_format,
+        start_date=startDate,
+        end_date=endDate,
+        start_time=startTime,
+        end_time=endTime,
+        adjacent_seats=adjacentSeats,
+        seat_grid=seatGrid,
+        exclude_accessible=excludeAccessible,
+        sort=sort,
+        page=page,
+        page_size=pageSize,
+        lat=lat,
+        lon=lon,
+    )
 
 
 class PublicAssetFiles(StaticFiles):

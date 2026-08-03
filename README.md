@@ -22,6 +22,7 @@ Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adj
 - Find adjacent seats in a custom auditorium region.
 - Preview normalized seat maps and exclude accessible seats when needed.
 - Use guarded API routes with validation, rate limiting, and safe ticket URLs.
+- Connect messaging assistants through an authenticated MCP movie-seat search tool.
 
 ## Run locally
 
@@ -37,6 +38,36 @@ uvicorn app:app --reload --host 127.0.0.1 --port 4173
 ```
 
 Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.
+
+## Poke / MCP integration
+
+The production ASGI entry point exposes a stateless Streamable HTTP MCP server at `/mcp`. It provides a discovery-first flow with two tools:
+
+1. `get_location_and_movie_info` accepts a ZIP code, date range, radius, and optional theatre filter. It returns the exact live theatre names, canonical movie titles (including release years), available dates, and format strings for that search.
+2. `find_movie_seats` accepts one exact discovered movie title, an inclusive date range, zero or more exact discovered formats, party size, time window, search radius, and an exact `seat_cells` selection.
+
+Poke is instructed to discover first and pass those strings back verbatim, so `The Odyssey` is never silently treated as `The Odyssey (2026)`. If both are plausible live results, it should ask the user which one they mean. The seat tool describes a 15x15, 1-based `row:column` grid: row 1 is nearest the screen, row 15 is the back, column 1 is the left edge, and column 15 is the right edge. Poke can select any combination of cells, including irregular shapes; an empty list means anywhere in the auditorium.
+
+Set a long random bearer token before starting the server:
+
+```bash
+export MCP_API_KEY="replace-with-a-random-secret"
+```
+
+On PowerShell:
+
+```powershell
+$env:MCP_API_KEY = "replace-with-a-random-secret"
+```
+
+For production, add `MCP_API_KEY` to the Vercel project's environment variables, then configure the Poke integration with:
+
+```text
+URL: https://movieseatfinder.com/mcp
+API key: the same MCP_API_KEY value
+```
+
+Poke sends the credential as a bearer token. The endpoint also uses Poke's `X-Poke-User-Id` for per-user throttling. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` can optionally override the comma-separated production allowlists.
 
 ## Testing
 

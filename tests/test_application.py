@@ -108,6 +108,65 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertEqual(showtime["displayTime"], "6:00 PM")
         self.assertNotIn("o'clock", showtime["displayTime"])
 
+    @patch("backend.application.fandango_theatres_by_date")
+    @patch(
+        "backend.application.api_search_location",
+        return_value=("10023", (40.78, -73.98), "New York, NY"),
+    )
+    def test_location_movie_info_preserves_canonical_titles_and_formats(
+        self,
+        _search_location,
+        theatres_by_date,
+    ):
+        movies = [
+            {
+                "title": "The Odyssey",
+                "variants": [{
+                    "filmFormatHeader": "Standard",
+                    "amenityGroups": [{"showtimes": [{"filmFormat": []}]}],
+                }],
+            },
+            {
+                "title": "The Odyssey (2026)",
+                "variants": [{
+                    "filmFormatHeader": "Premium Format",
+                    "amenityGroups": [{
+                        "showtimes": [{"filmFormat": [{"filterName": "IMAX 70mm"}]}],
+                    }],
+                }],
+            },
+        ]
+        theatre = {
+            "name": "AMC Lincoln Square 13",
+            "address": "1998 Broadway, New York, NY 10023",
+            "distanceMiles": 0.5,
+            "rawMovies": movies,
+        }
+        theatres_by_date.return_value = {
+            "2026-08-04": [theatre],
+            "2026-08-05": [theatre],
+        }
+
+        result = application.location_movie_info(
+            radius=25,
+            zip_code="10023",
+            start_date=date(2026, 8, 4),
+            end_date=date(2026, 8, 5),
+        )
+
+        self.assertEqual(result["place"], "New York, NY")
+        self.assertEqual(result["startDate"], "2026-08-04")
+        self.assertEqual(result["endDate"], "2026-08-05")
+        self.assertEqual(
+            [movie["title"] for movie in result["movies"]],
+            ["The Odyssey", "The Odyssey (2026)"],
+        )
+        self.assertEqual(result["movies"][1]["formats"], ["IMAX 70mm"])
+        self.assertEqual(
+            result["movies"][1]["dates"],
+            ["2026-08-04", "2026-08-05"],
+        )
+
 
 class SeatSelectionTests(unittest.TestCase):
     def setUp(self):

@@ -27,7 +27,7 @@ jobs:
           python -m pip install vulture==2.16
           npm ci
       - name: Find dead Python code
-        run: python -m vulture backend/ app.py --ignore-decorators "@app.*" --min-confidence 60
+        run: python -m vulture backend/ mcp_server/ app.py --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
       - name: Find dead frontend code
         run: npx knip --no-config-hints
 
