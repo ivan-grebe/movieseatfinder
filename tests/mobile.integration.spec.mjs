@@ -178,6 +178,19 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(cancelButton).toBeVisible();
   await expect(doneButton).toBeVisible();
 
+  const centerAppearance = await centerButton.evaluate(button => ({
+    color: getComputedStyle(button).color,
+    background: getComputedStyle(button).backgroundColor,
+    shadow: getComputedStyle(button).boxShadow,
+  }));
+  await centerButton.tap();
+  await expect.poll(() => centerButton.evaluate(button => ({
+    color: getComputedStyle(button).color,
+    background: getComputedStyle(button).backgroundColor,
+    shadow: getComputedStyle(button).boxShadow,
+  }))).toEqual(centerAppearance);
+  await clearButton.tap();
+
   await firstCell.click();
   await expect(firstCell).toHaveAttribute("aria-pressed", "true");
   await cancelButton.click();
@@ -531,6 +544,12 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   await expect(page.getByText("35mm · RealD 3D · 4DX · ScreenX · D-BOX", { exact: true })).toBeVisible();
   await expect(page.locator(".format-tier-badge")).toHaveText(["S", "A", "B", "?"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
+  const summary = guide.locator("summary");
+  const restingColor = await summary.evaluate(element => getComputedStyle(element).color);
+  await summary.tap();
+  await expect(guide).not.toHaveAttribute("open", "");
+  await expect(summary).toHaveCSS("color", restingColor);
 });
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {

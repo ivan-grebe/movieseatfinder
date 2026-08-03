@@ -418,8 +418,8 @@ select {
 
 .format-guide summary::-webkit-details-marker { display: none; }
 
-.format-guide summary:hover {
-  color: var(--accent-deep);
+@media (hover: hover) {
+  .format-guide summary:hover { color: var(--accent-deep); }
 }
 
 .format-guide summary:focus-visible {
@@ -597,9 +597,11 @@ input::placeholder { color: #78859a; }
   transition-timing-function: ease-out;
 }
 
-.btn-small:hover {
-  background: var(--surface-highlight);
-  box-shadow: var(--shadow-border-hover), inset 0 1px 0 rgba(255,255,255,.86);
+@media (hover: hover) {
+  .btn-small:hover {
+    background: var(--surface-highlight);
+    box-shadow: var(--shadow-border-hover), inset 0 1px 0 rgba(255,255,255,.86);
+  }
 }
 .btn-small:active:not(:disabled) { transform: scale(.96); }
 .btn-small:disabled { opacity: .48; cursor: not-allowed; }
@@ -1580,13 +1582,7 @@ input[type="time"] {
     box-shadow: 0 0 0 1px rgba(201, 58, 58, .14), inset 0 1px 0 rgba(255, 255, 255, .78);
   }
 
-  .seat-edit-button:hover {
-    background: #ffe2df;
-    box-shadow: 0 0 0 1px rgba(201, 58, 58, .2), inset 0 1px 0 rgba(255, 255, 255, .84);
-  }
-
-  .seat-edit-done,
-  .seat-edit-done:hover {
+  .seat-edit-done {
     color: #fff;
     background: var(--accent);
     box-shadow: 0 0 0 1px rgba(142, 31, 31, .18), 0 4px 10px rgba(201, 58, 58, .18);
@@ -1627,6 +1623,13 @@ input[type="time"] {
   /* Native date controls need more width than two columns provide on small phones. */
   .location-group .grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) and (hover: hover) {
+  .seat-edit-button:hover {
+    background: #ffe2df;
+    box-shadow: 0 0 0 1px rgba(201, 58, 58, .2), inset 0 1px 0 rgba(255, 255, 255, .84);
   }
 }
 
@@ -1758,10 +1761,6 @@ input[type="time"] {
     background: rgba(255, 255, 255, .035);
   }
 
-  .format-guide summary:hover {
-    color: #f0b3ae;
-  }
-
   .format-tier {
     background: rgba(255, 255, 255, .045);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .055);
@@ -1781,8 +1780,6 @@ input[type="time"] {
     background: rgba(255, 255, 255, .06);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), inset 0 1px 0 rgba(255, 255, 255, .05);
   }
-  .btn-small:hover { background: rgba(255, 255, 255, .1); }
-
   .check-box { background: rgba(255, 255, 255, .06); }
 
   .combo-menu {
@@ -1861,4 +1858,9 @@ input[type="time"] {
     color: #f2caca;
     background: rgba(255, 255, 255, .12);
   }
+}
+
+@media (prefers-color-scheme: dark) and (hover: hover) {
+  .format-guide summary:hover { color: #f0b3ae; }
+  .btn-small:hover { background: rgba(255, 255, 255, .1); }
 }
