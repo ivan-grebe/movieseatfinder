@@ -55,7 +55,7 @@ URL: https://movieseatfinder.com/mcp
 Authentication: None
 ```
 
-The endpoint requires Poke's `X-Poke-User-Id` header and applies global, per-IP, and per-user throttling. A correctly configured optional `MCP_API_KEY` bearer token remains accepted for backwards compatibility with private test integrations, but public Recipe users do not need a key. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` can optionally override the comma-separated production allowlists.
+The endpoint applies global and per-IP throttling to every request, plus per-user throttling whenever Poke supplies its `X-Poke-User-Id` header. Connection-test probes without a user header remain supported. A correctly configured optional `MCP_API_KEY` bearer token remains accepted for backwards compatibility with private test integrations, but public Recipe users do not need a key. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` can optionally override the comma-separated production allowlists.
 
 ## Testing
 

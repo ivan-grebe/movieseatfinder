@@ -62,10 +62,11 @@ class McpSecurityMiddleware:
             return
 
         headers = Headers(scope=scope)
+        supplied_poke_user_id = headers.get("x-poke-user-id", "").strip()
         poke_user_id = _valid_poke_user_id(headers)
-        if not poke_user_id:
+        if supplied_poke_user_id and not poke_user_id:
             response = JSONResponse(
-                {"error": "A valid X-Poke-User-Id header is required."},
+                {"error": "The supplied X-Poke-User-Id header is invalid."},
                 status_code=403,
             )
             await response(scope, receive, send)
@@ -80,11 +81,12 @@ class McpSecurityMiddleware:
             await response(scope, receive, send)
             return
 
-        rate_limits = (
+        rate_limits = [
             (MCP_GLOBAL_RATE_LIMIT, "global", "all"),
             (MCP_IP_RATE_LIMIT, "ip", _client_ip(scope, headers)),
-            (MCP_USER_RATE_LIMIT, "poke", poke_user_id),
-        )
+        ]
+        if poke_user_id:
+            rate_limits.append((MCP_USER_RATE_LIMIT, "poke", poke_user_id))
         for rate_limit, dimension, value in rate_limits:
             if not MCP_RATE_LIMITER.hit(rate_limit, "/mcp", dimension, value):
                 response = JSONResponse(

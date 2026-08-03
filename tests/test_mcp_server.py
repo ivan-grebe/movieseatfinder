@@ -124,10 +124,21 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["result"].get("isError", False))
 
-    def test_mcp_endpoint_requires_pokes_user_identifier(self):
+    @patch.object(security.MCP_RATE_LIMITER, "hit", return_value=True)
+    def test_connection_probe_can_discover_tools_without_a_poke_user_identifier(self, rate_limit_hit):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         response = self.client.post(
             "/mcp",
             headers=self.request_headers(user_id=None),
+            json=request,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(rate_limit_hit.call_count, 2)
+
+    def test_mcp_endpoint_rejects_a_malformed_poke_user_identifier(self):
+        response = self.client.post(
+            "/mcp",
+            headers=self.request_headers(user_id="not a safe identifier"),
             json={},
         )
         self.assertEqual(response.status_code, 403)
