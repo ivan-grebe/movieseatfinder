@@ -1,3 +1,4 @@
+import base64
 import os
 import unittest
 from datetime import date
@@ -31,9 +32,18 @@ def sample_search_result():
                     "height": 100,
                     "backgroundSvg": "<svg>large payload</svg>",
                     "seats": [
-                        {"id": "H10", "matched": True},
-                        {"id": "H11", "matched": True},
-                        {"id": "A1", "matched": False},
+                        {
+                            "id": "H10", "matched": True, "status": "A", "type": "standard",
+                            "x": 40, "y": 50, "width": 8, "height": 8,
+                        },
+                        {
+                            "id": "H11", "matched": True, "status": "A", "type": "standard",
+                            "x": 50, "y": 50, "width": 8, "height": 8,
+                        },
+                        {
+                            "id": "A1", "matched": False, "status": "S", "type": "standard",
+                            "x": 10, "y": 10, "width": 8, "height": 8,
+                        },
                     ],
                 },
             },
@@ -80,6 +90,13 @@ class McpToolTests(unittest.TestCase):
         self.assertEqual(result["resultCount"], 1)
         self.assertEqual(result["options"][0]["matchingSeatExamples"], ["H10", "H11"])
         self.assertEqual(result["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
+        self.assertEqual(result["options"][0]["seatMapRequest"]["option_number"], 1)
+        self.assertEqual(result["options"][0]["seatMapRequest"]["movie_formats"], ["IMAX", "IMAX 70mm"])
+        self.assertEqual(result["options"][0]["seatMapRequest"]["expected_theatre"], "Test Cinema")
+        self.assertEqual(
+            result["options"][0]["seatMapRequest"]["expected_ticket_url"],
+            "https://tickets.fandango.com/order",
+        )
         self.assertNotIn("layout", result["options"][0])
 
     def test_find_movie_seats_rejects_a_backwards_time_window_without_searching(self):
@@ -89,10 +106,33 @@ class McpToolTests(unittest.TestCase):
                     movie="The Odyssey",
                     start_date=date(2026, 8, 4),
                     zip_code="10023",
+                    adjacent_seats=2,
                     start_time="20:00",
                     end_time="18:00",
                 )
         find_seat_matches.assert_not_called()
+
+    @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
+    def test_show_movie_seat_map_returns_a_live_png(self, find_seat_matches):
+        result = server.show_movie_seat_map(
+            movie="The Odyssey",
+            start_date=date(2026, 8, 4),
+            zip_code="10023",
+            adjacent_seats=2,
+            option_number=1,
+            expected_theatre="Test Cinema",
+            expected_date=date(2026, 8, 4),
+            expected_time="7:30 PM",
+            expected_format="IMAX",
+            expected_ticket_url="https://tickets.fandango.com/order",
+            movie_formats=("IMAX",),
+        )
+
+        self.assertIn("Live seat map for option 1: The Odyssey", result[0])
+        self.assertIn("Red = seats matching the request", result[0])
+        self.assertTrue(result[1].data.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(result[1]._mime_type, "image/png")
+        self.assertEqual(find_seat_matches.call_args.kwargs["page_size"], 10)
 
 
 class McpProtocolTests(unittest.TestCase):
@@ -169,6 +209,32 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("Find the perfect movie seats", response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
+    def test_poke_receives_the_complete_clarification_first_instructions(self):
+        request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "recipe-test", "version": "1.0"},
+            },
+        }
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+
+        self.assertEqual(response.status_code, 200)
+        instructions = response.json()["result"]["instructions"]
+        normalized_instructions = " ".join(instructions.split())
+        self.assertIn("CLARIFICATION FIRST", normalized_instructions)
+        self.assertIn("find me good movie seats near me", normalized_instructions)
+        self.assertIn("Never assume two seats", normalized_instructions)
+        self.assertIn("Good seats", normalized_instructions)
+        self.assertIn("show_movie_seat_map", normalized_instructions)
+        self.assertIn(
+            "Never weaken an explicit constraint without permission",
+            normalized_instructions,
+        )
+
     def test_poke_can_discover_the_discovery_and_search_tools(self):
         request = {
             "jsonrpc": "2.0",
@@ -180,21 +246,35 @@ class McpProtocolTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         tools = {tool["name"]: tool for tool in response.json()["result"]["tools"]}
-        self.assertEqual(set(tools), {"get_location_and_movie_info", "find_movie_seats"})
+        self.assertEqual(
+            set(tools),
+            {"get_location_and_movie_info", "find_movie_seats", "show_movie_seat_map"},
+        )
 
         discovery_schema = tools["get_location_and_movie_info"]["inputSchema"]
         self.assertEqual(discovery_schema["required"], ["zip_code", "start_date"])
         self.assertIn("exact live theatre names", tools["get_location_and_movie_info"]["description"])
 
         schema = tools["find_movie_seats"]["inputSchema"]
-        self.assertEqual(schema["required"], ["movie", "start_date", "zip_code"])
+        self.assertEqual(schema["required"], ["movie", "start_date", "zip_code", "adjacent_seats"])
         seat_cells = schema["properties"]["seat_cells"]
         self.assertEqual(seat_cells["default"], [])
         self.assertEqual(seat_cells["maxItems"], 225)
         self.assertIn("Row 1 is nearest the screen", seat_cells["description"])
-        self.assertEqual(schema["properties"]["adjacent_seats"]["default"], 2)
+        self.assertNotIn("default", schema["properties"]["adjacent_seats"])
         self.assertEqual(schema["properties"]["movie_formats"]["default"], [])
         self.assertEqual(schema["properties"]["movie_formats"]["maxItems"], 10)
+
+        map_schema = tools["show_movie_seat_map"]["inputSchema"]
+        self.assertEqual(
+            map_schema["required"],
+            [
+                "movie", "start_date", "zip_code", "adjacent_seats", "option_number",
+                "expected_theatre", "expected_date", "expected_time", "expected_format",
+                "expected_ticket_url",
+            ],
+        )
+        self.assertIn("seatMapRequest", tools["show_movie_seat_map"]["description"])
 
     @patch.object(server.application, "location_movie_info")
     def test_poke_can_discover_exact_titles_before_searching(self, location_movie_info):
@@ -271,6 +351,41 @@ class McpProtocolTests(unittest.TestCase):
         structured = result["structuredContent"]
         self.assertEqual(structured["options"][0]["matchingSeatExamples"], ["H10", "H11"])
         self.assertEqual(structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
+
+    @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
+    def test_poke_can_receive_a_seat_map_as_image_content(self, _find_seat_matches):
+        request = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "show_movie_seat_map",
+                "arguments": {
+                    "movie": "The Odyssey",
+                    "start_date": "2026-08-04",
+                    "end_date": "2026-08-06",
+                    "zip_code": "10023",
+                    "movie_formats": ["IMAX"],
+                    "seat_cells": ["7:7", "7:8", "8:7", "8:8"],
+                    "adjacent_seats": 2,
+                    "option_number": 1,
+                    "expected_theatre": "Test Cinema",
+                    "expected_date": "2026-08-04",
+                    "expected_time": "7:30 PM",
+                    "expected_format": "IMAX",
+                    "expected_ticket_url": "https://tickets.fandango.com/order",
+                },
+            },
+        }
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["result"]
+        self.assertFalse(result["isError"])
+        self.assertEqual([item["type"] for item in result["content"]], ["text", "image"])
+        self.assertIn("Live seat map for option 1: The Odyssey", result["content"][0]["text"])
+        self.assertEqual(result["content"][1]["mimeType"], "image/png")
+        self.assertTrue(base64.b64decode(result["content"][1]["data"]).startswith(b"\x89PNG"))
 
 
 if __name__ == "__main__":

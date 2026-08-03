@@ -48,6 +48,10 @@ The production ASGI entry point exposes a stateless Streamable HTTP MCP server a
 
 Poke is instructed to discover first and pass those strings back verbatim, so `The Odyssey` is never silently treated as `The Odyssey (2026)`. If both are plausible live results, it should ask the user which one they mean. The seat tool describes a 15x15, 1-based `row:column` grid: row 1 is nearest the screen, row 15 is the back, column 1 is the left edge, and column 15 is the right edge. Poke can select any combination of cells, including irregular shapes; an empty list means anywhere in the auditorium.
 
+The MCP initialization payload also carries a complete clarification-first operating contract. Before discovery and search, Poke must know the movie, date or date range, ZIP code, and exact party size. It may use reasonable judgment that ordinary "good seats" means a compact middle-center area, but it cannot invent concrete movie, format, theatre, date, location, party-size, or accessibility details.
+
+Each search option contains an exact `seatMapRequest` for the follow-up `show_movie_seat_map` tool. After presenting results, Poke offers to show a live map; when the user selects an option, the tool repeats the same live search and returns a caption plus an `image/png` preview. The generated map mirrors the website: matching seats use the red accent, available seats are white, unavailable seats are gray, and accessible seats are blue.
+
 For a public Poke Recipe, configure the integration template without authentication:
 
 ```text
