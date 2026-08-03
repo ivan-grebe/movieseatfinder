@@ -152,6 +152,119 @@ test("field loading messages do not reflow later controls", async ({ page }) => 
   expect(settled.preferencesTop).toBeCloseTo(whileMoviesLoad.preferencesTop, 1);
 });
 
+test("movie and seat controls stay locked until the location resolves without reflow", async ({ page }) => {
+  let releaseTheatres;
+  let markTheatresStarted;
+  const theatresStarted = new Promise(resolve => { markTheatresStarted = resolve; });
+  const theatreGate = new Promise(resolve => { releaseTheatres = resolve; });
+  await page.route("**/api/theatres*", async route => {
+    markTheatresStarted();
+    await theatreGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+    });
+  });
+  await page.route("**/api/movies*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+  }));
+  await page.goto("/");
+
+  const movieGroup = page.locator("#movieGroup");
+  const preferencesGroup = page.locator("#preferencesGroup");
+  const searchButton = page.locator("#searchButton");
+  for (const group of [movieGroup, preferencesGroup]) {
+    await expect(group).toHaveAttribute("inert", "");
+    await expect(group).toHaveAttribute("aria-disabled", "true");
+    await expect(group).toHaveClass(/is-location-locked/);
+  }
+  expect(await page.locator("#movieInput").evaluate(input => {
+    input.focus();
+    return document.activeElement === input;
+  })).toBe(false);
+  await expect(searchButton).toBeDisabled();
+  await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
+
+  await page.locator("#zipInput").fill("10001");
+  await theatresStarted;
+  const lockedLayout = await page.evaluate(() => ({
+    movie: document.querySelector("#movieGroup").getBoundingClientRect().toJSON(),
+    preferences: document.querySelector("#preferencesGroup").getBoundingClientRect().toJSON(),
+  }));
+  releaseTheatres();
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+
+  for (const group of [movieGroup, preferencesGroup]) {
+    await expect(group).not.toHaveAttribute("inert", "");
+    await expect(group).not.toHaveAttribute("aria-disabled", "true");
+    await expect(group).not.toHaveClass(/is-location-locked/);
+  }
+  await expect(searchButton).toBeEnabled();
+  const unlockedLayout = await page.evaluate(() => ({
+    movie: document.querySelector("#movieGroup").getBoundingClientRect().toJSON(),
+    preferences: document.querySelector("#preferencesGroup").getBoundingClientRect().toJSON(),
+  }));
+  expect(unlockedLayout.movie.top).toBeCloseTo(lockedLayout.movie.top, 1);
+  expect(unlockedLayout.movie.height).toBeCloseTo(lockedLayout.movie.height, 1);
+  expect(unlockedLayout.preferences.top).toBeCloseTo(lockedLayout.preferences.top, 1);
+  expect(unlockedLayout.preferences.height).toBeCloseTo(lockedLayout.preferences.height, 1);
+});
+
+test("movie options can extend beyond the movie card without being clipped or covered", async ({ page }) => {
+  const movies = Array.from({ length: 12 }, (_, index) => ({ title: `Test Movie ${index + 1}` }));
+  await page.route("**/api/theatres*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ place: "Testville", theatres: [] }),
+  }));
+  await page.route("**/api/movies*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ movies }),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieMeta")).toHaveText("12 showing");
+  await page.locator("#movieInput").click();
+  await expect(page.locator("#movieMenu")).toBeVisible();
+
+  const menuLayout = await page.evaluate(() => {
+    const group = document.querySelector("#movieGroup");
+    const menu = document.querySelector("#movieMenu");
+    const groupRect = group.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const sampleX = menuRect.left + (menuRect.width / 2);
+    const sampleY = groupRect.bottom + 24;
+    return {
+      overflow: getComputedStyle(group).overflow,
+      extendsBeyondCardBy: menuRect.bottom - groupRect.bottom,
+      menuIsTopmostBelowCard: menu.contains(document.elementFromPoint(sampleX, sampleY)),
+    };
+  });
+
+  expect(menuLayout.overflow).toBe("visible");
+  expect(menuLayout.extendsBeyondCardBy).toBeGreaterThan(100);
+  expect(menuLayout.menuIsTopmostBelowCard).toBe(true);
+
+  const closingLayout = await page.evaluate(() => {
+    const group = document.querySelector("#movieGroup");
+    const menu = document.querySelector("#movieMenu");
+    const groupRect = group.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    document.querySelector("#radiusInput").focus();
+    const sampleX = menuRect.left + (menuRect.width / 2);
+    const sampleY = groupRect.bottom + 24;
+    return {
+      menuStillOpenDuringClickDelay: !menu.hidden,
+      menuRemainsTopmostDuringClickDelay: menu.contains(document.elementFromPoint(sampleX, sampleY)),
+    };
+  });
+
+  expect(closingLayout.menuStillOpenDuringClickDelay).toBe(true);
+  expect(closingLayout.menuRemainsTopmostDuringClickDelay).toBe(true);
+  await expect(page.locator("#movieMenu")).toBeHidden();
+});
+
 test("an unknown ZIP shows one error at the ZIP field and stops dependent loads", async ({ page }) => {
   let movieRequestCount = 0;
   await page.route("**/api/theatres*", route => route.fulfill({
@@ -176,6 +289,9 @@ test("an unknown ZIP shows one error at the ZIP field and stops dependent loads"
   await expect(page.locator("#movieStatus")).toBeEmpty();
   await expect(page.locator("#theatreMeta")).toBeEmpty();
   await expect(page.locator("#movieMeta")).toBeEmpty();
+  await expect(page.locator("#movieGroup")).toHaveAttribute("inert", "");
+  await expect(page.locator("#preferencesGroup")).toHaveAttribute("inert", "");
+  await expect(page.locator("#searchButton")).toBeDisabled();
   expect(movieRequestCount).toBe(0);
 });
 
@@ -212,15 +328,6 @@ test("mobile search keeps content stable while loading and then renders its resp
   await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
-});
-
-test("mobile validation keeps required-field feedback at the field", async ({ page }) => {
-  await page.goto("/");
-  await page.locator("#searchButton").click();
-
-  const zip = page.locator("#zipInput");
-  await expect(zip).toHaveJSProperty("validationMessage", "Enter a ZIP code or allow location access first.");
-  await expect(page.locator("#summary")).toBeEmpty();
 });
 
 test("typing filters movies but only a selected suggestion can be searched", async ({ page }) => {

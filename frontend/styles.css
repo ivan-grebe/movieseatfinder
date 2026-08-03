@@ -157,6 +157,41 @@ h1 {
   box-shadow: var(--shadow-border-hover), inset 0 1px 0 rgba(255,255,255,.78);
 }
 
+.location-gated {
+  position: relative;
+}
+
+.location-gated > * {
+  transition: opacity 160ms ease-out;
+}
+
+.location-gated::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(236, 239, 243, .24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+.location-gated.is-location-locked,
+.location-gated.is-location-locked:hover {
+  cursor: not-allowed;
+  background: #f5f6f8;
+  box-shadow: 0 0 0 1px rgba(82, 96, 116, .08), inset 0 1px 0 rgba(255,255,255,.72);
+}
+
+.location-gated.is-location-locked > * {
+  opacity: .62;
+}
+
+.location-gated.is-location-locked::after {
+  opacity: 1;
+}
+
 .group:nth-child(3) {
   grid-column: 1 / -1;
   width: min(100%, 680px);
@@ -404,7 +439,13 @@ input::placeholder { color: #78859a; }
 .btn-primary svg { width: 16px; height: 16px; }
 .btn-primary:hover:not(:disabled) { transform: scale(1.025); filter: saturate(1.08); }
 .btn-primary:active:not(:disabled) { transform: scale(.96); }
-.btn-primary:disabled { opacity: .72; cursor: progress; transform: none; }
+.btn-primary:disabled { opacity: .72; cursor: not-allowed; transform: none; }
+.btn-primary:disabled:not([aria-busy]) {
+  opacity: .56;
+  filter: saturate(.3);
+  box-shadow: 0 0 0 1px rgba(82, 96, 116, .08);
+}
+.btn-primary[aria-busy="true"] { cursor: progress; }
 
 .btn-small {
   min-width: 40px;
@@ -1450,6 +1491,16 @@ input[type="time"] {
   .group:hover {
     background: rgba(255, 255, 255, .06);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), inset 0 1px 0 rgba(255, 255, 255, .05);
+  }
+
+  .location-gated::after {
+    background: rgba(11, 14, 20, .22);
+  }
+
+  .location-gated.is-location-locked,
+  .location-gated.is-location-locked:hover {
+    background: rgba(255, 255, 255, .025);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .045), inset 0 1px 0 rgba(255, 255, 255, .03);
   }
 
   .group-title,

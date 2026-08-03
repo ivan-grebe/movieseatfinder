@@ -9,9 +9,9 @@ import { addDays, debounce, getJson, todayString } from "./utils.js";
 const {
   searchForm, zipInput, useLocationButton, locationStatus, radiusInput, radiusStatus,
   startDateInput, endDateInput, theatreMeta, theatreStatus, theatreInput, theatreMenu,
-  movieMeta, movieStatus, movieInput, movieMenu, formatOptions, formatMeta, formatStatus,
+  movieGroup, movieMeta, movieStatus, movieInput, movieMenu, formatOptions, formatMeta, formatStatus,
   startTimeInput, endTimeInput,
-  adjacentSeatsInput, excludeAccessibleInput, seatPreferenceGrid, selectCenterGridButton,
+  adjacentSeatsInput, excludeAccessibleInput, preferencesGroup, seatPreferenceGrid, selectCenterGridButton,
   clearGridButton, gridStatus, searchButton, summary, resultsToolbar, sortInput, sortStatus,
   results, pagination,
 } = elements;
@@ -26,6 +26,7 @@ let movieCombo;
 let preciseLocation = null;
 let currentPage = 1;
 let reorderScrollY = null;
+let locationReady = false;
 
 // Tracks the latest run of an async loader so stale responses can be dropped.
 function createRunGuard() {
@@ -59,6 +60,22 @@ const resultsView = createResultsView({
 
 function hasValidZip() {
   return /^\d{5}$/.test(zipInput.value.trim());
+}
+
+function setLocationReady(ready) {
+  locationReady = ready;
+  [movieGroup, preferencesGroup].forEach(group => {
+    group.classList.toggle("is-location-locked", !ready);
+    group.toggleAttribute("inert", !ready);
+    if (ready) group.removeAttribute("aria-disabled");
+    else group.setAttribute("aria-disabled", "true");
+  });
+  if (!searchButton.hasAttribute("aria-busy")) searchButton.disabled = !ready;
+}
+
+function setSearchButtonBusy(busy, label) {
+  setButtonBusy(searchButton, busy, label);
+  if (!busy) searchButton.disabled = !locationReady;
 }
 
 function normalizedTitle(value) {
@@ -143,6 +160,7 @@ function baseParams() {
 
 function showLoaderError(error, status) {
   if (error.code === "location") {
+    setLocationReady(false);
     zipInput.setCustomValidity(error.message);
     setStatus(locationStatus, error.message, "error");
     setStatus(status, "");
@@ -170,6 +188,7 @@ async function loadTheatres() {
     const data = await getJson(`/api/theatres?${params}`);
     if (!isCurrent()) return null;
     theatres = data.theatres;
+    setLocationReady(true);
     zipInput.setCustomValidity("");
     if (!preciseLocation) setStatus(locationStatus, "");
     setStatus(theatreMeta, `${theatres.length} nearby`);
@@ -305,7 +324,7 @@ async function runNewSearch() {
   // pagination loading state so it cannot outlive that request.
   resultsView.endPageLoading();
   const stopLoadingStages = startLoadingStages(stage => {
-    if (isCurrent()) setButtonBusy(searchButton, true, stage);
+    if (isCurrent()) setSearchButtonBusy(true, stage);
   });
   try {
     const data = await fetchSearchResults();
@@ -317,7 +336,7 @@ async function runNewSearch() {
   } finally {
     stopLoadingStages();
     if (isCurrent()) {
-      setButtonBusy(searchButton, false);
+      setSearchButtonBusy(false);
       sortInput.disabled = false;
     }
   }
@@ -332,7 +351,7 @@ async function runPageChange(page) {
   sortInput.disabled = true;
   resultsView.setPageLoading();
   const stopLoadingStages = startLoadingStages(stage => {
-    if (isCurrent()) setButtonBusy(searchButton, true, stage);
+    if (isCurrent()) setSearchButtonBusy(true, stage);
   });
   try {
     const data = await fetchSearchResults();
@@ -345,7 +364,7 @@ async function runPageChange(page) {
   } finally {
     stopLoadingStages();
     if (isCurrent()) {
-      setButtonBusy(searchButton, false);
+      setSearchButtonBusy(false);
       sortInput.disabled = false;
     }
   }
@@ -418,6 +437,7 @@ function syncEndDateBounds() {
 
 async function refreshTheatresAndMovies() {
   if (!hasSearchLocation() || !hasValidRadius()) {
+    if (!hasSearchLocation()) setLocationReady(false);
     theatreLoad.cancel();
     movieLoad.cancel();
     formatLoad.cancel();
@@ -453,6 +473,7 @@ function requestLocation() {
   navigator.geolocation.getCurrentPosition(
     position => {
       preciseLocation = position.coords;
+      setLocationReady(false);
       zipInput.value = "";
       zipInput.setCustomValidity("");
       setStatus(locationStatus, "Using location · not saved", "");
@@ -497,6 +518,7 @@ function bindEvents() {
   });
   useLocationButton.addEventListener("click", requestLocation);
   zipInput.addEventListener("input", () => {
+    setLocationReady(false);
     zipInput.setCustomValidity("");
     const zip = zipInput.value.trim();
     if (zip) {
@@ -539,8 +561,9 @@ async function initialize() {
   const shouldSearchFromUrl = applyQueryParams();
   syncEndDateBounds();
   if (hasSearchBasics()) {
-    await Promise.all([loadTheatres(), loadMovies()]);
-    if (shouldSearchFromUrl && selectedMovie) {
+    const theatresLoaded = await loadTheatres();
+    if (theatresLoaded) await loadMovies();
+    if (theatresLoaded && shouldSearchFromUrl && selectedMovie) {
       await loadFormats();
       currentPage = 1;
       runNewSearch();
