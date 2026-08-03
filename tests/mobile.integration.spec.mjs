@@ -405,6 +405,22 @@ test("movie options can extend beyond the movie card without being clipped or co
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
   await expect(page.locator("#movieMeta")).toHaveText("12 showing");
+
+  // Hold the movie content at the same partial opacity used by the unlock
+  // transition. Partial opacity creates a stacking context, and the menu must
+  // still layer above the following preference card while that fade is active.
+  const transitionOpacity = await page.locator("#movieGroup > .grid").evaluate(element => {
+    const animation = element.animate(
+      [{ opacity: .62 }, { opacity: 1 }],
+      { duration: 160, fill: "both" },
+    );
+    animation.pause();
+    animation.currentTime = 80;
+    return Number.parseFloat(getComputedStyle(element).opacity);
+  });
+  expect(transitionOpacity).toBeGreaterThan(.62);
+  expect(transitionOpacity).toBeLessThan(1);
+
   await page.locator("#movieInput").click();
   await expect(page.locator("#movieMenu")).toBeVisible();
 

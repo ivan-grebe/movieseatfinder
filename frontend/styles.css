@@ -202,6 +202,11 @@ h1 {
   transition-timing-function: ease-out;
 }
 
+.group:has(.combo-menu:not([hidden])) {
+  position: relative;
+  z-index: 2;
+}
+
 .group:hover {
   background: var(--surface-hover);
   box-shadow: var(--shadow-border-hover), inset 0 1px 0 rgba(255,255,255,.78);
