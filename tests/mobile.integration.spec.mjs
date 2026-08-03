@@ -129,12 +129,16 @@ test("ambient background glows are visible, drift, scroll with the page, and res
       animation.pause();
       const duration = animation.effect.getTiming().duration;
       animation.currentTime = 0;
+      const startRect = element.getBoundingClientRect();
       const startTransform = getComputedStyle(element).transform;
+      animation.currentTime = duration / 4;
+      const quarterRect = element.getBoundingClientRect();
       animation.currentTime = duration / 2;
       const middleTransform = getComputedStyle(element).transform;
       return {
         animationName: style.animationName,
         animationDuration: Number.parseFloat(style.animationDuration),
+        driftDistance: Math.hypot(quarterRect.x - startRect.x, quarterRect.y - startRect.y),
         intersectsViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
         moves: startTransform !== middleTransform,
         willChange: style.willChange,
@@ -150,7 +154,8 @@ test("ambient background glows are visible, drift, scroll with the page, and res
   expect(movingStyles.layerPosition).toBe("absolute");
   expect(movingStyles.layerTop).toBeCloseTo(0, 1);
   expect(movingStyles.styles.map(style => style.animationName)).toEqual(["ambient-warm-drift", "ambient-cool-drift"]);
-  expect(movingStyles.styles.every(style => style.animationDuration >= 32 && style.animationDuration <= 60)).toBe(true);
+  expect(movingStyles.styles.every(style => style.animationDuration >= 14 && style.animationDuration <= 24)).toBe(true);
+  expect(movingStyles.styles.every(style => style.driftDistance >= 45)).toBe(true);
   expect(movingStyles.styles.every(style => style.intersectsViewport)).toBe(true);
   expect(movingStyles.styles.every(style => style.moves)).toBe(true);
   expect(movingStyles.styles.every(style => style.willChange === "transform")).toBe(true);
