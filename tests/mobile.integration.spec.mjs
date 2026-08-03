@@ -112,24 +112,59 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.githubShadow).toBe("none");
 });
 
-test("ambient background glows drift slowly and respect reduced motion", async ({ page }) => {
+test("ambient background glows are visible, drift, scroll with the page, and respect reduced motion", async ({ page }) => {
   await page.goto("/");
 
-  const movingStyles = await page.evaluate(() => [
-    document.querySelector(".ambient-glow-warm"),
-    document.querySelector(".ambient-glow-cool"),
-  ].map(element => {
-    const style = getComputedStyle(element);
+  const movingStyles = await page.evaluate(() => {
+    const layer = document.querySelector(".ambient-glows");
+    const glows = [
+      document.querySelector(".ambient-glow-warm"),
+      document.querySelector(".ambient-glow-cool"),
+    ];
+    const layerTop = layer.getBoundingClientRect().top;
+    const styles = glows.map(element => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const animation = element.getAnimations()[0];
+      animation.pause();
+      const duration = animation.effect.getTiming().duration;
+      animation.currentTime = 0;
+      const startTransform = getComputedStyle(element).transform;
+      animation.currentTime = duration / 2;
+      const middleTransform = getComputedStyle(element).transform;
+      return {
+        animationName: style.animationName,
+        animationDuration: Number.parseFloat(style.animationDuration),
+        intersectsViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
+        moves: startTransform !== middleTransform,
+        willChange: style.willChange,
+      };
+    });
     return {
-      animationName: style.animationName,
-      animationDuration: Number.parseFloat(style.animationDuration),
-      willChange: style.willChange,
+      layerPosition: getComputedStyle(layer).position,
+      layerTop,
+      styles,
     };
-  }));
+  });
 
-  expect(movingStyles.map(style => style.animationName)).toEqual(["ambient-warm-drift", "ambient-cool-drift"]);
-  expect(movingStyles.every(style => style.animationDuration >= 80)).toBe(true);
-  expect(movingStyles.every(style => style.willChange === "transform")).toBe(true);
+  expect(movingStyles.layerPosition).toBe("absolute");
+  expect(movingStyles.layerTop).toBeCloseTo(0, 1);
+  expect(movingStyles.styles.map(style => style.animationName)).toEqual(["ambient-warm-drift", "ambient-cool-drift"]);
+  expect(movingStyles.styles.every(style => style.animationDuration >= 32 && style.animationDuration <= 60)).toBe(true);
+  expect(movingStyles.styles.every(style => style.intersectsViewport)).toBe(true);
+  expect(movingStyles.styles.every(style => style.moves)).toBe(true);
+  expect(movingStyles.styles.every(style => style.willChange === "transform")).toBe(true);
+
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = "auto";
+    scrollTo(0, 600);
+  });
+  const scrolledLayer = await page.evaluate(() => ({
+    scrollY,
+    top: document.querySelector(".ambient-glows").getBoundingClientRect().top,
+  }));
+  expect(scrolledLayer.scrollY).toBeGreaterThan(0);
+  expect(scrolledLayer.top).toBeCloseTo(-scrolledLayer.scrollY, 1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reducedStyles = await page.evaluate(() => [
