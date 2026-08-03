@@ -89,12 +89,23 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
     viewportWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
     dateWidths: [...document.querySelectorAll('input[type="date"]')].map(input => input.getBoundingClientRect().width),
+    preferenceWidths: [...document.querySelectorAll(".preferences-group .grid.thirds > label")]
+      .map(label => label.getBoundingClientRect().width),
+    balancedTextWraps: [
+      ".tagline",
+      ".accessible-check > span:last-child",
+      ".seat-help",
+      ".empty-state p",
+    ].map(selector => getComputedStyle(document.querySelector(selector)).textWrap),
     inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
     githubShadow: getComputedStyle(document.querySelector(".github-link")).boxShadow,
   }));
 
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.dateWidths.every(width => width >= 200)).toBe(true);
+  expect(layout.preferenceWidths.slice(0, 2).every(width => width >= 100)).toBe(true);
+  expect(layout.preferenceWidths[2]).toBeGreaterThan(layout.preferenceWidths[0] * 1.8);
+  expect(layout.balancedTextWraps).toEqual(["balance", "balance", "balance", "balance"]);
   expect(layout.inputFontSize).toBe("16px");
   expect(layout.githubShadow).toBe("none");
 });
@@ -687,8 +698,8 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   await expect(companionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
   const unavailableCompanionSeat = page.locator('.real-seat[title="A5 - unavailable - companion"]');
   await expect(unavailableCompanionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
-  await expect(page.getByText("Unavailable or excluded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Accessible seating", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
 
   await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
@@ -710,8 +721,24 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   });
   expect(companionGlow.backgroundColor).toBe("rgba(37, 99, 199, 0.62)");
   expect(companionGlow.filter).toBe("blur(2px)");
-  await expect(page.getByText("Accessible seating", { exact: true })).toBeVisible();
+  await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+
+  const mobileLegendRows = await page.locator(".seat-map-legend").evaluate(legend => (
+    [...legend.children].map(item => Math.round(item.getBoundingClientRect().top))
+  ));
+  expect(new Set(mobileLegendRows).size).toBe(1);
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  const narrowLegendRows = await page.locator(".seat-map-legend").evaluate(legend => {
+    const rowCounts = new Map();
+    for (const item of legend.children) {
+      const top = Math.round(item.getBoundingClientRect().top);
+      rowCounts.set(top, (rowCounts.get(top) || 0) + 1);
+    }
+    return [...rowCounts.values()].sort();
+  });
+  expect(narrowLegendRows).toEqual([2, 2]);
 });
 
 test("accessible matches retain both accessible and matching states", async ({ page }) => {

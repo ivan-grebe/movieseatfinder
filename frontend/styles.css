@@ -115,7 +115,7 @@ h1 {
   font-weight: 600;
   line-height: 1.42;
   letter-spacing: 0;
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 
 .app-shell,
@@ -653,6 +653,7 @@ a:focus-visible {
   color: var(--muted);
   font-size: 12px;
   text-align: center;
+  text-wrap: balance;
 }
 
 .preferences-group .seat-help { margin-top: 14px; }
@@ -751,6 +752,7 @@ a:focus-visible {
   background: rgba(255,255,255,.78);
   box-shadow: var(--shadow-border), inset 0 1px 0 rgba(255,255,255,.78), 0 10px 24px rgba(36, 65, 106, .07);
   text-align: center;
+  text-wrap: balance;
 }
 
 .summary.is-muted { color: var(--muted); }
@@ -841,6 +843,7 @@ a:focus-visible {
   max-width: 38ch;
   margin: 0;
   font-size: 13px;
+  text-wrap: balance;
 }
 
 .github-link {
@@ -1141,13 +1144,18 @@ a:focus-visible {
 .seat-map-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 7px;
   margin-top: 8px;
   color: var(--muted);
   font-size: 11px;
 }
 
-.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
 
 .legend-swatch {
   width: 12px;
@@ -1352,6 +1360,10 @@ input[type="time"] {
     margin: 12px 0 10px;
   }
 
+  .accessible-check > span:last-child {
+    text-wrap: balance;
+  }
+
   .check {
     gap: 8px;
     font-size: 12px;
@@ -1399,7 +1411,9 @@ input[type="time"] {
   .location-group .grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 520px) {
   .preferences-group .grid.thirds {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1407,9 +1421,7 @@ input[type="time"] {
   .preferences-group .grid.thirds label:last-child {
     grid-column: 1 / -1;
   }
-}
 
-@media (max-width: 520px) {
   .results-toolbar {
     grid-template-columns: 1fr auto;
     width: 100%;
@@ -1431,6 +1443,19 @@ input[type="time"] {
     grid-column: 1 / -1;
     grid-row: 2;
     width: 100%;
+  }
+}
+
+@media (max-width: 350px) {
+  .seat-map-legend {
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .seat-map-legend:has(.legend-item:nth-child(4)) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 10px;
   }
 }
 

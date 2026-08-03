@@ -78,11 +78,11 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   legend.className = "seat-map-legend";
   legend.appendChild(createLegendItem("Available", ""));
   if (!accessibleSeatsExcluded) {
-    legend.appendChild(createLegendItem("Accessible seating", "accessible"));
+    legend.appendChild(createLegendItem("Accessible", "accessible"));
   }
   legend.append(
-    createLegendItem(accessibleSeatsExcluded ? "Unavailable or excluded" : "Unavailable", "unavailable"),
-    createLegendItem("Matches your filter", "matched"),
+    createLegendItem(accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable", "unavailable"),
+    createLegendItem("Matches", "matched"),
   );
   wrapper.appendChild(legend);
   return wrapper;
