@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { pickAmbientTarget } from "../frontend/ambient-motion.js";
 import { addDays, getJson, todayString } from "../frontend/utils.js";
 import { logTicketClick } from "../frontend/tracking.js";
+
+test("ambient targets stay bounded and a useful distance from the current glow position", () => {
+  const bounds = { x: [-20, 10], y: [0, 18], minDistance: 12 };
+  const first = pickAmbientTarget({ x: 0, y: 0 }, bounds, () => 0);
+  const second = pickAmbientTarget(first, bounds, () => 1);
+
+  for (const target of [first, second]) {
+    assert.ok(target.x >= bounds.x[0] && target.x <= bounds.x[1]);
+    assert.ok(target.y >= bounds.y[0] && target.y <= bounds.y[1]);
+  }
+  assert.ok(Math.hypot(first.x, first.y) >= bounds.minDistance);
+  assert.ok(Math.hypot(second.x - first.x, second.y - first.y) >= bounds.minDistance);
+});
 
 function response(status, body) {
   return {

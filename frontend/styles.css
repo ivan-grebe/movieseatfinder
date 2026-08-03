@@ -78,7 +78,6 @@ body {
   height: 720px;
   background: radial-gradient(closest-side, rgba(255, 148, 135, .44), transparent 72%);
   transform: translate3d(-50%, 0, 0);
-  animation: ambient-warm-drift 16s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
 .ambient-glow-cool {
@@ -88,21 +87,6 @@ body {
   height: 500px;
   background: radial-gradient(closest-side, rgba(120, 165, 255, .38), transparent 72%);
   transform: translate3d(0, 0, 0);
-  animation: ambient-cool-drift 20s cubic-bezier(.45, 0, .55, 1) infinite;
-}
-
-@keyframes ambient-warm-drift {
-  0%, 100% { transform: translate3d(-50%, 0, 0); }
-  28% { transform: translate3d(-38%, 11%, 0); }
-  54% { transform: translate3d(-45%, 17%, 0); }
-  78% { transform: translate3d(-60%, 7%, 0); }
-}
-
-@keyframes ambient-cool-drift {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  30% { transform: translate3d(-18%, 9%, 0); }
-  58% { transform: translate3d(-10%, 16%, 0); }
-  82% { transform: translate3d(8%, 6%, 0); }
 }
 
 body::before {
@@ -1509,7 +1493,6 @@ input[type="time"] {
   }
 
   .ambient-glow {
-    animation: none;
     will-change: auto;
   }
 

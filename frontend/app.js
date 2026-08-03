@@ -1,3 +1,4 @@
+import { initializeAmbientMotion } from "./ambient-motion.js";
 import { closeCombo, setupCombo } from "./combo.js";
 import { elements } from "./dom.js";
 import { createFormatPicker } from "./format-picker.js";
@@ -584,4 +585,5 @@ async function initialize() {
   }
 }
 
+initializeAmbientMotion();
 initialize();
