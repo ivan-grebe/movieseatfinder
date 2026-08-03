@@ -112,6 +112,39 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.githubShadow).toBe("none");
 });
 
+test("ambient background glows drift slowly and respect reduced motion", async ({ page }) => {
+  await page.goto("/");
+
+  const movingStyles = await page.evaluate(() => [
+    document.querySelector(".ambient-glow-warm"),
+    document.querySelector(".ambient-glow-cool"),
+  ].map(element => {
+    const style = getComputedStyle(element);
+    return {
+      animationName: style.animationName,
+      animationDuration: Number.parseFloat(style.animationDuration),
+      willChange: style.willChange,
+    };
+  }));
+
+  expect(movingStyles.map(style => style.animationName)).toEqual(["ambient-warm-drift", "ambient-cool-drift"]);
+  expect(movingStyles.every(style => style.animationDuration >= 80)).toBe(true);
+  expect(movingStyles.every(style => style.willChange === "transform")).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedStyles = await page.evaluate(() => [
+    document.querySelector(".ambient-glow-warm"),
+    document.querySelector(".ambient-glow-cool"),
+  ].map(element => {
+    const style = getComputedStyle(element);
+    return { animationName: style.animationName, willChange: style.willChange };
+  }));
+  expect(reducedStyles).toEqual([
+    { animationName: "none", willChange: "auto" },
+    { animationName: "none", willChange: "auto" },
+  ]);
+});
+
 test("desktop location and movie cards share a row height", async ({ page }) => {
   for (const width of [1280, 1600]) {
     await page.setViewportSize({ width, height: 900 });
@@ -547,6 +580,22 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   await expect(page.getByText("IMAX · 70mm · AMC PRIME · Cinemark XD · Regal RPX · AMC XL", { exact: true })).toBeVisible();
   await expect(page.getByText("35mm · RealD 3D · 4DX · ScreenX · D-BOX", { exact: true })).toBeVisible();
   await expect(page.locator(".format-tier-badge")).toHaveText(["S", "A", "B", "?"]);
+  const tierGeometry = await page.evaluate(() => {
+    const panel = document.querySelector(".format-guide-body");
+    const lastTier = document.querySelector(".format-tier:last-child");
+    const badgeOffsets = [...document.querySelectorAll(".format-tier")].map(tier => {
+      const badge = tier.querySelector(".format-tier-badge").getBoundingClientRect();
+      const row = tier.getBoundingClientRect();
+      return Math.abs((badge.top + badge.bottom) / 2 - (row.top + row.bottom) / 2);
+    });
+    return {
+      bottomSpace: panel.getBoundingClientRect().bottom - lastTier.getBoundingClientRect().bottom,
+      panelPadding: Number.parseFloat(getComputedStyle(panel).paddingBottom),
+      badgeOffsets,
+    };
+  });
+  expect(tierGeometry.bottomSpace).toBeCloseTo(tierGeometry.panelPadding, 1);
+  expect(tierGeometry.badgeOffsets.every(offset => offset <= 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
   const restingColor = await guideButton.evaluate(element => getComputedStyle(element).color);

@@ -40,17 +40,63 @@ html {
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.5;
-  background:
-    radial-gradient(780px 440px at 50% -120px, rgba(255, 148, 135, .38), transparent 64%),
-    radial-gradient(560px 360px at 82% 80px, rgba(120, 165, 255, .30), transparent 62%),
-    linear-gradient(180deg, #fff7f6 0%, #fffafa 34%, #ffffff 100%);
+  background: linear-gradient(180deg, #fff7f6 0%, #fffafa 34%, #ffffff 100%);
   text-rendering: optimizeLegibility;
+}
+
+.ambient-glows {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-glow {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.ambient-glow-warm {
+  top: -430px;
+  left: 50%;
+  width: min(1220px, 112vw);
+  height: 720px;
+  background: radial-gradient(closest-side, rgba(255, 148, 135, .38), transparent 72%);
+  transform: translate3d(-50%, 0, 0);
+  animation: ambient-warm-drift 84s ease-in-out infinite;
+}
+
+.ambient-glow-cool {
+  top: -170px;
+  right: -110px;
+  width: min(760px, 70vw);
+  height: 500px;
+  background: radial-gradient(closest-side, rgba(120, 165, 255, .30), transparent 72%);
+  transform: translate3d(0, 0, 0);
+  animation: ambient-cool-drift 96s ease-in-out infinite;
+}
+
+@keyframes ambient-warm-drift {
+  0%, 100% { transform: translate3d(-50%, 0, 0); }
+  34% { transform: translate3d(-47%, 3%, 0); }
+  68% { transform: translate3d(-53%, 5%, 0); }
+}
+
+@keyframes ambient-cool-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  42% { transform: translate3d(-7%, 5%, 0); }
+  74% { transform: translate3d(3%, 2%, 0); }
 }
 
 body::before {
@@ -456,13 +502,13 @@ select {
 .format-tier-list {
   display: grid;
   gap: 6px;
-  margin: 9px 0;
+  margin: 9px 0 0;
 }
 
 .format-tier {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 9px;
   padding: 8px;
   border-radius: 10px;
@@ -1451,6 +1497,11 @@ input[type="time"] {
     transition-duration: 0ms;
   }
 
+  .ambient-glow {
+    animation: none;
+    will-change: auto;
+  }
+
   .spinner { animation: none; }
 
   .loading-dot {
@@ -1472,15 +1523,27 @@ input[type="time"] {
     padding-bottom: 76px;
   }
 
-  /* The desktop glows are sized in fixed px and collapse into a muddy red wash
-     on a narrow screen. Re-anchor them as a warm-left / cool-right sweep sized
-     to the viewport so both tones read cleanly. */
+  /* Keep the warm-left / cool-right sweep distinct on narrow screens. */
   body {
-    background:
-      radial-gradient(92% 300px at 6% -40px, rgba(255, 138, 122, .34), transparent 72%),
-      radial-gradient(96% 320px at 100% 44px, rgba(120, 165, 255, .34), transparent 72%),
-      linear-gradient(180deg, #fff7f6 0%, #fffafa 44%, #ffffff 100%);
+    background: linear-gradient(180deg, #fff7f6 0%, #fffafa 44%, #ffffff 100%);
   }
+
+  .ambient-glow-warm {
+    top: -245px;
+    left: 18%;
+    width: 118vw;
+    height: 430px;
+    background: radial-gradient(closest-side, rgba(255, 138, 122, .34), transparent 72%);
+  }
+
+  .ambient-glow-cool {
+    top: -150px;
+    right: -38vw;
+    width: 112vw;
+    height: 440px;
+    background: radial-gradient(closest-side, rgba(120, 165, 255, .34), transparent 72%);
+  }
+
   body::before {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #fff 64%);
   }
@@ -1698,10 +1761,15 @@ input[type="time"] {
 
   body {
     color: var(--ink);
-    background:
-      radial-gradient(780px 440px at 50% -120px, rgba(180, 52, 46, .34), transparent 64%),
-      radial-gradient(560px 360px at 82% 80px, rgba(150, 110, 55, .18), transparent 62%),
-      linear-gradient(180deg, #12151c 0%, #0f1218 40%, #0b0d12 100%);
+    background: linear-gradient(180deg, #12151c 0%, #0f1218 40%, #0b0d12 100%);
+  }
+
+  .ambient-glow-warm {
+    background: radial-gradient(closest-side, rgba(180, 52, 46, .34), transparent 72%);
+  }
+
+  .ambient-glow-cool {
+    background: radial-gradient(closest-side, rgba(150, 110, 55, .18), transparent 72%);
   }
 
   body::before {
@@ -1710,13 +1778,14 @@ input[type="time"] {
       radial-gradient(900px 200px at 50% 210px, rgba(210, 70, 66, .16), transparent 70%);
   }
 
-  /* Narrow screens: warm-left / amber-right sweep so the glow isn't a red wash. */
+  /* Narrow screens: keep the warm-left / amber-right sweep from becoming a red wash. */
   @media (max-width: 700px) {
-    body {
-      background:
-        radial-gradient(92% 300px at 6% -40px, rgba(190, 60, 52, .36), transparent 72%),
-        radial-gradient(96% 320px at 100% 44px, rgba(184, 142, 74, .24), transparent 72%),
-        linear-gradient(180deg, #12151c 0%, #0f1218 40%, #0b0d12 100%);
+    .ambient-glow-warm {
+      background: radial-gradient(closest-side, rgba(190, 60, 52, .36), transparent 72%);
+    }
+
+    .ambient-glow-cool {
+      background: radial-gradient(closest-side, rgba(184, 142, 74, .24), transparent 72%);
     }
   }
 
