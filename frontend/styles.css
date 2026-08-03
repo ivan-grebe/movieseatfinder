@@ -380,25 +380,28 @@ select {
 .format-guide {
   margin-top: 6px;
   color: var(--accent);
-  interpolate-size: allow-keywords;
 }
 
-.format-guide::details-content {
-  block-size: 0;
-  overflow-y: clip;
+.format-guide-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
   opacity: 0;
-  transition:
-    content-visibility 220ms allow-discrete,
-    block-size 220ms cubic-bezier(.2, 0, 0, 1),
-    opacity 140ms ease-out;
+  transition-property: grid-template-rows, opacity;
+  transition-duration: 220ms, 140ms;
+  transition-timing-function: cubic-bezier(.2, 0, 0, 1), ease-out;
 }
 
-.format-guide[open]::details-content {
-  block-size: auto;
+.format-guide.is-open .format-guide-reveal {
+  grid-template-rows: 1fr;
   opacity: 1;
 }
 
-.format-guide summary {
+.format-guide-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.format-guide-toggle {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -407,6 +410,7 @@ select {
   border-radius: 6px;
   cursor: pointer;
   color: var(--accent);
+  background: transparent;
   font-size: 11px;
   font-weight: 750;
   line-height: 1;
@@ -416,13 +420,11 @@ select {
   transition-timing-function: ease;
 }
 
-.format-guide summary::-webkit-details-marker { display: none; }
-
 @media (hover: hover) {
-  .format-guide summary:hover { color: var(--accent-deep); }
+  .format-guide-toggle:hover { color: var(--accent-deep); }
 }
 
-.format-guide summary:focus-visible {
+.format-guide-toggle:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(201, 58, 58, .13);
 }
@@ -434,7 +436,7 @@ select {
   transition: transform .18s cubic-bezier(.2, 0, 0, 1);
 }
 
-.format-guide[open] .format-guide-chevron { transform: rotate(180deg); }
+.format-guide.is-open .format-guide-chevron { transform: rotate(180deg); }
 
 .format-guide-body {
   padding: 12px;
@@ -1445,7 +1447,7 @@ input[type="time"] {
     transition-duration: 0ms;
   }
 
-  .format-guide::details-content,
+  .format-guide-reveal,
   .format-guide-chevron {
     transition-duration: 0ms;
   }
@@ -1861,6 +1863,6 @@ input[type="time"] {
 }
 
 @media (prefers-color-scheme: dark) and (hover: hover) {
-  .format-guide summary:hover { color: #f0b3ae; }
+  .format-guide-toggle:hover { color: #f0b3ae; }
   .btn-small:hover { background: rgba(255, 255, 255, .1); }
 }

@@ -10,6 +10,7 @@ const {
   searchForm, zipInput, useLocationButton, locationStatus, radiusInput, radiusStatus,
   startDateInput, endDateInput, theatreMeta, theatreStatus, theatreInput, theatreMenu,
   movieGroup, movieMeta, movieStatus, movieInput, movieMenu, formatOptions, formatMeta, formatStatus,
+  formatGuide, formatGuideButton, formatGuideContent,
   startTimeInput, endTimeInput,
   adjacentSeatsInput, excludeAccessibleInput, preferencesGroup, seatPreferenceHelp, seatPreferenceGrid,
   editSeatGridButton, selectCenterGridButton, clearGridButton, cancelSeatGridButton, doneSeatGridButton,
@@ -505,6 +506,12 @@ function queueCriteriaRefresh() {
 }
 
 function bindEvents() {
+  formatGuideButton.addEventListener("click", () => {
+    const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
+    formatGuideButton.setAttribute("aria-expanded", String(expanded));
+    formatGuideContent.setAttribute("aria-hidden", String(!expanded));
+    formatGuide.classList.toggle("is-open", expanded);
+  });
   setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, async () => {
     await loadMovies();
     if (selectedMovie) await loadFormats();

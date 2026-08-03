@@ -120,7 +120,7 @@ test("desktop movie and format card sizes to its content", async ({ page }) => {
     const location = document.querySelector(".location-group").getBoundingClientRect();
     const movie = document.querySelector(".movie-group").getBoundingClientRect();
     const formats = document.querySelector(".format-options").getBoundingClientRect();
-    const guide = document.querySelector(".format-guide summary").getBoundingClientRect();
+    const guide = document.querySelector(".format-guide-toggle").getBoundingClientRect();
     return {
       location: location.height,
       movie: movie.height,
@@ -526,9 +526,11 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
   const guide = page.locator(".format-guide");
-  await expect(guide).not.toHaveAttribute("open", "");
+  const guideButton = page.locator("#formatGuideButton");
+  await expect(guide).not.toHaveClass(/is-open/);
+  await expect(guideButton).toHaveAttribute("aria-expanded", "false");
   const animationHeights = await guide.evaluate(async element => {
-    element.querySelector("summary").click();
+    element.querySelector("button").click();
     const start = element.getBoundingClientRect().height;
     await new Promise(resolve => setTimeout(resolve, 80));
     const middle = element.getBoundingClientRect().height;
@@ -538,18 +540,20 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   });
   expect(animationHeights.middle).toBeGreaterThan(animationHeights.start);
   expect(animationHeights.middle).toBeLessThan(animationHeights.end);
-  await expect(guide).toHaveAttribute("open", "");
+  await expect(guide).toHaveClass(/is-open/);
+  await expect(guideButton).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#formatGuideContent")).toHaveAttribute("aria-hidden", "false");
   await expect(page.getByText("IMAX 70mm · Dolby Cinema · IMAX with Laser", { exact: true })).toBeVisible();
   await expect(page.getByText("IMAX · 70mm · AMC PRIME · Cinemark XD · Regal RPX · AMC XL", { exact: true })).toBeVisible();
   await expect(page.getByText("35mm · RealD 3D · 4DX · ScreenX · D-BOX", { exact: true })).toBeVisible();
   await expect(page.locator(".format-tier-badge")).toHaveText(["S", "A", "B", "?"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
-  const summary = guide.locator("summary");
-  const restingColor = await summary.evaluate(element => getComputedStyle(element).color);
-  await summary.tap();
-  await expect(guide).not.toHaveAttribute("open", "");
-  await expect(summary).toHaveCSS("color", restingColor);
+  const restingColor = await guideButton.evaluate(element => getComputedStyle(element).color);
+  await guideButton.tap();
+  await expect(guide).not.toHaveClass(/is-open/);
+  await expect(guideButton).toHaveAttribute("aria-expanded", "false");
+  await expect(guideButton).toHaveCSS("color", restingColor);
 });
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
