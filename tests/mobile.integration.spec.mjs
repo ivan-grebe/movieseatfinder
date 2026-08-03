@@ -112,6 +112,27 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.githubShadow).toBe("none");
 });
 
+test("desktop movie and format card sizes to its content", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const heights = await page.evaluate(() => {
+    const location = document.querySelector(".location-group").getBoundingClientRect();
+    const movie = document.querySelector(".movie-group").getBoundingClientRect();
+    const formats = document.querySelector(".format-options").getBoundingClientRect();
+    const guide = document.querySelector(".format-guide summary").getBoundingClientRect();
+    return {
+      location: location.height,
+      movie: movie.height,
+      guideSpaceAbove: guide.top - formats.bottom,
+      guideSpaceBelow: movie.bottom - guide.bottom,
+    };
+  });
+
+  expect(heights.movie).toBeLessThan(heights.location);
+  expect(Math.abs(heights.guideSpaceAbove - heights.guideSpaceBelow)).toBeLessThanOrEqual(1);
+});
+
 test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
   await mockSearchDependencies(page, route => route.fulfill({
     contentType: "application/json",

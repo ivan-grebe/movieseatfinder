@@ -157,6 +157,11 @@ h1 {
   box-shadow: var(--shadow-border-hover), inset 0 1px 0 rgba(255,255,255,.78);
 }
 
+.movie-group {
+  align-self: start;
+  padding-bottom: 6px;
+}
+
 .location-gated {
   position: relative;
 }
@@ -373,7 +378,7 @@ select {
 }
 
 .format-guide {
-  margin-top: 2px;
+  margin-top: 6px;
   color: var(--accent);
   interpolate-size: allow-keywords;
 }
@@ -1488,6 +1493,7 @@ input[type="time"] {
   .card-body { padding: 12px; gap: 10px; }
   .card { border-radius: 25px; }
   .group { padding: 12px; border-radius: 13px; }
+  .movie-group { padding-bottom: 6px; }
 
   .group-title {
     margin-bottom: 8px;
