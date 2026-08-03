@@ -160,6 +160,33 @@
               </span>
               <div id="formatOptions" class="format-options"></div>
               <div id="formatStatus" class="status field-status" aria-live="polite"></div>
+              <details class="format-guide">
+                <summary>
+                  <span>Which format is best?</span>
+                  <svg class="format-guide-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                </summary>
+                <div class="format-guide-body">
+                  <p class="format-guide-intro">For most movies, prioritize picture, sound, and auditorium quality in that order.</p>
+                  <div class="format-tier-list">
+                    <div class="format-tier">
+                      <span class="format-tier-badge is-s">S</span>
+                      <div><strong>Best overall</strong><span>IMAX 70mm · Dolby Cinema · IMAX with Laser</span></div>
+                    </div>
+                    <div class="format-tier">
+                      <span class="format-tier-badge is-a">A</span>
+                      <div><strong>Strong premium</strong><span>IMAX · 70mm · AMC PRIME · Cinemark XD · Regal RPX · AMC XL</span></div>
+                    </div>
+                    <div class="format-tier">
+                      <span class="format-tier-badge is-b">B</span>
+                      <div><strong>Reliable default</strong><span>Standard · Digital · 2D</span></div>
+                    </div>
+                    <div class="format-tier">
+                      <span class="format-tier-badge is-specialty">?</span>
+                      <div><strong>Different kind of experience</strong><span>35mm · RealD 3D · 4DX · ScreenX · D-BOX</span></div>
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -172,11 +199,11 @@
           <div class="grid thirds">
             <label class="time-field">
               Earliest time
-              <input id="startTimeInput" type="time" value="17:00">
+              <input id="startTimeInput" type="time" value="00:00">
             </label>
             <label class="time-field">
               Latest time
-              <input id="endTimeInput" type="time" value="23:30">
+              <input id="endTimeInput" type="time" value="23:59">
             </label>
             <label>
               Seats together

@@ -84,6 +84,8 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto("/");
   await expect(page.locator("#excludeAccessibleInput")).toBeChecked();
+  await expect(page.locator("#startTimeInput")).toHaveValue("00:00");
+  await expect(page.locator("#endTimeInput")).toHaveValue("23:59");
 
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
@@ -477,6 +479,37 @@ test("mobile format chips send every selected format to the search", async ({ pa
   await page.locator("#searchButton").click();
   await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
   expect(searchUrl).toContain("excludeAccessible=1");
+});
+
+test("format tier guide stays compact until the user opens it", async ({ page }) => {
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(emptySearch),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+
+  const guide = page.locator(".format-guide");
+  await expect(guide).not.toHaveAttribute("open", "");
+  const animationHeights = await guide.evaluate(async element => {
+    element.querySelector("summary").click();
+    const start = element.getBoundingClientRect().height;
+    await new Promise(resolve => setTimeout(resolve, 80));
+    const middle = element.getBoundingClientRect().height;
+    await new Promise(resolve => setTimeout(resolve, 220));
+    const end = element.getBoundingClientRect().height;
+    return { start, middle, end };
+  });
+  expect(animationHeights.middle).toBeGreaterThan(animationHeights.start);
+  expect(animationHeights.middle).toBeLessThan(animationHeights.end);
+  await expect(guide).toHaveAttribute("open", "");
+  await expect(page.getByText("IMAX 70mm · Dolby Cinema · IMAX with Laser", { exact: true })).toBeVisible();
+  await expect(page.getByText("IMAX · 70mm · AMC PRIME · Cinemark XD · Regal RPX · AMC XL", { exact: true })).toBeVisible();
+  await expect(page.getByText("35mm · RealD 3D · 4DX · ScreenX · D-BOX", { exact: true })).toBeVisible();
+  await expect(page.locator(".format-tier-badge")).toHaveText(["S", "A", "B", "?"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 });
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
