@@ -371,6 +371,23 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
 
+    @patch(
+        "backend.application.resolve_search_location",
+        side_effect=application.ZipNotFoundError("We couldn't find that ZIP code. Check it and try again."),
+    )
+    def test_unknown_zip_is_identified_as_a_location_field_error(self, resolve_search_location):
+        for endpoint in ("/api/theatres", "/api/movies"):
+            with self.subTest(endpoint=endpoint):
+                response = self.client.get(endpoint, params={"zip": "00000", "radius": 25})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json(),
+                    {
+                        "error": "We couldn't find that ZIP code. Check it and try again.",
+                        "code": "location",
+                    },
+                )
+
     def test_missing_radius_uses_the_standard_validation_error(self):
         response = self.client.get("/api/theatres", params={"zip": "10001"})
         self.assertEqual(response.status_code, 400)

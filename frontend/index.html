@@ -95,19 +95,25 @@
             Location &amp; dates
           </p>
           <div class="grid">
-            <label>
-              ZIP code
-              <span class="zip-row">
-                <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="Enter ZIP">
-                <button id="useLocationButton" class="location-btn" type="button" title="Use my current location" aria-label="Use my current location">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
-                </button>
-              </span>
-            </label>
-            <label>
-              Radius <span class="field-hint">(miles)</span>
-              <input id="radiusInput" type="number" min="1" max="100" value="25" required>
-            </label>
+            <div class="field-block">
+              <label>
+                ZIP code
+                <span class="zip-row">
+                  <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="Enter ZIP" aria-describedby="locationStatus">
+                  <button id="useLocationButton" class="location-btn" type="button" title="Use my current location" aria-label="Use my current location">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  </button>
+                </span>
+              </label>
+              <div id="locationStatus" class="status field-status" aria-live="polite"></div>
+            </div>
+            <div class="field-block">
+              <label>
+                Radius <span class="field-hint">(miles)</span>
+                <input id="radiusInput" type="number" min="1" max="100" value="25" required aria-describedby="radiusStatus">
+              </label>
+              <div id="radiusStatus" class="status field-status" aria-live="polite"></div>
+            </div>
             <label class="date-field">
               Start date
               <input id="startDateInput" type="date">
@@ -116,15 +122,18 @@
               End date <span class="field-hint">(within 14 days)</span>
               <input id="endDateInput" type="date">
             </label>
-            <label class="combo full">
-              Theatre <span class="field-hint">(optional)</span>
-              <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre in radius" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu">
-              <div id="theatreMenu" class="combo-menu" role="listbox" aria-label="Nearby theatres" hidden></div>
-            </label>
+            <div class="field-block full">
+              <label class="combo">
+                <span class="field-label-row">
+                  <span>Theatre <span class="field-hint">(optional)</span></span>
+                  <span id="theatreMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
+                </span>
+                <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre in radius" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu" aria-describedby="theatreStatus">
+                <div id="theatreMenu" class="combo-menu" role="listbox" aria-label="Nearby theatres" hidden></div>
+              </label>
+              <div id="theatreStatus" class="status field-status" aria-live="polite"></div>
+            </div>
           </div>
-          <div id="locationStatus" class="status" aria-live="polite"></div>
-          <div id="radiusStatus" class="status" aria-live="polite"></div>
-          <div id="theatreStatus" class="status" aria-live="polite"></div>
         </div>
 
         <div class="group movie-group">
@@ -133,18 +142,26 @@
             Movie &amp; format
           </p>
           <div class="grid">
-            <label class="combo full">
-              Movie <span class="field-hint">(select from list)</span>
-              <input id="movieInput" type="text" autocomplete="off" placeholder="Type to filter movies" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu" aria-describedby="movieStatus">
-              <div id="movieMenu" class="combo-menu" role="listbox" aria-label="Matching movies" hidden></div>
-            </label>
-            <div class="format-picker full" role="group" aria-labelledby="formatLabel">
-              <span id="formatLabel" class="format-label">Format <span class="field-hint">(choose one or more)</span></span>
+            <div class="field-block full">
+              <label class="combo">
+                <span class="field-label-row">
+                  <span>Movie <span class="field-hint">(select from list)</span></span>
+                  <span id="movieMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
+                </span>
+                <input id="movieInput" type="text" autocomplete="off" placeholder="Type to filter movies" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu" aria-describedby="movieStatus">
+                <div id="movieMenu" class="combo-menu" role="listbox" aria-label="Matching movies" hidden></div>
+              </label>
+              <div id="movieStatus" class="status field-status" aria-live="polite"></div>
+            </div>
+            <div class="format-picker field-block full" role="group" aria-labelledby="formatLabel" aria-describedby="formatStatus">
+              <span id="formatLabel" class="format-label field-label-row">
+                <span>Format <span class="field-hint">(choose one or more)</span></span>
+                <span id="formatMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
+              </span>
               <div id="formatOptions" class="format-options"></div>
+              <div id="formatStatus" class="status field-status" aria-live="polite"></div>
             </div>
           </div>
-          <div id="movieStatus" class="status" aria-live="polite"></div>
-          <div id="formatStatus" class="status" aria-live="polite"></div>
         </div>
 
         <div class="group preferences-group">

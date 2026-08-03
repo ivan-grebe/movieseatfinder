@@ -48,7 +48,7 @@ async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
 }
 
 async function selectMovie(page, title = "Test Movie") {
-  await expect(page.locator("#movieStatus")).toContainText("1 movie showing");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
   const input = page.locator("#movieInput");
   await input.fill(title);
   await page.getByRole("option", { name: title, exact: true }).click();
@@ -97,6 +97,86 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.dateWidths.every(width => width >= 200)).toBe(true);
   expect(layout.inputFontSize).toBe("16px");
   expect(layout.githubShadow).toBe("none");
+});
+
+test("field loading messages do not reflow later controls", async ({ page }) => {
+  let releaseTheatres;
+  let markTheatresStarted;
+  const theatresStarted = new Promise(resolve => { markTheatresStarted = resolve; });
+  const theatreGate = new Promise(resolve => { releaseTheatres = resolve; });
+  let releaseMovies;
+  let markMoviesStarted;
+  const moviesStarted = new Promise(resolve => { markMoviesStarted = resolve; });
+  const movieGate = new Promise(resolve => { releaseMovies = resolve; });
+
+  await page.route("**/api/theatres*", async route => {
+    markTheatresStarted();
+    await theatreGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+    });
+  });
+  await page.route("**/api/movies*", async route => {
+    markMoviesStarted();
+    await movieGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await theatresStarted;
+  await expect(page.locator("#theatreMeta")).toContainText("Loading");
+  const whileTheatresLoad = await page.evaluate(() => ({
+    movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
+  }));
+
+  releaseTheatres();
+  await moviesStarted;
+  await expect(page.locator("#movieMeta")).toContainText("Loading");
+  const whileMoviesLoad = await page.evaluate(() => ({
+    movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
+    preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
+  }));
+  expect(whileMoviesLoad.movieTop).toBeCloseTo(whileTheatresLoad.movieTop, 1);
+
+  releaseMovies();
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+  await expect(page.locator("#movieStatus")).toBeEmpty();
+  const settled = await page.evaluate(() => ({
+    preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
+  }));
+  expect(settled.preferencesTop).toBeCloseTo(whileMoviesLoad.preferencesTop, 1);
+});
+
+test("an unknown ZIP shows one error at the ZIP field and stops dependent loads", async ({ page }) => {
+  let movieRequestCount = 0;
+  await page.route("**/api/theatres*", route => route.fulfill({
+    status: 400,
+    contentType: "application/json",
+    body: JSON.stringify({
+      error: "We couldn't find that ZIP code. Check it and try again.",
+      code: "location",
+    }),
+  }));
+  await page.route("**/api/movies*", route => {
+    movieRequestCount += 1;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ movies: [] }) });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("00000");
+  await expect(page.locator("#locationStatus")).toHaveText(
+    "We couldn't find that ZIP code. Check it and try again.",
+  );
+  await expect(page.locator("#theatreStatus")).toBeEmpty();
+  await expect(page.locator("#movieStatus")).toBeEmpty();
+  await expect(page.locator("#theatreMeta")).toBeEmpty();
+  await expect(page.locator("#movieMeta")).toBeEmpty();
+  expect(movieRequestCount).toBe(0);
 });
 
 test("mobile search keeps content stable while loading and then renders its response", async ({ page }) => {
@@ -154,14 +234,15 @@ test("typing filters movies but only a selected suggestion can be searched", asy
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#movieStatus")).toContainText("1 movie showing");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
   const movieInput = page.locator("#movieInput");
+  const searchButton = page.locator("#searchButton");
   await movieInput.fill("Test");
   const suggestion = page.getByRole("option", { name: "Test Movie", exact: true });
   await expect(suggestion).toBeVisible();
   await movieInput.fill("Test Movie");
-  await page.locator("#searchButton").click();
+  await searchButton.click();
 
   await expect(movieInput).toHaveJSProperty(
     "validationMessage",
@@ -170,8 +251,9 @@ test("typing filters movies but only a selected suggestion can be searched", asy
   expect(searchUrl).toBe("");
 
   await suggestion.click();
-  await page.locator("#searchButton").click();
+  await searchButton.click();
   await expect.poll(() => searchUrl).not.toBe("");
+  await expect(searchButton).toBeEnabled();
   expect(new URL(searchUrl).searchParams.get("movie")).toBe("Test Movie");
   expect(searchCount).toBe(1);
 
@@ -202,7 +284,7 @@ test("mobile format chips send every selected format to the search", async ({ pa
 
   const imax = page.getByRole("button", { name: "IMAX", exact: true });
   const dolby = page.getByRole("button", { name: "Dolby Cinema", exact: true });
-  await expect(page.locator("#formatStatus")).toContainText("3 formats for this movie.");
+  await expect(page.locator("#formatStatus")).toBeEmpty();
   await expect(imax).toBeVisible();
   await imax.click();
   await dolby.click();
@@ -427,7 +509,7 @@ test("stale movie responses do not replace options for newer criteria", async ({
   await page.locator("#zipInput").fill("10001");
   await firstMovieRequestStarted;
   await page.locator("#radiusInput").fill("10");
-  await expect(page.locator("#movieStatus")).toContainText("1 movie");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
   releaseFirstMovieRequest();
   await expect.poll(() => firstMovieRequestFulfilled).toBe(true);

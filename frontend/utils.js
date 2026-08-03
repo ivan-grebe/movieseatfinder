@@ -48,6 +48,11 @@ export async function getJson(url) {
         : "The search service is temporarily unavailable. Please try again."
     );
   }
-  if (!response.ok) throw new Error(data.error || "Request failed.");
+  if (!response.ok) {
+    const error = new Error(data.error || "Request failed.");
+    error.code = data.code || "";
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }

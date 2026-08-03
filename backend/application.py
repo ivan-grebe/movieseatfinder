@@ -31,6 +31,7 @@ from limits.strategies import MovingWindowRateLimiter
 from pydantic import StringConstraints
 
 from .location import (
+    ZipNotFoundError,
     filter_theatres_within_radius,
     http_session,
     resolve_search_location,
@@ -627,7 +628,8 @@ async def security_headers(request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_request, exc):
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+    content = exc.detail if isinstance(exc.detail, dict) else {"error": exc.detail}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(RequestValidationError)
@@ -743,6 +745,28 @@ def upstream_error(message, error):
     raise HTTPException(status_code=502, detail=f"{message}: {error}") from error
 
 
+def api_search_location(zip_code, lat, lon):
+    """Resolve location while preserving which field needs attention."""
+    try:
+        return resolve_search_location(zip_code, lat, lon)
+    except ZipNotFoundError as error:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": str(error), "code": "location"},
+        ) from error
+    except UPSTREAM_ERRORS as error:
+        if lat is not None:
+            message = "We couldn't determine a ZIP code for your location. Enter a ZIP code instead."
+            status_code = 400
+        else:
+            message = "ZIP lookup is temporarily unavailable. Try again."
+            status_code = 502
+        raise HTTPException(
+            status_code=status_code,
+            detail={"error": message, "code": "location"},
+        ) from error
+
+
 @app.post("/api/events/ticket-click", status_code=204)
 def ticket_click(request: Request):
     enforce_rate_limit(request, "/api/events/ticket-click")
@@ -760,13 +784,7 @@ def api_theatres(
 ):
     enforce_rate_limit(request, "/api/theatres")
     try:
-        try:
-            search_zip, origin, place = resolve_search_location(zip_code, lat, lon)
-        except UPSTREAM_ERRORS as error:
-            raise HTTPException(
-                status_code=400,
-                detail="We could not determine a nearby ZIP for your location. Enter a ZIP code instead.",
-            ) from error
+        search_zip, origin, place = api_search_location(zip_code, lat, lon)
         theatres = fandango_theatres(search_zip, radius, origin)
         # The UI only needs names for its theatre picker.
         return {
@@ -795,7 +813,7 @@ def api_movies(
         start_date = startDate or date.today()
         end_date = endDate or start_date
         theatre_query = theatre.lower()
-        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
+        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
         movies = movies_from_dated_theatre_payloads(search_zip, radius, start_date, end_date, theatre_query, origin)
         return {"movies": movies}
     except ValueError as error:
@@ -824,7 +842,7 @@ def api_formats(
         theatre_query = theatre.lower()
         if not movie_query:
             return {"formats": []}
-        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
+        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
         formats = formats_from_dated_theatre_payloads(
             search_zip,
             radius,
@@ -938,7 +956,7 @@ def api_search(
         page_start = (page - 1) * page_size
         page_end = page_start + page_size
 
-        search_zip, origin, _ = resolve_search_location(zip_code, lat, lon)
+        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
         candidates = collect_candidate_showtimes(
             search_zip,
             radius,

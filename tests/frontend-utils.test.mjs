@@ -34,6 +34,20 @@ test("getJson surfaces API error messages", async () => {
   });
 });
 
+test("getJson preserves API error routing metadata", async () => {
+  await withFetch(
+    async () => response(400, '{"error":"ZIP not found.","code":"location"}'),
+    async () => {
+      await assert.rejects(
+        getJson("/api/theatres"),
+        error => error.message === "ZIP not found."
+          && error.code === "location"
+          && error.status === 400,
+      );
+    },
+  );
+});
+
 test("getJson never exposes a JSON parser error for an HTML server failure", async () => {
   await withFetch(async () => response(500, "Internal Server Error"), async () => {
     await assert.rejects(

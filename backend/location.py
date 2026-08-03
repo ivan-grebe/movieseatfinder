@@ -10,6 +10,10 @@ USER_AGENT = "MovieSeatFinder/1.0 (location lookup)"
 _LOCAL = threading.local()
 
 
+class ZipNotFoundError(ValueError):
+    """The supplied five-digit ZIP does not identify a US location."""
+
+
 def http_session():
     """One requests.Session per thread, shared by every upstream call."""
     session = getattr(_LOCAL, "session", None)
@@ -29,11 +33,13 @@ def geocode_zip(zip_code):
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=20,
     )
+    if response.status_code == 404:
+        raise ZipNotFoundError("We couldn't find that ZIP code. Check it and try again.")
     response.raise_for_status()
     data = response.json()
     places = data.get("places") or []
     if not places:
-        raise KeyError("No location found for that ZIP code")
+        raise ZipNotFoundError("We couldn't find that ZIP code. Check it and try again.")
     place = places[0]
     return {
         "label": f"{place['place name']}, {place['state abbreviation']} {data['post code']}",

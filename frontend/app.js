@@ -4,12 +4,13 @@ import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { setAnimatedStatus, setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js";
-import { addDays, debounce, formatNiceDate, getJson, todayString } from "./utils.js";
+import { addDays, debounce, getJson, todayString } from "./utils.js";
 
 const {
   searchForm, zipInput, useLocationButton, locationStatus, radiusInput, radiusStatus,
-  startDateInput, endDateInput, theatreStatus, theatreInput, theatreMenu, movieStatus,
-  movieInput, movieMenu, formatOptions, formatStatus, startTimeInput, endTimeInput,
+  startDateInput, endDateInput, theatreMeta, theatreStatus, theatreInput, theatreMenu,
+  movieMeta, movieStatus, movieInput, movieMenu, formatOptions, formatMeta, formatStatus,
+  startTimeInput, endTimeInput,
   adjacentSeatsInput, excludeAccessibleInput, seatPreferenceGrid, selectCenterGridButton,
   clearGridButton, gridStatus, searchButton, summary, resultsToolbar, sortInput, sortStatus,
   results, pagination,
@@ -69,17 +70,14 @@ function movieWithTitle(title) {
   return movies.find(movie => normalizedTitle(movie.title) === normalized) || null;
 }
 
-function setMovieCountStatus() {
-  setStatus(
-    movieStatus,
-    `${movies.length} movie${movies.length === 1 ? "" : "s"} showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`,
-    "success",
-  );
+function setMovieCountMeta() {
+  setStatus(movieMeta, `${movies.length} showing`);
 }
 
 function resetFormats() {
   formatLoad.cancel();
   formatPicker.setOptions([]);
+  setStatus(formatMeta, "");
   setStatus(formatStatus, "");
 }
 
@@ -95,7 +93,8 @@ function selectMovie(movie) {
   movieInput.value = movie.title;
   movieInput.setCustomValidity("");
   resetFormats();
-  setMovieCountStatus();
+  setMovieCountMeta();
+  setStatus(movieStatus, "");
 }
 
 function hasSearchLocation() {
@@ -115,7 +114,7 @@ function hasValidRadius() {
 function enforceRadius(report = false) {
   const valid = hasValidRadius();
   radiusInput.setCustomValidity(valid ? "" : "Enter a radius between 1 and 100 miles.");
-  setStatus(radiusStatus, valid ? "" : "Choose a radius between 1 and 100 miles to load nearby movies.", valid ? "" : "error");
+  setStatus(radiusStatus, valid ? "" : "Use a radius from 1 to 100 miles.", valid ? "" : "error");
   if (!valid && report) radiusInput.reportValidity();
   return valid;
 }
@@ -142,29 +141,47 @@ function baseParams() {
   }));
 }
 
+function showLoaderError(error, status) {
+  if (error.code === "location") {
+    zipInput.setCustomValidity(error.message);
+    setStatus(locationStatus, error.message, "error");
+    setStatus(status, "");
+    return;
+  }
+  setStatus(status, error.message, "error");
+}
+
 async function loadTheatres() {
   const isCurrent = theatreLoad.start();
   if (!hasSearchBasics()) {
     theatres = [];
+    setStatus(theatreMeta, "");
     setStatus(theatreStatus, "");
-    return;
+    return false;
   }
 
-  setStatus(theatreStatus, "Loading theatres…", "loading");
+  setStatus(theatreMeta, "Loading…", "loading");
+  setStatus(theatreStatus, "");
   try {
     const params = locationParams(new URLSearchParams({
       zip: zipInput.value.trim(),
       radius: radiusInput.value,
     }));
     const data = await getJson(`/api/theatres?${params}`);
-    if (!isCurrent()) return;
+    if (!isCurrent()) return null;
     theatres = data.theatres;
-    setStatus(theatreStatus, `${theatres.length} theatres found near ${data.place}.`, "success");
+    zipInput.setCustomValidity("");
+    if (!preciseLocation) setStatus(locationStatus, "");
+    setStatus(theatreMeta, `${theatres.length} nearby`);
+    setStatus(theatreStatus, "");
     closeCombo(theatreInput, theatreMenu);
+    return true;
   } catch (error) {
-    if (!isCurrent()) return;
+    if (!isCurrent()) return null;
     theatres = [];
-    setStatus(theatreStatus, error.message, "error");
+    setStatus(theatreMeta, "");
+    showLoaderError(error, theatreStatus);
+    return false;
   }
 }
 
@@ -172,43 +189,48 @@ async function loadMovies() {
   const isCurrent = movieLoad.start();
   if (!hasSearchBasics()) {
     movies = [];
+    setStatus(movieMeta, "");
     clearMovieSelection();
     setStatus(movieStatus, "");
     return;
   }
 
-  setStatus(movieStatus, "Loading movies for selected dates…", "loading");
+  setStatus(movieMeta, "Loading…", "loading");
+  setStatus(movieStatus, "");
   movies = [];
   clearMovieSelection({ rememberTitle: true });
   try {
     const data = await getJson(`/api/movies?${baseParams()}`);
     if (!isCurrent()) return;
     movies = data.movies;
+    setMovieCountMeta();
     selectedMovie = movieWithTitle(selectedMovieTitle);
     const typedMovie = movieInput.value.trim();
     if (selectedMovie) {
       selectedMovieTitle = selectedMovie.title;
       movieInput.value = selectedMovie.title;
       movieInput.setCustomValidity("");
-      setMovieCountStatus();
+      setStatus(movieStatus, "");
       closeCombo(movieInput, movieMenu);
     } else if (typedMovie) {
       selectedMovieTitle = "";
       setStatus(movieStatus, `"${typedMovie}" isn't selected - choose a movie from the list.`, "error");
       if (document.activeElement === movieInput) movieCombo.refresh();
     } else {
-      setMovieCountStatus();
+      setStatus(movieStatus, "");
       closeCombo(movieInput, movieMenu);
     }
   } catch (error) {
     if (!isCurrent()) return;
-    setStatus(movieStatus, error.message, "error");
+    setStatus(movieMeta, "");
+    showLoaderError(error, movieStatus);
   }
 }
 
 async function loadFormats() {
   const movieTitle = selectedMovie?.title;
   const isCurrent = formatLoad.start();
+  setStatus(formatMeta, "");
   setStatus(formatStatus, "");
   if (!movieTitle || !hasSearchBasics()) {
     formatPicker.setOptions([]);
@@ -216,18 +238,20 @@ async function loadFormats() {
   }
 
   try {
-    setStatus(formatStatus, "Loading formats…", "loading");
+    setStatus(formatMeta, "Loading…", "loading");
     const params = baseParams();
     params.set("movie", movieTitle);
     const data = await getJson(`/api/formats?${params}`);
     if (!isCurrent() || selectedMovie?.title !== movieTitle) return;
     const formats = data.formats;
     formatPicker.setOptions(formats);
-    setStatus(formatStatus, `${formats.length} format${formats.length === 1 ? "" : "s"} for this movie.`, "success");
+    setStatus(formatMeta, "");
+    setStatus(formatStatus, "");
   } catch (error) {
     if (!isCurrent() || selectedMovie?.title !== movieTitle) return;
     formatPicker.setOptions([]);
-    setStatus(formatStatus, error.message, "error");
+    setStatus(formatMeta, "");
+    showLoaderError(error, formatStatus);
   }
 }
 
@@ -399,19 +423,29 @@ async function refreshTheatresAndMovies() {
     formatLoad.cancel();
     theatres = [];
     movies = [];
+    setStatus(theatreMeta, "");
+    setStatus(movieMeta, "");
     clearMovieSelection();
     [theatreStatus, movieStatus, formatStatus].forEach(status => setStatus(status, ""));
     return;
   }
   clearMovieSelection({ rememberTitle: true });
-  await loadTheatres();
+  const theatresLoaded = await loadTheatres();
+  if (theatresLoaded === null) return;
+  if (!theatresLoaded) {
+    movieLoad.cancel();
+    movies = [];
+    setStatus(movieMeta, "");
+    setStatus(movieStatus, "");
+    return;
+  }
   await loadMovies();
   if (selectedMovie) await loadFormats();
 }
 
 function requestLocation() {
   if (!navigator.geolocation) {
-    setStatus(locationStatus, "Location isn't available in this browser. Enter a ZIP code to search.", "error");
+    setStatus(locationStatus, "Location unavailable — use ZIP.", "error");
     return;
   }
   setStatus(locationStatus, "Requesting your location…", "loading");
@@ -421,13 +455,13 @@ function requestLocation() {
       preciseLocation = position.coords;
       zipInput.value = "";
       zipInput.setCustomValidity("");
-      setStatus(locationStatus, "Using your precise location for this search. It is not saved.", "success");
+      setStatus(locationStatus, "Using location · not saved", "");
       useLocationButton.disabled = false;
       refreshTheatresAndMovies();
     },
     () => {
       preciseLocation = null;
-      setStatus(locationStatus, "Location access was blocked. Enter a ZIP code to search.", "error");
+      setStatus(locationStatus, "Location blocked — use ZIP.", "error");
       useLocationButton.disabled = false;
     },
     { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 },
@@ -437,6 +471,8 @@ function requestLocation() {
 const autoRefresh = debounce(refreshTheatresAndMovies, 650);
 
 function queueCriteriaRefresh() {
+  setStatus(theatreMeta, "");
+  setStatus(movieMeta, "");
   clearMovieSelection({ rememberTitle: true });
   autoRefresh();
 }
@@ -466,13 +502,11 @@ function bindEvents() {
     if (zip) {
       preciseLocation = null;
       if (/^\d{0,5}$/.test(zip)) {
-        setStatus(locationStatus, "Searching from your ZIP code.");
+        setStatus(locationStatus, "");
       } else {
-        setStatus(locationStatus, "US ZIP codes are 5 digits, like 90210.", "error");
+        setStatus(locationStatus, "Use a 5-digit US ZIP code.", "error");
       }
-    } else if (!preciseLocation) {
-      setStatus(locationStatus, "Enter a ZIP code or use your location.");
-    }
+    } else if (!preciseLocation) setStatus(locationStatus, "");
     queueCriteriaRefresh();
   });
   radiusInput.addEventListener("input", () => {
@@ -511,8 +545,6 @@ async function initialize() {
       currentPage = 1;
       runNewSearch();
     }
-  } else {
-    setStatus(locationStatus, "Enter a ZIP code or use your location.");
   }
 }
 

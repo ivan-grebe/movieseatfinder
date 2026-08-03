@@ -211,6 +211,44 @@ label {
   font-weight: 500;
 }
 
+.field-block { min-width: 0; }
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 16px;
+}
+
+.field-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  height: 16px;
+  min-width: 8ch;
+  color: var(--good);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 16px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-meta.is-loading {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.field-meta .spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
 input,
 select {
   width: 100%;
@@ -467,6 +505,12 @@ a:focus-visible {
 .status:empty { display: none; margin: 0; }
 .status.is-success { color: var(--good); font-weight: 750; }
 .status.is-error { color: var(--danger); font-weight: 750; }
+
+.status.field-status {
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
 
 .spinner {
   flex: none;
