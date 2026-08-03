@@ -134,6 +134,15 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(grid).toHaveClass(/is-mobile-locked/);
   await expect(grid).toHaveCSS("touch-action", "pan-y");
   await expect(firstCell).toHaveCSS("pointer-events", "none");
+  await expect(page.locator("#seatPreferenceHelp")).toHaveText(
+    "Tap Edit seat area to choose where you'd like to sit.",
+  );
+  const seatSilhouette = await firstCell.evaluate(cell => ({
+    backrest: getComputedStyle(cell, "::before").content,
+    cushion: getComputedStyle(cell, "::after").content,
+    cushionHeight: getComputedStyle(cell, "::after").height,
+  }));
+  expect(seatSilhouette).toEqual({ backrest: '\"\"', cushion: '\"\"', cushionHeight: "5px" });
 
   await firstCell.dispatchEvent("click");
   await expect(firstCell).toHaveAttribute("aria-pressed", "false");

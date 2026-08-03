@@ -3,7 +3,7 @@ import { setStatus } from "./ui.js";
 const GRID_SIZE = 15;
 const MOBILE_LAYOUT = "(max-width: 700px)";
 const DESKTOP_HELP = "Drag to mark where you'd like to sit. Top is the screen. Shift-drag to erase. Leave blank for anywhere.";
-const MOBILE_LOCKED_HELP = "Scroll normally here. Tap Edit seat area to choose where you'd like to sit.";
+const MOBILE_LOCKED_HELP = "Tap Edit seat area to choose where you'd like to sit.";
 const MOBILE_EDITING_HELP = "Drag across the grid to highlight your preferred area. Top is the screen.";
 const GRID_MOVES = {
   ArrowUp: [-1, 0],
