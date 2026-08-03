@@ -48,26 +48,14 @@ The production ASGI entry point exposes a stateless Streamable HTTP MCP server a
 
 Poke is instructed to discover first and pass those strings back verbatim, so `The Odyssey` is never silently treated as `The Odyssey (2026)`. If both are plausible live results, it should ask the user which one they mean. The seat tool describes a 15x15, 1-based `row:column` grid: row 1 is nearest the screen, row 15 is the back, column 1 is the left edge, and column 15 is the right edge. Poke can select any combination of cells, including irregular shapes; an empty list means anywhere in the auditorium.
 
-Set a long random bearer token before starting the server:
-
-```bash
-export MCP_API_KEY="replace-with-a-random-secret"
-```
-
-On PowerShell:
-
-```powershell
-$env:MCP_API_KEY = "replace-with-a-random-secret"
-```
-
-For production, add `MCP_API_KEY` to the Vercel project's environment variables, then configure the Poke integration with:
+For a public Poke Recipe, configure the integration template without authentication:
 
 ```text
 URL: https://movieseatfinder.com/mcp
-API key: the same MCP_API_KEY value
+Authentication: None
 ```
 
-Poke sends the credential as a bearer token. The endpoint also uses Poke's `X-Poke-User-Id` for per-user throttling. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` can optionally override the comma-separated production allowlists.
+The endpoint requires Poke's `X-Poke-User-Id` header and applies global, per-IP, and per-user throttling. A correctly configured optional `MCP_API_KEY` bearer token remains accepted for backwards compatibility with private test integrations, but public Recipe users do not need a key. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` can optionally override the comma-separated production allowlists.
 
 ## Testing
 

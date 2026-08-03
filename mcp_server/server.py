@@ -105,7 +105,7 @@ movie_seat_mcp = MCPServer(
         "supplied Fandango ticket links."
     ),
     website_url="https://movieseatfinder.com",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 

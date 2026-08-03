@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import app as entrypoint
-from mcp_server import server
+from mcp_server import security, server
 
 
 def sample_search_result():
@@ -105,31 +105,51 @@ class McpProtocolTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.client_context.__exit__(None, None, None)
 
-    def request_headers(self, token="test-secret"):
-        return {
-            "Authorization": f"Bearer {token}",
+    def request_headers(self, token=None, user_id="00000000-0000-0000-0000-000000000001"):
+        headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json",
             "MCP-Protocol-Version": "2025-06-18",
-            "X-Poke-User-Id": "00000000-0000-0000-0000-000000000001",
         }
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        if user_id is not None:
+            headers["X-Poke-User-Id"] = user_id
+        return headers
 
-    def test_mcp_endpoint_stays_closed_until_a_server_key_is_configured(self):
+    def test_public_poke_request_does_not_require_a_server_key(self):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         with patch.dict(os.environ, {"MCP_API_KEY": ""}):
-            response = self.client.post("/mcp", headers=self.request_headers(), json={})
-        self.assertEqual(response.status_code, 503)
+            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["result"].get("isError", False))
+
+    def test_mcp_endpoint_requires_pokes_user_identifier(self):
+        response = self.client.post(
+            "/mcp",
+            headers=self.request_headers(user_id=None),
+            json={},
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_mcp_endpoint_rejects_an_invalid_bearer_key(self):
         with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=self.request_headers("wrong"), json={})
+            response = self.client.post("/mcp", headers=self.request_headers(token="wrong"), json={})
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers["www-authenticate"], "Bearer")
+
+    @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, True, False])
+    def test_mcp_endpoint_applies_global_ip_and_user_limits(self, rate_limit_hit):
+        response = self.client.post("/mcp", headers=self.request_headers(), json={})
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers["retry-after"], "60")
+        self.assertEqual(rate_limit_hit.call_count, 3)
 
     def test_mcp_endpoint_rejects_an_untrusted_browser_origin(self):
         headers = self.request_headers()
         headers["Origin"] = "https://attacker.example"
-        with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=headers, json={})
+        response = self.client.post("/mcp", headers=headers, json={})
         self.assertEqual(response.status_code, 403)
 
     def test_composition_root_preserves_the_website(self):
@@ -145,8 +165,7 @@ class McpProtocolTests(unittest.TestCase):
             "method": "tools/list",
             "params": {},
         }
-        with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
 
         self.assertEqual(response.status_code, 200)
         tools = {tool["name"]: tool for tool in response.json()["result"]["tools"]}
@@ -198,8 +217,7 @@ class McpProtocolTests(unittest.TestCase):
                 },
             },
         }
-        with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
 
         self.assertEqual(response.status_code, 200)
         result = response.json()["result"]
@@ -234,8 +252,7 @@ class McpProtocolTests(unittest.TestCase):
                 },
             },
         }
-        with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
 
         self.assertEqual(response.status_code, 200)
         result = response.json()["result"]
