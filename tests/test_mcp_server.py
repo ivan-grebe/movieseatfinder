@@ -173,7 +173,7 @@ class McpProtocolTests(unittest.TestCase):
             json=request,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(rate_limit_hit.call_count, 2)
+        self.assertEqual(rate_limit_hit.call_count, 1)
 
     def test_mcp_endpoint_rejects_a_malformed_poke_user_identifier(self):
         response = self.client.post(
@@ -189,19 +189,43 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers["www-authenticate"], "Bearer")
 
-    @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, True, False])
-    def test_mcp_endpoint_applies_global_ip_and_user_limits(self, rate_limit_hit):
+    @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, False])
+    def test_mcp_endpoint_applies_global_and_user_limits(self, rate_limit_hit):
         response = self.client.post("/mcp", headers=self.request_headers(), json={})
 
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.headers["retry-after"], "60")
-        self.assertEqual(rate_limit_hit.call_count, 3)
+        self.assertEqual(rate_limit_hit.call_count, 2)
 
     def test_mcp_endpoint_rejects_an_untrusted_browser_origin(self):
         headers = self.request_headers()
         headers["Origin"] = "https://attacker.example"
         response = self.client.post("/mcp", headers=headers, json={})
         self.assertEqual(response.status_code, 403)
+
+    @patch.object(security.MCP_RATE_LIMITER, "hit")
+    def test_browser_navigation_gets_a_friendly_page_instead_of_an_sse_stream(self, rate_limit_hit):
+        response = self.client.get(
+            "/mcp",
+            headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Movie Seat Finder MCP", response.text)
+        self.assertIn("Open Movie Seat Finder", response.text)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"])
+        self.assertNotIn(": ping", response.text)
+        rate_limit_hit.assert_not_called()
+
+    def test_mcp_sse_get_is_not_classified_as_browser_navigation(self):
+        self.assertFalse(
+            security._is_browser_navigation(
+                {"method": "GET"},
+                {"accept": "text/event-stream"},
+            )
+        )
 
     def test_composition_root_preserves_the_website(self):
         response = self.client.get("/")
