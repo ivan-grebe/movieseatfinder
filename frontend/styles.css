@@ -76,7 +76,7 @@ body {
   left: 50%;
   width: min(1220px, 112vw);
   height: 720px;
-  background: radial-gradient(closest-side, rgba(255, 148, 135, .38), transparent 72%);
+  background: radial-gradient(closest-side, rgba(255, 148, 135, .44), transparent 72%);
   transform: translate3d(-50%, 0, 0);
   animation: ambient-warm-drift 16s cubic-bezier(.45, 0, .55, 1) infinite;
 }
@@ -86,7 +86,7 @@ body {
   right: -110px;
   width: min(760px, 70vw);
   height: 500px;
-  background: radial-gradient(closest-side, rgba(120, 165, 255, .30), transparent 72%);
+  background: radial-gradient(closest-side, rgba(120, 165, 255, .38), transparent 72%);
   transform: translate3d(0, 0, 0);
   animation: ambient-cool-drift 20s cubic-bezier(.45, 0, .55, 1) infinite;
 }
@@ -1544,7 +1544,7 @@ input[type="time"] {
     left: 18%;
     width: 118vw;
     height: 430px;
-    background: radial-gradient(closest-side, rgba(255, 138, 122, .34), transparent 72%);
+    background: radial-gradient(closest-side, rgba(255, 138, 122, .40), transparent 72%);
   }
 
   .ambient-glow-cool {
@@ -1552,7 +1552,7 @@ input[type="time"] {
     right: -38vw;
     width: 112vw;
     height: 440px;
-    background: radial-gradient(closest-side, rgba(120, 165, 255, .34), transparent 72%);
+    background: radial-gradient(closest-side, rgba(120, 165, 255, .40), transparent 72%);
   }
 
   body::before {
@@ -1776,11 +1776,11 @@ input[type="time"] {
   }
 
   .ambient-glow-warm {
-    background: radial-gradient(closest-side, rgba(180, 52, 46, .34), transparent 72%);
+    background: radial-gradient(closest-side, rgba(210, 67, 60, .44), transparent 72%);
   }
 
   .ambient-glow-cool {
-    background: radial-gradient(closest-side, rgba(150, 110, 55, .18), transparent 72%);
+    background: radial-gradient(closest-side, rgba(215, 157, 78, .30), transparent 72%);
   }
 
   body::before {
@@ -1792,11 +1792,11 @@ input[type="time"] {
   /* Narrow screens: keep the warm-left / amber-right sweep from becoming a red wash. */
   @media (max-width: 700px) {
     .ambient-glow-warm {
-      background: radial-gradient(closest-side, rgba(190, 60, 52, .36), transparent 72%);
+      background: radial-gradient(closest-side, rgba(216, 72, 64, .44), transparent 72%);
     }
 
     .ambient-glow-cool {
-      background: radial-gradient(closest-side, rgba(184, 142, 74, .24), transparent 72%);
+      background: radial-gradient(closest-side, rgba(220, 165, 85, .32), transparent 72%);
     }
   }
 

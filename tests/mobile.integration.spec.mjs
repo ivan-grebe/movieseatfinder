@@ -138,6 +138,7 @@ test("ambient background glows are visible, drift, scroll with the page, and res
       return {
         animationName: style.animationName,
         animationDuration: Number.parseFloat(style.animationDuration),
+        glowAlpha: Number.parseFloat(style.backgroundImage.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0"),
         driftDistance: Math.hypot(quarterRect.x - startRect.x, quarterRect.y - startRect.y),
         intersectsViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
         moves: startTransform !== middleTransform,
@@ -155,6 +156,7 @@ test("ambient background glows are visible, drift, scroll with the page, and res
   expect(movingStyles.layerTop).toBeCloseTo(0, 1);
   expect(movingStyles.styles.map(style => style.animationName)).toEqual(["ambient-warm-drift", "ambient-cool-drift"]);
   expect(movingStyles.styles.every(style => style.animationDuration >= 14 && style.animationDuration <= 24)).toBe(true);
+  expect(movingStyles.styles.every(style => style.glowAlpha >= .4)).toBe(true);
   expect(movingStyles.styles.every(style => style.driftDistance >= 45)).toBe(true);
   expect(movingStyles.styles.every(style => style.intersectsViewport)).toBe(true);
   expect(movingStyles.styles.every(style => style.moves)).toBe(true);
@@ -171,7 +173,27 @@ test("ambient background glows are visible, drift, scroll with the page, and res
   expect(scrolledLayer.scrollY).toBeGreaterThan(0);
   expect(scrolledLayer.top).toBeCloseTo(-scrolledLayer.scrollY, 1);
 
-  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.emulateMedia({ colorScheme: "dark" });
+  const mobileDarkGlowAlpha = await page.evaluate(() => [
+    document.querySelector(".ambient-glow-warm"),
+    document.querySelector(".ambient-glow-cool"),
+  ].map(element => {
+    const background = getComputedStyle(element).backgroundImage;
+    return Number.parseFloat(background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0");
+  }));
+  expect(mobileDarkGlowAlpha.every(alpha => alpha >= .32)).toBe(true);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktopDarkGlowAlpha = await page.evaluate(() => [
+    document.querySelector(".ambient-glow-warm"),
+    document.querySelector(".ambient-glow-cool"),
+  ].map(element => {
+    const background = getComputedStyle(element).backgroundImage;
+    return Number.parseFloat(background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0");
+  }));
+  expect(desktopDarkGlowAlpha.every(alpha => alpha >= .30)).toBe(true);
+
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   const reducedStyles = await page.evaluate(() => [
     document.querySelector(".ambient-glow-warm"),
     document.querySelector(".ambient-glow-cool"),
