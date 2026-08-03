@@ -39,7 +39,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
   }
 
   function render() {
-    menu.innerHTML = "";
+    menu.replaceChildren();
     if (!items.length) {
       closeCombo(input, menu);
       return;

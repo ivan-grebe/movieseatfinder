@@ -72,12 +72,37 @@ test("initial render inlines CSS and loads one application bundle", async ({ pag
     { path: "/app.bundle.js", type: "script" },
   ]);
   await expect(page.locator("head > style")).toHaveCount(1);
-  const animatedProperties = await page.locator("h1").evaluate(element => (
+  await expect(page.locator('script[src^="app.bundle.js"]')).toHaveAttribute("async", "");
+  const entranceAnimations = await page.locator("h1, .tagline, .card").evaluateAll(elements => elements.map(element => (
     element.getAnimations()[0]?.effect.getKeyframes().flatMap(frame => (
       Object.keys(frame).filter(property => !["offset", "easing", "composite", "computedOffset"].includes(property))
     )) || []
-  ));
-  expect(new Set(animatedProperties)).toEqual(new Set(["opacity", "transform"]));
+  )));
+  expect(entranceAnimations[0]).toEqual([]);
+  expect(new Set(entranceAnimations[1])).toEqual(new Set(["opacity", "transform"]));
+  expect(new Set(entranceAnimations[2])).toEqual(new Set(["opacity", "transform"]));
+
+  const protectedLayout = await page.evaluate(() => {
+    const grid = document.querySelector("#seatPreferenceGrid");
+    const style = getComputedStyle(grid);
+    let trustedTypesEnforced = false;
+    try {
+      document.createElement("div").innerHTML = "<span></span>";
+    } catch (error) {
+      trustedTypesEnforced = error.name === "TypeError";
+    }
+    return {
+      aspectRatio: style.aspectRatio,
+      gridHeight: grid.getBoundingClientRect().height,
+      gridWidth: grid.getBoundingClientRect().width,
+      rowCount: style.gridTemplateRows.split(" ").length,
+      trustedTypesEnforced,
+    };
+  });
+  expect(protectedLayout.aspectRatio).toBe("1 / 1");
+  expect(Math.abs(protectedLayout.gridHeight - protectedLayout.gridWidth)).toBeLessThan(1);
+  expect(protectedLayout.rowCount).toBe(15);
+  expect(protectedLayout.trustedTypesEnforced).toBe(true);
 });
 
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {

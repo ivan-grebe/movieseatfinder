@@ -862,8 +862,10 @@ a:focus-visible {
 .seat-grid {
   display: grid;
   grid-template-columns: repeat(15, minmax(12px, 1fr));
+  grid-template-rows: repeat(15, minmax(0, 1fr));
   gap: 2px;
   width: min(420px, 100%);
+  aspect-ratio: 1;
   padding: 9px;
   border: 1px solid rgba(255,255,255,.68);
   border-radius: 14px;
@@ -1458,9 +1460,8 @@ input[type="time"] {
   animation: enter-up 440ms cubic-bezier(.2, 0, 0, 1) backwards;
 }
 
-.enter-item-1 { animation-delay: 20ms; }
-.enter-item-2 { animation-delay: 120ms; }
-.enter-item-3 { animation-delay: 220ms; }
+.enter-item-1 { animation-delay: 40ms; }
+.enter-item-2 { animation-delay: 140ms; }
 
 @keyframes enter-up {
   from {

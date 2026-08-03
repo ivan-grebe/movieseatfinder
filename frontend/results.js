@@ -2,8 +2,15 @@ import { formatNiceDate } from "./utils.js";
 import { setAnimatedStatus, setSummary } from "./ui.js";
 import { logTicketClick } from "./tracking.js";
 
-const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>';
-const ICON_CALENDAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>';
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const ICON_FILM = [
+  ["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }],
+  ["path", { d: "M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4" }],
+];
+const ICON_CALENDAR = [
+  ["rect", { x: "3", y: "4.5", width: "18", height: "16", rx: "2" }],
+  ["path", { d: "M3 9h18M8 2.5v4M16 2.5v4" }],
+];
 const ACCESSIBLE_SEAT_TYPES = ["wheelchair", "companion"];
 
 function createLegendItem(label, className) {
@@ -88,12 +95,30 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   return wrapper;
 }
 
-function makeTag(text, iconSvg) {
+function createIcon(definition) {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+  Object.entries({
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+  }).forEach(([name, value]) => svg.setAttribute(name, value));
+  definition.forEach(([tagName, attributes]) => {
+    const child = document.createElementNS(SVG_NAMESPACE, tagName);
+    Object.entries(attributes).forEach(([name, value]) => child.setAttribute(name, value));
+    svg.appendChild(child);
+  });
+  return svg;
+}
+
+function makeTag(text, iconDefinition) {
   const tag = document.createElement("span");
   tag.className = "tag";
   const icon = document.createElement("span");
   icon.className = "tag-icon";
-  icon.innerHTML = iconSvg;
+  icon.appendChild(createIcon(iconDefinition));
   tag.appendChild(icon);
   tag.appendChild(document.createTextNode(text));
   return tag;
@@ -120,12 +145,12 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     const hasNext = data.hasNextPage;
     if (!hasPrevious && !hasNext) {
       pagination.hidden = true;
-      pagination.innerHTML = "";
+      pagination.replaceChildren();
       return;
     }
 
     pagination.hidden = false;
-    pagination.innerHTML = "";
+    pagination.replaceChildren();
     const previous = document.createElement("button");
     previous.type = "button";
     previous.className = "btn-small";
@@ -172,7 +197,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
 
   function render(data, { skipEntrance = false } = {}) {
     const matches = data.matches;
-    results.innerHTML = "";
+    results.replaceChildren();
     const showingStart = matches.length ? (data.page - 1) * data.pageSize + 1 : 0;
     const showingEnd = showingStart + matches.length - 1;
     const pageText = matches.length

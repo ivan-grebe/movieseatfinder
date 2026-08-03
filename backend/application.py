@@ -50,7 +50,7 @@ SITE_DESCRIPTION = (
 )
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "frontend"
-INLINE_STYLES = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
 INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg"}
@@ -612,11 +612,13 @@ async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; "
         f"style-src 'self' 'sha256-{INLINE_STYLE_HASH}'; "
         "img-src 'self' data: https://images.fandango.com; "
-        "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+        "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
+        "require-trusted-types-for 'script'; trusted-types 'none'"
     )
     suffix = Path(request.url.path).suffix.lower()
     if response.status_code == 200 and request.query_params.get("v") and suffix in VERSIONED_ASSET_SUFFIXES:

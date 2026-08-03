@@ -160,7 +160,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton, {
   }
 
   function build() {
-    grid.innerHTML = "";
+    grid.replaceChildren();
     cells.clear();
     for (let row = 0; row < GRID_SIZE; row += 1) {
       for (let col = 0; col < GRID_SIZE; col += 1) {

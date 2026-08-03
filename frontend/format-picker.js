@@ -37,7 +37,7 @@ export function createFormatPicker(container) {
     selected.clear();
     (retained.length ? retained : ["any"]).forEach(format => selected.add(format));
 
-    container.innerHTML = "";
+    container.replaceChildren();
     renderOption("Any available format", "any");
     available.forEach(format => renderOption(format, format));
   }

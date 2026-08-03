@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from datetime import date
@@ -272,12 +273,30 @@ class RouteTests(unittest.TestCase):
             f"'sha256-{application.INLINE_STYLE_HASH}'",
             content_security_policy,
         )
+        self.assertIn("require-trusted-types-for 'script'", content_security_policy)
+        self.assertIn("trusted-types 'none'", content_security_policy)
+        self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
+        self.assertLessEqual(application.INLINE_STYLES.count("\n"), 1)
+        source_styles = (application.STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertLess(len(application.INLINE_STYLES), len(source_styles))
+
+    def test_vercel_enforces_the_strong_hsts_policy(self):
+        config = json.loads((application.BASE_DIR / "vercel.json").read_text(encoding="utf-8"))
+        headers = {
+            header["key"].lower(): header["value"]
+            for route in config["headers"]
+            for header in route["headers"]
+        }
+        self.assertEqual(
+            headers["strict-transport-security"],
+            "max-age=63072000; includeSubDomains; preload",
+        )
 
     def test_raw_template_and_frontend_sources_are_not_served(self):
         redirect = self.client.get("/index.html", follow_redirects=False)
         self.assertEqual(redirect.status_code, 308)
         self.assertEqual(redirect.headers["location"], "/")
-        for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css"):
+        for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css", "/styles.bundle.css"):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
         for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png"):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)

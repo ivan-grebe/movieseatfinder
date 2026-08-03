@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:frontend": "esbuild frontend/app.js --bundle --format=esm --minify --legal-comments=none --outfile=frontend/app.bundle.js",
-    "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- frontend/app.bundle.js",
+    "build:frontend": "esbuild frontend/app.js --bundle --format=esm --minify --legal-comments=none --outfile=frontend/app.bundle.js && esbuild frontend/styles.css --minify --outfile=frontend/styles.bundle.css",
+    "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- frontend/app.bundle.js frontend/styles.bundle.css",
     "lint:frontend": "knip --no-config-hints",
     "test:frontend": "node --test tests/frontend-utils.test.mjs",
     "pretest:mobile": "npm run build:frontend",
