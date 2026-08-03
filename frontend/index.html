@@ -190,14 +190,17 @@
             <span>Exclude accessible, companion, &amp; wheelchair seats from matches</span>
           </label>
 
-          <p class="seat-help">Drag to mark where you'd like to sit. Top is the screen.<span class="seat-help-erase"> Shift-drag to erase.</span> Leave blank for anywhere.</p>
+          <p id="seatPreferenceHelp" class="seat-help">Drag to mark where you'd like to sit. Top is the screen. Shift-drag to erase. Leave blank for anywhere.</p>
           <div class="seat-stage">
             <div class="screen">SCREEN</div>
             <div id="seatPreferenceGrid" class="seat-grid" role="group" aria-label="Seat area preference grid, 15 rows from the screen by 15 columns"></div>
           </div>
           <div class="grid-actions">
+            <button id="editSeatGridButton" class="btn-small seat-edit-button" type="button" aria-controls="seatPreferenceGrid" hidden>Edit seat area</button>
             <button id="selectCenterGridButton" class="btn-small" type="button">Center</button>
             <button id="clearGridButton" class="btn-small" type="button">Clear</button>
+            <button id="cancelSeatGridButton" class="btn-small" type="button" aria-controls="seatPreferenceGrid" hidden>Cancel</button>
+            <button id="doneSeatGridButton" class="btn-small seat-edit-done" type="button" aria-controls="seatPreferenceGrid" hidden>Done</button>
           </div>
           <div id="gridStatus" class="status grid-status" aria-live="polite"></div>
         </div>

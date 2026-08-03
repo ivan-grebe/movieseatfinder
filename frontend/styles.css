@@ -658,12 +658,6 @@ a:focus-visible {
 
 .preferences-group .seat-help { margin-top: 14px; }
 
-/* The Shift-to-erase modifier isn't available on touch, so hide the hint on
-   touch devices and on narrow (mobile) layouts. */
-@media (hover: none) and (pointer: coarse), (max-width: 700px) {
-  .seat-help-erase { display: none; }
-}
-
 .seat-stage {
   display: flex;
   flex-direction: column;
@@ -698,6 +692,9 @@ a:focus-visible {
   box-shadow: inset 0 2px 8px rgba(34, 65, 104, .1);
   user-select: none;
   touch-action: none;
+  transition-property: background-color, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
 }
 
 .seat-cell {
@@ -1387,10 +1384,50 @@ input[type="time"] {
     line-height: 1.35;
   }
 
+  .grid-actions {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .grid-actions .btn-small {
+    min-height: 44px;
+  }
+
+  .seat-edit-button {
+    min-width: 142px;
+    color: var(--accent-deep);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 1px rgba(201, 58, 58, .14), inset 0 1px 0 rgba(255, 255, 255, .78);
+  }
+
+  .seat-edit-button:hover {
+    background: #ffe2df;
+    box-shadow: 0 0 0 1px rgba(201, 58, 58, .2), inset 0 1px 0 rgba(255, 255, 255, .84);
+  }
+
+  .seat-edit-done,
+  .seat-edit-done:hover {
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 0 0 1px rgba(142, 31, 31, .18), 0 4px 10px rgba(201, 58, 58, .18);
+  }
+
   .seat-grid {
     width: min(300px, 100%);
     padding: 7px;
     gap: 1.5px;
+  }
+
+  .seat-grid.is-mobile-locked {
+    touch-action: pan-y;
+  }
+
+  .seat-grid.is-mobile-locked .seat-cell {
+    pointer-events: none;
+  }
+
+  .seat-grid.is-mobile-editing {
+    box-shadow: 0 0 0 2px rgba(201, 58, 58, .28), inset 0 2px 8px rgba(34, 65, 104, .1);
   }
 
   .screen {

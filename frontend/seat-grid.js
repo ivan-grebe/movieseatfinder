@@ -1,6 +1,10 @@
 import { setStatus } from "./ui.js";
 
 const GRID_SIZE = 15;
+const MOBILE_LAYOUT = "(max-width: 700px)";
+const DESKTOP_HELP = "Drag to mark where you'd like to sit. Top is the screen. Shift-drag to erase. Leave blank for anywhere.";
+const MOBILE_LOCKED_HELP = "Scroll normally here. Tap Edit seat area to choose where you'd like to sit.";
+const MOBILE_EDITING_HELP = "Drag across the grid to highlight your preferred area. Top is the screen.";
 const GRID_MOVES = {
   ArrowUp: [-1, 0],
   ArrowDown: [1, 0],
@@ -10,9 +14,18 @@ const GRID_MOVES = {
 
 const cellKey = (row, col) => `${row}:${col}`;
 
-export function createSeatGrid(grid, status, centerButton, clearButton) {
+export function createSeatGrid(grid, status, centerButton, clearButton, {
+  help,
+  editButton,
+  cancelButton,
+  doneButton,
+}) {
   const selected = new Set();
   const cells = new Map();
+  const mobileLayout = window.matchMedia(MOBILE_LAYOUT);
+  let isMobileLayout = mobileLayout.matches;
+  let isMobileEditing = false;
+  let selectionBeforeMobileEdit = null;
   let isPainting = false;
   let paintMode = true;
   let dragStart = null;
@@ -27,6 +40,8 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   // trails them must be ignored without relying on event.detail, which not
   // every browser zeroes for keyboard activations.
   let suppressNextClick = false;
+
+  const mobileInteractionLocked = () => isMobileLayout && !isMobileEditing;
 
   function setAnchor(row, col) {
     anchor = { row, col };
@@ -85,6 +100,49 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
     cells.get(cellKey(row, col)).focus();
   }
 
+  function syncMobileInteraction() {
+    const locked = mobileInteractionLocked();
+    grid.classList.toggle("is-mobile-locked", locked);
+    grid.classList.toggle("is-mobile-editing", isMobileLayout && isMobileEditing);
+    grid.toggleAttribute("aria-disabled", locked);
+
+    cells.forEach(cell => {
+      cell.toggleAttribute("aria-disabled", locked);
+      cell.tabIndex = locked ? -1 : (cell.dataset.cell === cellKey(focus.row, focus.col) ? 0 : -1);
+    });
+
+    editButton.hidden = !locked;
+    centerButton.hidden = locked;
+    clearButton.hidden = locked;
+    cancelButton.hidden = !isMobileLayout || !isMobileEditing;
+    doneButton.hidden = !isMobileLayout || !isMobileEditing;
+    centerButton.disabled = locked;
+    clearButton.disabled = locked;
+    help.textContent = isMobileLayout
+      ? (isMobileEditing ? MOBILE_EDITING_HELP : MOBILE_LOCKED_HELP)
+      : DESKTOP_HELP;
+  }
+
+  function beginMobileEditing() {
+    if (!isMobileLayout || isMobileEditing) return;
+    selectionBeforeMobileEdit = new Set(selected);
+    isMobileEditing = true;
+    syncMobileInteraction();
+    doneButton.focus();
+  }
+
+  function finishMobileEditing(restorePreviousSelection) {
+    if (!isMobileEditing) return;
+    if (restorePreviousSelection && selectionBeforeMobileEdit) {
+      restoreSelection(selectionBeforeMobileEdit);
+      updateStatus();
+    }
+    selectionBeforeMobileEdit = null;
+    isMobileEditing = false;
+    syncMobileInteraction();
+    editButton.focus();
+  }
+
   function cellFromEvent(event) {
     const element = document.elementFromPoint(event.clientX, event.clientY);
     return element?.closest?.(".seat-cell") || null;
@@ -117,6 +175,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
         button.setAttribute("aria-pressed", "false");
         button.tabIndex = row === 0 && col === 0 ? 0 : -1;
         button.addEventListener("click", () => {
+          if (mobileInteractionLocked()) return;
           if (suppressNextClick) return;
           setCell(row, col, !selected.has(cellKey(row, col)));
           setAnchor(row, col);
@@ -127,6 +186,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
       }
     }
     updateStatus();
+    syncMobileInteraction();
   }
 
   function selectValues(values) {
@@ -141,7 +201,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
 
   grid.addEventListener("pointerdown", event => {
     const cell = event.target.closest(".seat-cell");
-    if (!cell) return;
+    if (!cell || mobileInteractionLocked()) return;
     event.preventDefault();
     isPainting = true;
     keyboardRectBase = null;
@@ -182,6 +242,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   });
 
   grid.addEventListener("pointercancel", () => {
+    if (!isPainting) return;
     restoreSelection(selectionBeforeDrag);
     updateStatus();
     isPainting = false;
@@ -206,6 +267,7 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   });
 
   grid.addEventListener("keydown", event => {
+    if (mobileInteractionLocked()) return;
     suppressNextClick = false;
     if (event.key in GRID_MOVES) {
       event.preventDefault();
@@ -246,6 +308,15 @@ export function createSeatGrid(grid, status, centerButton, clearButton) {
   clearButton.addEventListener("click", () => {
     keyboardRectBase = null;
     clear();
+  });
+  editButton.addEventListener("click", beginMobileEditing);
+  cancelButton.addEventListener("click", () => finishMobileEditing(true));
+  doneButton.addEventListener("click", () => finishMobileEditing(false));
+  mobileLayout.addEventListener("change", event => {
+    isMobileLayout = event.matches;
+    isMobileEditing = false;
+    selectionBeforeMobileEdit = null;
+    syncMobileInteraction();
   });
 
   build();

@@ -11,8 +11,9 @@ const {
   startDateInput, endDateInput, theatreMeta, theatreStatus, theatreInput, theatreMenu,
   movieGroup, movieMeta, movieStatus, movieInput, movieMenu, formatOptions, formatMeta, formatStatus,
   startTimeInput, endTimeInput,
-  adjacentSeatsInput, excludeAccessibleInput, preferencesGroup, seatPreferenceGrid, selectCenterGridButton,
-  clearGridButton, gridStatus, searchButton, summary, resultsToolbar, sortInput, sortStatus,
+  adjacentSeatsInput, excludeAccessibleInput, preferencesGroup, seatPreferenceHelp, seatPreferenceGrid,
+  editSeatGridButton, selectCenterGridButton, clearGridButton, cancelSeatGridButton, doneSeatGridButton,
+  gridStatus, searchButton, summary, resultsToolbar, sortInput, sortStatus,
   results, pagination,
 } = elements;
 
@@ -48,7 +49,12 @@ const formatLoad = createRunGuard();
 const searchLoad = createRunGuard();
 
 const formatPicker = createFormatPicker(formatOptions);
-const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton);
+const seatGrid = createSeatGrid(seatPreferenceGrid, gridStatus, selectCenterGridButton, clearGridButton, {
+  help: seatPreferenceHelp,
+  editButton: editSeatGridButton,
+  cancelButton: cancelSeatGridButton,
+  doneButton: doneSeatGridButton,
+});
 const resultsView = createResultsView({
   results,
   summary,

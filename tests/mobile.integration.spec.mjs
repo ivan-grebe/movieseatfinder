@@ -110,6 +110,62 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   expect(layout.githubShadow).toBe("none");
 });
 
+test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
+  await mockSearchDependencies(page, route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(emptySearch),
+  }));
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+
+  const grid = page.locator("#seatPreferenceGrid");
+  const firstCell = grid.locator(".seat-cell").first();
+  const editButton = page.locator("#editSeatGridButton");
+  const centerButton = page.locator("#selectCenterGridButton");
+  const clearButton = page.locator("#clearGridButton");
+  const cancelButton = page.locator("#cancelSeatGridButton");
+  const doneButton = page.locator("#doneSeatGridButton");
+
+  await expect(editButton).toBeVisible();
+  await expect(centerButton).toBeHidden();
+  await expect(clearButton).toBeHidden();
+  await expect(grid).toHaveClass(/is-mobile-locked/);
+  await expect(grid).toHaveCSS("touch-action", "pan-y");
+  await expect(firstCell).toHaveCSS("pointer-events", "none");
+
+  await firstCell.dispatchEvent("click");
+  await expect(firstCell).toHaveAttribute("aria-pressed", "false");
+
+  await editButton.click();
+  await expect(grid).toHaveClass(/is-mobile-editing/);
+  await expect(grid).toHaveCSS("touch-action", "none");
+  await expect(centerButton).toBeVisible();
+  await expect(clearButton).toBeVisible();
+  await expect(cancelButton).toBeVisible();
+  await expect(doneButton).toBeVisible();
+
+  await firstCell.click();
+  await expect(firstCell).toHaveAttribute("aria-pressed", "true");
+  await cancelButton.click();
+  await expect(firstCell).toHaveAttribute("aria-pressed", "false");
+  await expect(grid).toHaveClass(/is-mobile-locked/);
+
+  await editButton.click();
+  await firstCell.click();
+  await doneButton.click();
+  await expect(firstCell).toHaveAttribute("aria-pressed", "true");
+  await expect(grid).toHaveClass(/is-mobile-locked/);
+
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect(editButton).toBeHidden();
+  await expect(centerButton).toBeVisible();
+  await expect(clearButton).toBeVisible();
+  await expect(grid).not.toHaveClass(/is-mobile-locked/);
+  await expect(grid).toHaveCSS("touch-action", "none");
+});
+
 test("field loading messages do not reflow later controls", async ({ page }) => {
   let releaseTheatres;
   let markTheatresStarted;
