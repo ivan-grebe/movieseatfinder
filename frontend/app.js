@@ -19,6 +19,9 @@ const PAGE_SIZE = 20;
 const MAX_DATE_RANGE_DAYS = 14;
 let theatres = [];
 let movies = [];
+let selectedMovie = null;
+let selectedMovieTitle = "";
+let movieCombo;
 let preciseLocation = null;
 let currentPage = 1;
 let reorderScrollY = null;
@@ -61,15 +64,38 @@ function normalizedTitle(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-// Mirrors the backend's two-way substring match, so the warning only fires
-// when a search for the typed title genuinely cannot match anything.
-function typedMovieIsShowing(typed) {
-  const query = normalizedTitle(typed);
-  if (!query) return true;
-  return movies.some(movie => {
-    const title = normalizedTitle(movie.title);
-    return title.includes(query) || query.includes(title);
-  });
+function movieWithTitle(title) {
+  const normalized = normalizedTitle(title);
+  return movies.find(movie => normalizedTitle(movie.title) === normalized) || null;
+}
+
+function setMovieCountStatus() {
+  setStatus(
+    movieStatus,
+    `${movies.length} movie${movies.length === 1 ? "" : "s"} showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`,
+    "success",
+  );
+}
+
+function resetFormats() {
+  formatLoad.cancel();
+  formatPicker.setOptions([]);
+  setStatus(formatStatus, "");
+}
+
+function clearMovieSelection({ rememberTitle = false } = {}) {
+  selectedMovie = null;
+  if (!rememberTitle) selectedMovieTitle = "";
+  resetFormats();
+}
+
+function selectMovie(movie) {
+  selectedMovie = movie;
+  selectedMovieTitle = movie.title;
+  movieInput.value = movie.title;
+  movieInput.setCustomValidity("");
+  resetFormats();
+  setMovieCountStatus();
 }
 
 function hasSearchLocation() {
@@ -146,24 +172,34 @@ async function loadMovies() {
   const isCurrent = movieLoad.start();
   if (!hasSearchBasics()) {
     movies = [];
-    formatPicker.setOptions([]);
+    clearMovieSelection();
     setStatus(movieStatus, "");
     return;
   }
 
   setStatus(movieStatus, "Loading movies for selected dates…", "loading");
   movies = [];
+  clearMovieSelection({ rememberTitle: true });
   try {
     const data = await getJson(`/api/movies?${baseParams()}`);
     if (!isCurrent()) return;
     movies = data.movies;
+    selectedMovie = movieWithTitle(selectedMovieTitle);
     const typedMovie = movieInput.value.trim();
-    if (typedMovie && !typedMovieIsShowing(typedMovie)) {
-      setStatus(movieStatus, `"${typedMovie}" isn't showing for these dates and theatres - pick a different movie.`, "error");
+    if (selectedMovie) {
+      selectedMovieTitle = selectedMovie.title;
+      movieInput.value = selectedMovie.title;
+      movieInput.setCustomValidity("");
+      setMovieCountStatus();
+      closeCombo(movieInput, movieMenu);
+    } else if (typedMovie) {
+      selectedMovieTitle = "";
+      setStatus(movieStatus, `"${typedMovie}" isn't selected - choose a movie from the list.`, "error");
+      if (document.activeElement === movieInput) movieCombo.refresh();
     } else {
-      setStatus(movieStatus, `${movies.length} movies showing ${formatNiceDate(startDateInput.value)} – ${formatNiceDate(endDateInput.value)}.`, "success");
+      setMovieCountStatus();
+      closeCombo(movieInput, movieMenu);
     }
-    closeCombo(movieInput, movieMenu);
   } catch (error) {
     if (!isCurrent()) return;
     setStatus(movieStatus, error.message, "error");
@@ -171,7 +207,7 @@ async function loadMovies() {
 }
 
 async function loadFormats() {
-  const movieTitle = movieInput.value.trim();
+  const movieTitle = selectedMovie?.title;
   const isCurrent = formatLoad.start();
   setStatus(formatStatus, "");
   if (!movieTitle || !hasSearchBasics()) {
@@ -184,12 +220,12 @@ async function loadFormats() {
     const params = baseParams();
     params.set("movie", movieTitle);
     const data = await getJson(`/api/formats?${params}`);
-    if (!isCurrent() || movieInput.value.trim() !== movieTitle) return;
+    if (!isCurrent() || selectedMovie?.title !== movieTitle) return;
     const formats = data.formats;
     formatPicker.setOptions(formats);
     setStatus(formatStatus, `${formats.length} format${formats.length === 1 ? "" : "s"} for this movie.`, "success");
   } catch (error) {
-    if (!isCurrent() || movieInput.value.trim() !== movieTitle) return;
+    if (!isCurrent() || selectedMovie?.title !== movieTitle) return;
     formatPicker.setOptions([]);
     setStatus(formatStatus, error.message, "error");
   }
@@ -212,8 +248,8 @@ function validateSearchInputs() {
     return false;
   }
   if (!enforceRadius(true)) return false;
-  if (!movieInput.value.trim()) {
-    reportRequiredField(movieInput, "Choose a movie first.");
+  if (!selectedMovie) {
+    reportRequiredField(movieInput, "Select a movie from the list before searching.");
     return false;
   }
   return true;
@@ -221,7 +257,7 @@ function validateSearchInputs() {
 
 function fetchSearchResults() {
   const params = baseParams();
-  params.set("movie", movieInput.value.trim());
+  params.set("movie", selectedMovie.title);
   params.set("format", formatPicker.value());
   params.set("startTime", startTimeInput.value);
   params.set("endTime", endTimeInput.value);
@@ -331,6 +367,7 @@ function applyQueryParams() {
   Object.entries(inputParams).forEach(([name, input]) => {
     if (params.has(name)) input.value = params.get(name);
   });
+  if (params.has("movie")) selectedMovieTitle = params.get("movie").trim();
   // An unknown sort value would otherwise leave the select showing no option.
   if (sortInput.selectedIndex === -1) sortInput.value = "earliest";
   if (params.has("excludeAccessible")) {
@@ -362,13 +399,14 @@ async function refreshTheatresAndMovies() {
     formatLoad.cancel();
     theatres = [];
     movies = [];
-    formatPicker.setOptions([]);
+    clearMovieSelection();
     [theatreStatus, movieStatus, formatStatus].forEach(status => setStatus(status, ""));
     return;
   }
+  clearMovieSelection({ rememberTitle: true });
   await loadTheatres();
   await loadMovies();
-  if (movieInput.value.trim()) await loadFormats();
+  if (selectedMovie) await loadFormats();
 }
 
 function requestLocation() {
@@ -398,12 +436,20 @@ function requestLocation() {
 
 const autoRefresh = debounce(refreshTheatresAndMovies, 650);
 
+function queueCriteriaRefresh() {
+  clearMovieSelection({ rememberTitle: true });
+  autoRefresh();
+}
+
 function bindEvents() {
   setupCombo(theatreInput, theatreMenu, () => theatres, theatre => theatre.name, async () => {
     await loadMovies();
-    if (movieInput.value.trim()) await loadFormats();
+    if (selectedMovie) await loadFormats();
   });
-  setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, loadFormats);
+  movieCombo = setupCombo(movieInput, movieMenu, () => movies, movie => movie.title, movie => {
+    selectMovie(movie);
+    loadFormats();
+  });
   searchForm.addEventListener("submit", event => {
     event.preventDefault();
     currentPage = 1;
@@ -427,21 +473,26 @@ function bindEvents() {
     } else if (!preciseLocation) {
       setStatus(locationStatus, "Enter a ZIP code or use your location.");
     }
-    autoRefresh();
+    queueCriteriaRefresh();
   });
   radiusInput.addEventListener("input", () => {
     enforceRadius();
-    autoRefresh();
+    queueCriteriaRefresh();
   });
   [startDateInput, endDateInput].forEach(input => input.addEventListener("change", () => {
     syncEndDateBounds();
-    autoRefresh();
+    queueCriteriaRefresh();
   }));
   movieInput.addEventListener("change", () => {
-    movieInput.setCustomValidity("");
-    if (movieInput.value.trim()) loadFormats();
+    if (movieInput.value.trim() && !selectedMovie) {
+      movieInput.setCustomValidity("Select a movie from the list before searching.");
+      setStatus(movieStatus, "Choose one of the movies shown in the list.", "error");
+    }
   });
-  movieInput.addEventListener("input", () => movieInput.setCustomValidity(""));
+  movieInput.addEventListener("input", () => {
+    movieInput.setCustomValidity("");
+    clearMovieSelection();
+  });
 }
 
 async function initialize() {
@@ -455,7 +506,7 @@ async function initialize() {
   syncEndDateBounds();
   if (hasSearchBasics()) {
     await Promise.all([loadTheatres(), loadMovies()]);
-    if (shouldSearchFromUrl) {
+    if (shouldSearchFromUrl && selectedMovie) {
       await loadFormats();
       currentPage = 1;
       runNewSearch();

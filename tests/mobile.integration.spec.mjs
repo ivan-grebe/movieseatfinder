@@ -47,6 +47,14 @@ async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/search*", onSearch);
 }
 
+async function selectMovie(page, title = "Test Movie") {
+  await expect(page.locator("#movieStatus")).toContainText("1 movie showing");
+  const input = page.locator("#movieInput");
+  await input.fill(title);
+  await page.getByRole("option", { name: title, exact: true }).click();
+  await expect(input).toHaveValue(title);
+}
+
 test("initial render inlines CSS and loads one application bundle", async ({ page }) => {
   const applicationAssets = [];
   page.on("request", request => {
@@ -103,7 +111,7 @@ test("mobile search keeps content stable while loading and then renders its resp
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await page.locator("#movieInput").fill("Test Movie");
+  await selectMovie(page);
 
   const searchButton = page.locator("#searchButton");
   const emptyState = page.locator(".empty-state");
@@ -135,6 +143,50 @@ test("mobile validation keeps required-field feedback at the field", async ({ pa
   await expect(page.locator("#summary")).toBeEmpty();
 });
 
+test("typing filters movies but only a selected suggestion can be searched", async ({ page }) => {
+  let searchUrl = "";
+  let searchCount = 0;
+  await mockSearchDependencies(page, route => {
+    searchCount += 1;
+    searchUrl = route.request().url();
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieStatus")).toContainText("1 movie showing");
+
+  const movieInput = page.locator("#movieInput");
+  await movieInput.fill("Test");
+  const suggestion = page.getByRole("option", { name: "Test Movie", exact: true });
+  await expect(suggestion).toBeVisible();
+  await movieInput.fill("Test Movie");
+  await page.locator("#searchButton").click();
+
+  await expect(movieInput).toHaveJSProperty(
+    "validationMessage",
+    "Select a movie from the list before searching.",
+  );
+  expect(searchUrl).toBe("");
+
+  await suggestion.click();
+  await page.locator("#searchButton").click();
+  await expect.poll(() => searchUrl).not.toBe("");
+  expect(new URL(searchUrl).searchParams.get("movie")).toBe("Test Movie");
+  expect(searchCount).toBe(1);
+
+  await page.locator("#radiusInput").evaluate(input => {
+    input.value = "10";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#searchButton").click();
+  });
+  await expect(movieInput).toHaveJSProperty(
+    "validationMessage",
+    "Select a movie from the list before searching.",
+  );
+  expect(searchCount).toBe(1);
+});
+
 test("mobile format chips send every selected format to the search", async ({ page }) => {
   let searchUrl = "";
   await mockSearchDependencies(page, route => {
@@ -146,9 +198,7 @@ test("mobile format chips send every selected format to the search", async ({ pa
   await page.locator("#zipInput").fill("10001");
   // Wait for the ZIP-triggered movie refresh to finish before choosing a
   // movie and its formats, matching the order a user sees in the UI.
-  await expect(page.locator("#movieStatus")).toContainText("1 movie");
-  await page.locator("#movieInput").fill("Test Movie");
-  await page.locator("#movieInput").press("Tab");
+  await selectMovie(page);
 
   const imax = page.getByRole("button", { name: "IMAX", exact: true });
   const dolby = page.getByRole("button", { name: "Dolby Cinema", exact: true });
@@ -204,7 +254,7 @@ test("result sorting defaults to earliest and reruns the search when changed", a
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await page.locator("#movieInput").fill("Test Movie");
+  await selectMovie(page);
   await page.locator("#searchButton").click();
 
   const sortInput = page.locator("#sortInput");
@@ -299,7 +349,7 @@ test("pagination shows generic loading feedback beside the page controls", async
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await page.locator("#movieInput").fill("Test Movie");
+  await selectMovie(page);
   await page.locator("#searchButton").click();
   await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
 
@@ -425,7 +475,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await page.locator("#movieInput").fill("Test Movie");
+  await selectMovie(page);
   await page.locator("#searchButton").click();
 
   const matchedSeat = page.locator(".real-seat.matched");
@@ -507,7 +557,7 @@ test("accessible matches retain both accessible and matching states", async ({ p
 
   await page.goto("/?excludeAccessible=0");
   await page.locator("#zipInput").fill("10001");
-  await page.locator("#movieInput").fill("Test Movie");
+  await selectMovie(page);
   await page.locator("#searchButton").click();
 
   const accessibleMatch = page.locator('.real-seat[title="WC1 - available - wheelchair"]');

@@ -220,7 +220,7 @@ def normalized_text(value):
 def movie_matches(title, query):
     query = normalized_text(query)
     title = normalized_text(title)
-    return bool(title) and (query in title or title in query)
+    return bool(title) and title == query
 
 
 def format_matches(format_name, amenity_text, requested):

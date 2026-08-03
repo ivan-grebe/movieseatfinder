@@ -52,8 +52,9 @@ class DateAndValidationTests(unittest.TestCase):
 
 
 class MovieAndFormatTests(unittest.TestCase):
-    def test_movie_matching_is_case_and_punctuation_insensitive(self):
-        self.assertTrue(application.movie_matches("Spider-Man: Homecoming", "spider man"))
+    def test_movie_matching_requires_the_selected_title(self):
+        self.assertTrue(application.movie_matches("Spider-Man: Homecoming", "spider man homecoming"))
+        self.assertFalse(application.movie_matches("Spider-Man: Homecoming", "spider man"))
         self.assertFalse(application.movie_matches("", "spider man"))
 
     def test_format_matching_distinguishes_imax_variants(self):

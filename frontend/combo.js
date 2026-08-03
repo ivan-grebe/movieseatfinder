@@ -94,6 +94,10 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
     }
   });
   input.addEventListener("blur", () => {
-    setTimeout(() => closeCombo(input, menu), 120);
+    setTimeout(() => {
+      if (document.activeElement !== input) closeCombo(input, menu);
+    }, 120);
   });
+
+  return { refresh: update };
 }
