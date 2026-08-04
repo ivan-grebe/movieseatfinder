@@ -1,13 +1,15 @@
 import base64
 import os
+import struct
 import unittest
+from xml.etree import ElementTree
 from datetime import date
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 import app as entrypoint
-from mcp_server import security, server
+from mcp_server import seat_map_image, security, server
 
 
 def sample_search_result():
@@ -24,6 +26,7 @@ def sample_search_result():
             "format": "IMAX",
             "amenities": "IMAX with Laser",
             "ticketUrl": "https://tickets.fandango.com/order",
+            "showtimeHashCode": "showtime-123",
             "seatMap": {
                 "availableSeatCount": 42,
                 "totalSeatCount": 100,
@@ -53,13 +56,96 @@ def sample_search_result():
     }
 
 
+def sample_selection_token(now=None):
+    return server.create_selection_token({
+        "showtimeHashCode": "showtime-123",
+        "movie": "The Odyssey",
+        "theatre": {
+            "name": "Test Cinema",
+            "address": "1 Main St",
+            "distanceMiles": 2.5,
+        },
+        "date": "2026-08-04",
+        "time": "7:30 PM",
+        "format": "IMAX",
+        "amenities": "IMAX with Laser",
+        "ticketUrl": "https://tickets.fandango.com/order",
+        "seatCells": ["7:7", "7:8", "8:7", "8:8"],
+        "adjacentSeats": 2,
+        "excludeAccessible": True,
+        "optionNumber": 1,
+        "search": {
+            "movie": "The Odyssey",
+            "start_date": "2026-08-04",
+            "end_date": "2026-08-06",
+            "zip_code": "10023",
+            "movie_formats": ["IMAX"],
+            "seat_cells": ["7:7", "7:8", "8:7", "8:8"],
+            "adjacent_seats": 2,
+            "radius_miles": 25,
+            "start_time": "14:00",
+            "end_time": "23:59",
+            "theatre": "",
+            "exclude_accessible": True,
+            "sort": "nearest",
+        },
+    }, now=now)
+
+
 class McpToolTests(unittest.TestCase):
+    def test_renderer_covers_every_website_seat_state_and_centers_each_legend(self):
+        matched_accessible = seat_map_image._seat_svg({
+            "status": "A", "type": "wheelchair", "matched": True,
+            "x": 10, "y": 10, "width": 8, "height": 8,
+        }, 0.5, False)
+        excluded_accessible = seat_map_image._seat_svg({
+            "status": "A", "type": "companion", "matched": False,
+            "x": 10, "y": 10, "width": 8, "height": 8,
+        }, 0.5, True)
+
+        self.assertIn('fill="url(#matched-accessible)"', matched_accessible)
+        self.assertIn('stroke="url(#matched-accessible-border)"', matched_accessible)
+        self.assertIn('fill="#3a4250"', excluded_accessible)
+        for excluded in (False, True):
+            legend = ElementTree.fromstring(seat_map_image._legend_svg(excluded))
+            start = float(legend.attrib["data-start"])
+            width = float(legend.attrib["data-width"])
+            self.assertAlmostEqual(start + width / 2, 900, places=4)
+        full_legend = seat_map_image._legend_svg(False)
+        self.assertIn("Accessible match", full_legend)
+        self.assertIn("url(#matched-accessible-border)", full_legend)
+        self.assertIn("Unavailable / excluded", seat_map_image._legend_svg(True))
+
+    def test_dark_seat_map_renderer_is_high_resolution_and_uses_auditorium_svg(self):
+        layout = sample_search_result()["matches"][0]["seatMap"]["layout"]
+        layout["backgroundSvg"] = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+            '<path d="M10 12 Q50 2 90 12" fill="none" stroke="#94a3b8"/></svg>'
+        )
+        with_background = server.render_seat_map_png(layout)
+        without_background = server.render_seat_map_png({**layout, "backgroundSvg": ""})
+
+        self.assertEqual(with_background[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", with_background[16:24]), (1800, 1200))
+        self.assertNotEqual(with_background, without_background)
+
     def test_exact_one_based_cells_map_to_the_internal_zero_based_grid(self):
         self.assertEqual(
             server.internal_seat_grid(("1:1", "6:6", "15:15", "6:6")),
             "0:0,5:5,14:14",
         )
         self.assertEqual(server.internal_seat_grid(()), "")
+
+    def test_selection_tokens_reject_changes_and_expose_expiry_only_when_requested(self):
+        token = sample_selection_token(now=100)
+        payload, signature = token.split(".", 1)
+        altered_signature = ("A" if signature[0] != "A" else "B") + signature[1:]
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            server.read_selection_token(f"{payload}.{altered_signature}", now=101)
+        with self.assertRaisesRegex(ValueError, "expired"):
+            server.read_selection_token(token, now=401)
+        expired = server.read_selection_token(token, now=401, allow_expired=True)
+        self.assertTrue(expired["tokenExpired"])
 
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
     def test_find_movie_seats_calls_the_shared_search_and_returns_compact_options(self, find_seat_matches):
@@ -71,6 +157,7 @@ class McpToolTests(unittest.TestCase):
             movie_formats=("IMAX", "IMAX 70mm"),
             seat_cells=("6:1", "6:2", "7:1", "7:2"),
             adjacent_seats=2,
+            radius_miles=25,
         )
 
         search = find_seat_matches.call_args.kwargs
@@ -82,6 +169,10 @@ class McpToolTests(unittest.TestCase):
         self.assertNotIn("5:5", selected_grid)
         self.assertEqual(search["start_date"], date(2026, 8, 4))
         self.assertEqual(search["end_date"], date(2026, 8, 6))
+        self.assertEqual(search["start_time"], "14:00")
+        self.assertEqual(search["sort"], "nearest")
+        self.assertEqual(search["page_size"], 5)
+        self.assertTrue(search["include_showtime_hash"])
         self.assertEqual(
             result["query"]["dateRange"],
             {"start": "2026-08-04", "end": "2026-08-06"},
@@ -90,13 +181,12 @@ class McpToolTests(unittest.TestCase):
         self.assertEqual(result["resultCount"], 1)
         self.assertEqual(result["options"][0]["matchingSeatExamples"], ["H10", "H11"])
         self.assertEqual(result["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
-        self.assertEqual(result["options"][0]["seatMapRequest"]["option_number"], 1)
-        self.assertEqual(result["options"][0]["seatMapRequest"]["movie_formats"], ["IMAX", "IMAX 70mm"])
-        self.assertEqual(result["options"][0]["seatMapRequest"]["expected_theatre"], "Test Cinema")
-        self.assertEqual(
-            result["options"][0]["seatMapRequest"]["expected_ticket_url"],
-            "https://tickets.fandango.com/order",
-        )
+        seat_map_request = result["options"][0]["seatMapRequest"]
+        self.assertEqual(list(seat_map_request), ["selection_token"])
+        selection = server.read_selection_token(seat_map_request["selection_token"])
+        self.assertEqual(selection["optionNumber"], 1)
+        self.assertEqual(selection["showtimeHashCode"], "showtime-123")
+        self.assertEqual(selection["theatre"]["name"], "Test Cinema")
         self.assertNotIn("layout", result["options"][0])
 
     def test_find_movie_seats_rejects_a_backwards_time_window_without_searching(self):
@@ -107,32 +197,42 @@ class McpToolTests(unittest.TestCase):
                     start_date=date(2026, 8, 4),
                     zip_code="10023",
                     adjacent_seats=2,
+                    movie_formats=("IMAX",),
+                    seat_cells=("8:7", "8:8"),
+                    radius_miles=10,
                     start_time="20:00",
                     end_time="18:00",
                 )
         find_seat_matches.assert_not_called()
 
-    @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_show_movie_seat_map_returns_a_live_png(self, find_seat_matches):
-        result = server.show_movie_seat_map(
-            movie="The Odyssey",
-            start_date=date(2026, 8, 4),
-            zip_code="10023",
-            adjacent_seats=2,
-            option_number=1,
-            expected_theatre="Test Cinema",
-            expected_date=date(2026, 8, 4),
-            expected_time="7:30 PM",
-            expected_format="IMAX",
-            expected_ticket_url="https://tickets.fandango.com/order",
-            movie_formats=("IMAX",),
-        )
+    @patch.object(server, "_run_seat_search")
+    @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
+    def test_show_movie_seat_map_returns_a_live_png_without_repeating_search(
+        self, showtime_seat_match, run_seat_search,
+    ):
+        result = server.show_movie_seat_map(selection_token=sample_selection_token())
 
         self.assertIn("Live seat map for option 1: The Odyssey", result[0])
         self.assertIn("Red = seats matching the request", result[0])
         self.assertTrue(result[1].data.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(result[1]._mime_type, "image/png")
-        self.assertEqual(find_seat_matches.call_args.kwargs["page_size"], 10)
+        self.assertEqual(showtime_seat_match.call_count, 1)
+        self.assertEqual(showtime_seat_match.call_args.args[0]["showtimeHashCode"], "showtime-123")
+        run_seat_search.assert_not_called()
+
+    @patch.object(server.application, "showtime_seat_match")
+    @patch.object(server, "_run_seat_search", return_value=sample_search_result())
+    def test_expired_seat_map_token_repeats_the_exact_search(self, run_seat_search, showtime_seat_match):
+        with patch("mcp_server.selection_token.time.time", return_value=401):
+            result = server.show_movie_seat_map(selection_token=sample_selection_token(now=100))
+
+        self.assertTrue(result[1].data.startswith(b"\x89PNG"))
+        showtime_seat_match.assert_not_called()
+        search_args = run_seat_search.call_args.args
+        self.assertEqual(search_args[0], "The Odyssey")
+        self.assertEqual(search_args[1:3], (date(2026, 8, 4), date(2026, 8, 6)))
+        self.assertEqual(search_args[7:10], (25, "14:00", "23:59"))
+        self.assertEqual(search_args[-2:], ("nearest", 5))
 
 
 class McpProtocolTests(unittest.TestCase):
@@ -249,15 +349,14 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         instructions = response.json()["result"]["instructions"]
         normalized_instructions = " ".join(instructions.split())
-        self.assertIn("CLARIFICATION FIRST", normalized_instructions)
-        self.assertIn("find me good movie seats near me", normalized_instructions)
-        self.assertIn("Never assume two seats", normalized_instructions)
-        self.assertIn("Good seats", normalized_instructions)
+        self.assertIn("CONVERSATION STATE", normalized_instructions)
+        self.assertIn("Find good seats for Dune tomorrow", normalized_instructions)
+        self.assertIn("Ask one focused question per turn", normalized_instructions)
+        self.assertIn("rows 8-12, columns 5-11", normalized_instructions)
+        self.assertIn("2:00 PM through midnight", normalized_instructions)
+        self.assertIn("DISCOVERY, THEN FORMAT", normalized_instructions)
         self.assertIn("show_movie_seat_map", normalized_instructions)
-        self.assertIn(
-            "Never weaken an explicit constraint without permission",
-            normalized_instructions,
-        )
+        self.assertIn("Ask before every relaxation", normalized_instructions)
 
     def test_poke_can_discover_the_discovery_and_search_tools(self):
         request = {
@@ -276,28 +375,30 @@ class McpProtocolTests(unittest.TestCase):
         )
 
         discovery_schema = tools["get_location_and_movie_info"]["inputSchema"]
-        self.assertEqual(discovery_schema["required"], ["zip_code", "start_date"])
+        self.assertEqual(discovery_schema["required"], ["zip_code", "start_date", "radius_miles"])
         self.assertIn("exact live theatre names", tools["get_location_and_movie_info"]["description"])
 
         schema = tools["find_movie_seats"]["inputSchema"]
-        self.assertEqual(schema["required"], ["movie", "start_date", "zip_code", "adjacent_seats"])
+        self.assertEqual(
+            schema["required"],
+            [
+                "movie", "start_date", "zip_code", "adjacent_seats",
+                "movie_formats", "seat_cells", "radius_miles",
+            ],
+        )
         seat_cells = schema["properties"]["seat_cells"]
-        self.assertEqual(seat_cells["default"], [])
+        self.assertNotIn("default", seat_cells)
         self.assertEqual(seat_cells["maxItems"], 225)
         self.assertIn("Row 1 is nearest the screen", seat_cells["description"])
         self.assertNotIn("default", schema["properties"]["adjacent_seats"])
-        self.assertEqual(schema["properties"]["movie_formats"]["default"], [])
+        self.assertNotIn("default", schema["properties"]["movie_formats"])
         self.assertEqual(schema["properties"]["movie_formats"]["maxItems"], 10)
+        self.assertEqual(schema["properties"]["start_time"]["default"], "14:00")
+        self.assertNotIn("sort", schema["properties"])
+        self.assertNotIn("max_results", schema["properties"])
 
         map_schema = tools["show_movie_seat_map"]["inputSchema"]
-        self.assertEqual(
-            map_schema["required"],
-            [
-                "movie", "start_date", "zip_code", "adjacent_seats", "option_number",
-                "expected_theatre", "expected_date", "expected_time", "expected_format",
-                "expected_ticket_url",
-            ],
-        )
+        self.assertEqual(map_schema["required"], ["selection_token"])
         self.assertIn("seatMapRequest", tools["show_movie_seat_map"]["description"])
 
     @patch.object(server.application, "location_movie_info")
@@ -329,6 +430,7 @@ class McpProtocolTests(unittest.TestCase):
                     "zip_code": "10023",
                     "start_date": "2026-08-04",
                     "end_date": "2026-08-06",
+                    "radius_miles": 25,
                 },
             },
         }
@@ -364,6 +466,7 @@ class McpProtocolTests(unittest.TestCase):
                     "movie_formats": ["IMAX", "IMAX 70mm"],
                     "seat_cells": ["11:6", "11:7", "11:8", "12:6", "12:7", "12:8"],
                     "adjacent_seats": 2,
+                    "radius_miles": 25,
                 },
             },
         }
@@ -376,8 +479,8 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(structured["options"][0]["matchingSeatExamples"], ["H10", "H11"])
         self.assertEqual(structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
 
-    @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_poke_can_receive_a_seat_map_as_image_content(self, _find_seat_matches):
+    @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
+    def test_poke_can_receive_a_seat_map_as_image_content(self, _showtime_seat_match):
         request = {
             "jsonrpc": "2.0",
             "id": 3,
@@ -385,19 +488,7 @@ class McpProtocolTests(unittest.TestCase):
             "params": {
                 "name": "show_movie_seat_map",
                 "arguments": {
-                    "movie": "The Odyssey",
-                    "start_date": "2026-08-04",
-                    "end_date": "2026-08-06",
-                    "zip_code": "10023",
-                    "movie_formats": ["IMAX"],
-                    "seat_cells": ["7:7", "7:8", "8:7", "8:8"],
-                    "adjacent_seats": 2,
-                    "option_number": 1,
-                    "expected_theatre": "Test Cinema",
-                    "expected_date": "2026-08-04",
-                    "expected_time": "7:30 PM",
-                    "expected_format": "IMAX",
-                    "expected_ticket_url": "https://tickets.fandango.com/order",
+                    "selection_token": sample_selection_token(),
                 },
             },
         }

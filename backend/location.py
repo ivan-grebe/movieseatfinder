@@ -2,6 +2,7 @@
 
 import re
 import threading
+from functools import lru_cache
 
 import requests
 from geopy.distance import geodesic
@@ -27,7 +28,9 @@ def distance_miles(lat1, lon1, lat2, lon2):
     return geodesic((lat1, lon1), (lat2, lon2)).miles
 
 
+@lru_cache(maxsize=512)
 def geocode_zip(zip_code):
+    """Resolve stable ZIP metadata once per process instead of once per MCP step."""
     response = http_session().get(
         f"https://api.zippopotam.us/us/{zip_code}",
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},

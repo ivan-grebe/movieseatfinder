@@ -2,7 +2,7 @@
 
 import os
 from datetime import date
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import HTTPException
 from mcp.server import MCPServer
@@ -14,8 +14,8 @@ from starlette.routing import Route
 from backend import application
 from .seat_map_image import render_seat_map_png
 from .security import McpSecurityMiddleware
+from .selection_token import create_selection_token, read_selection_token
 
-SortOrder = Literal["earliest", "latest", "nearest"]
 GridCell = Annotated[
     str,
     Field(
@@ -56,6 +56,21 @@ def compact_search_results(result, query, seat_map_request):
             for seat in layout["seats"]
             if seat.get("matched") and seat.get("id")
         ]
+        selection_token = create_selection_token({
+            "showtimeHashCode": match["showtimeHashCode"],
+            "movie": match["movieTitle"],
+            "theatre": match["theatre"],
+            "date": match["date"],
+            "time": match["displayTime"],
+            "format": match["format"],
+            "amenities": match["amenities"],
+            "ticketUrl": match["ticketUrl"],
+            "seatCells": seat_map_request["seat_cells"],
+            "adjacentSeats": seat_map_request["adjacent_seats"],
+            "excludeAccessible": seat_map_request["exclude_accessible"],
+            "optionNumber": position,
+            "search": seat_map_request,
+        })
         options.append({
             "option": position,
             "movie": match["movieTitle"],
@@ -70,15 +85,7 @@ def compact_search_results(result, query, seat_map_request):
             "matchingSeatCount": len(matching_seats),
             "matchingSeatExamples": matching_seats[:12],
             "ticketUrl": match["ticketUrl"],
-            "seatMapRequest": {
-                **seat_map_request,
-                "option_number": position,
-                "expected_theatre": match["theatre"]["name"],
-                "expected_date": match["date"],
-                "expected_time": match["displayTime"],
-                "expected_format": match["format"],
-                "expected_ticket_url": match["ticketUrl"],
-            },
+            "seatMapRequest": {"selection_token": selection_token},
         })
     return {
         "query": query,
@@ -87,7 +94,8 @@ def compact_search_results(result, query, seat_map_request):
         "checkedShowtimes": result["checkedShowtimes"],
         "checkedSeatMaps": result["checkedSeatMaps"],
         "message": (
-            "Present these options concisely, include each ticket URL, then offer to show a seat map."
+            "Present exactly five or fewer compact one-line options without ticket URLs. Then ask whether "
+            "the user wants a seat map or ticket link for any numbered option."
             if options
             else "No matching live seat maps were found. Ask whether to widen the time, format, radius, or seat area."
         ),
@@ -135,6 +143,7 @@ def _run_seat_search(
             sort=sort,
             page=1,
             page_size=page_size,
+            include_showtime_hash=True,
         )
     except HTTPException as error:
         raise ValueError(_public_error(error)) from error
@@ -143,140 +152,117 @@ def _run_seat_search(
 MCP_INSTRUCTIONS = """
 ROLE
 
-Help users find real movie showtimes and adjacent available seats with Movie Seat Finder. Ask for
-missing concrete details before using tools. Use reasonable judgment for subjective seat quality,
-but never invent a movie, date, location, party size, format, theatre, or accessibility need.
+Help users find live movie showtimes and adjacent available seats. Keep every user-facing message
+clear, concise, and conversational. Never bombard the user with a checklist or several questions at
+once. Never invent a movie, date, ZIP code, radius, party size, format, or seat preference.
 
-CLARIFICATION FIRST
+CONVERSATION STATE
 
-Do not call get_location_and_movie_info or find_movie_seats until all of these required details are
-known from the current conversation or trustworthy onboarded context:
+Treat the conversation as one continuing search. Extract and retain every detail the user supplies,
+including details volunteered before you ask. Never ask again for a value that is already clear. If
+the user changes one value, carry every other established value forward. A correction such as
+"actually Dolby" changes only format unless the user says otherwise.
 
-- the movie the user wants
-- a show date or inclusive date range
-- a five-digit US ZIP code
-- the exact number of adjacent seats needed
+Ask one focused question per turn for the next missing value. Short acknowledgements are fine, but
+do not send a separate recap or confirmation turn. Before discovery, obtain these values in this
+order when missing:
 
-If any required detail is missing, ask the user. Ask only for missing information and combine
-closely related questions when that is natural. For example, if the user says "find me good movie
-seats near me," ask which movie, what date or date range, how many seats, and their ZIP code if it
-is not already available. Do not start discovery merely to guess which movie they want.
+1. movie
+2. date or inclusive date range
+3. five-digit US ZIP code
+4. radius in miles, asked openly as "Within how many miles should I search?"
+5. exact number of adjacent seats, from one through ten
+6. seat-position preference
 
-Use reasonable judgment for ordinary subjective seat-quality language. "Good seats" or "best
-seats" normally means the middle of the auditorium, centered horizontally and neither extremely
-close to the screen nor at the very back. Translate that into a sensible compact group of middle
-grid cells without forcing an extra question. If the user gives a more specific seat preference,
-follow it. Ask only when preferences conflict or the meaning is genuinely ambiguous.
+For example, "Find good seats for Dune tomorrow" already supplies movie, date, and seat preference.
+Retain those values and ask only for the next missing value. Use an onboarded ZIP code when it is
+trustworthy and the user has not supplied a different location.
 
-This judgment exception applies only to subjective seat position. Do not guess a movie, date, ZIP
-code, party size, movie format, theatre, accessibility need, or other concrete constraint. If
-optional preferences for format, showtime, theatre, radius, or accessibility are missing, ask
-whether the user has a preference or wants a broad search. Only use broad defaults after the user
-explicitly says they do not care, says "any," or asks to search broadly.
+Resolve unambiguous relative dates such as "tomorrow" or "this Friday" to ISO dates. Treat a single
+date as both start and end, treat ranges as inclusive, and keep them within the supported 14 days.
+Ask when a relative date is genuinely ambiguous.
 
-Resolve unambiguous relative dates such as "tomorrow" or "this Friday" to ISO calendar dates. That
-normalization is not a preference inference. If a relative date is genuinely ambiguous, ask.
+DEFAULTS THAT DO NOT REQUIRE QUESTIONS
 
-LOCATION AND DATES
+- If time is missing, explicitly tell the user once that the search will cover 2:00 PM through
+  midnight, then proceed with 14:00 through 23:59. Do not ask for confirmation and do not create a
+  separate message solely for this notice.
+- Search all theatres and order matches by nearest first. Do not ask for a theatre unless the user
+  wants to restrict or change it.
+- Exclude wheelchair and companion seats silently unless the user explicitly requests accessible
+  seating. Never infer an accessibility need.
+- Return at most five options.
 
-- Use the user's onboarded ZIP code when it is available and they have not supplied another one.
-- If no ZIP code is available, ask for one; never invent a location from "near me."
-- Treat date ranges as inclusive and keep them within the supported 14-day span.
-- If the user gives one date, use it as both the start and end date.
-- Never invent a date when none was supplied.
+DISCOVERY, THEN FORMAT
 
-DISCOVERY MUST HAPPEN FIRST
+After the six pre-discovery values are known, always call get_location_and_movie_info before
+find_movie_seats. Pass the requested ZIP code, inclusive dates, radius, and a theatre filter only
+when the user named one.
 
-After the required details are known, always call get_location_and_movie_info before
-find_movie_seats. Pass the ZIP code, first date, optional last date, requested radius, and a theatre
-filter only when the user named a theatre.
+Discovery returns canonical titles and exact live formats. If exactly one title clearly matches,
+proceed with that canonical title. If sequels, rereleases, editions, dubbed versions, years, or other
+similar titles create a real ambiguity, ask which exact title the user means. Never silently add,
+remove, or rewrite title text. If nothing matches, explain that concisely and ask what single search
+constraint the user wants to change.
 
-Discovery returns the resolved place and ZIP code, exact live theatre names, addresses, distances,
-canonical movie titles, available dates, formats, and theatres showing each movie. Use returned
-movie titles, theatre names, and formats exactly as written. Never silently add, remove, or rewrite
-a release year, subtitle, edition, or other title text. "The Odyssey" and "The Odyssey (2026)" are
-different canonical titles.
-
-If one discovered title clearly matches the user's requested movie, use that exact title. If
-multiple discovered titles plausibly match, ask which one they mean before searching. If none
-match, explain what is available or ask whether to change the date range or radius.
-
-FORMATS
-
-Use only exact live format labels returned by discovery, such as Standard, IMAX, IMAX 70mm, IMAX
-with Laser, Dolby Cinema, 4DX, or ScreenX. Pass multiple formats when the user accepts multiple
-formats. Use an empty movie_formats array only after the user explicitly says any format is fine.
-Do not treat plain IMAX and IMAX 70mm as interchangeable unless the user accepts both.
-
-PARTY SIZE
-
-Use adjacent_seats for the exact number of contiguous available seats required. Never assume two
-seats when the party size is missing; ask the user. The supported party size is one through ten.
+Only after discovery, ask the format question using the exact formats actually available for the
+chosen title, even when only one format was found. Ask one concise question, for example: "It is
+available in IMAX, Dolby Cinema, and Standard. Which format would you like?" Pass multiple exact
+formats if the user accepts several. Pass an empty movie_formats array only when the user explicitly
+says any available format is fine. IMAX and IMAX 70mm are never interchangeable without permission.
 
 SEAT POSITION
 
-The preference grid has 15 rows and 15 columns. Row 1 is nearest the screen, row 15 is the back,
-column 1 is the left edge of the displayed auditorium, and column 15 is the right edge. Rows 6-10
-and columns 6-10 are the broad center. Write each cell as row:column, for example 8:7.
+Always ask when no seat-position preference was supplied. Translate natural language internally;
+do not mention the 15-by-15 grid unless the user asks how seat matching works.
 
-Translate an explicit user preference into every grid cell they would reasonably accept:
+The internal grid has 15 rows and 15 columns. Row 1 is nearest the screen, row 15 is the back,
+column 1 is the left edge, and column 15 is the right edge. Include every cell the user would
+reasonably accept. Use these mappings:
 
-- "dead center" means a compact area around rows 7-9 and columns 7-9
-- "center" means rows 6-10 and columns 6-10
-- "center-left" means center rows with columns toward the left of center
-- "center-right" means center rows with columns toward the right of center
-- "front-center" means front rows with center columns
-- "back-center" or "center-back" means back rows with center columns
-- "near the back" means a broader collection of rear-row cells
-- "left aisle" means cells near the left edge
-- "right aisle" means cells near the right edge
-- "anywhere" means an empty seat_cells array
+- "good" or "best" = broadly centered and about two-thirds back: rows 8-12, columns 5-11
+- "dead center" = rows 7-9, columns 7-9
+- "center" = rows 6-10, columns 6-10
+- "center-left" or "center-right" = center rows on the requested side
+- "front-center" or "back-center" = requested depth with center columns
+- "near the back" = a broad rear region
+- "left aisle" or "right aisle" = cells near that displayed edge
+- "anywhere" = an empty seat_cells array
 
-Arbitrary and irregular cell selections are allowed. A grid cell is a normalized auditorium region,
-not a literal seat number. It is acceptable to translate ordinary "good" or "best" seats into a
-compact middle-center preference using the judgment rule above.
+SEARCH
 
-SEARCHING
-
-After discovery and any required disambiguation, call find_movie_seats with the exact canonical
-title, inclusive dates, ZIP code, exact party size, explicitly accepted formats, explicitly accepted
-seat cells, radius, time window, optional exact theatre, accessibility behavior, sort order, and
-result limit.
-
-The following broad values may be used only after the user explicitly permits a broad search or
-says they have no preference for that dimension:
-
-- 25-mile radius
-- entire-day time window
-- any format
-- any theatre
-- anywhere in the auditorium
-- earliest-showtime ordering
-- up to five options
-
-Exclude wheelchair and companion seats unless the user explicitly requests accessible seating.
-Do not infer an accessibility need. Supported sorting choices are earliest, latest, and nearest.
+After format is answered, call find_movie_seats with the retained canonical title, dates, ZIP code,
+radius, party size, exact accepted formats, translated seat cells, 14:00-23:59 unless the user gave
+a different time, optional exact theatre, exclude_accessible=true unless requested otherwise,
+sort="nearest", and no more than five results. Never weaken or omit an explicit constraint.
 
 RESULTS
 
-Present the best options as a concise numbered list. Include the movie title, theatre, date, time,
-format, distance, useful amenities, matching-seat information, and Fandango ticket link. Do not
-expose raw seat-map payloads, internal grid coordinates, or implementation details unless asked.
+Return the available options together in one message as a numbered list of no more than five compact
+single-line entries. Every line must contain movie title, date, time, theatre, exact format, and
+distance. Do not include ticket URLs, raw payloads, grid coordinates, implementation details,
+amenity prose, warnings, or a long explanation. Use this shape:
 
-After presenting one or more options, offer to show the live seat map. A natural prompt is: "Would
-you like to see the seat map for any of these?" If the user says yes and there is more than one
-option, ask which numbered option they want. Then call show_movie_seat_map with the exact
-seatMapRequest object returned for that option. The tool returns an image/png seat map and caption.
-Send the image to the user. Do not call it before the user asks or accepts the offer.
+1. The Odyssey — Aug 8, 7:00 PM at AMC Victoria Gardens — IMAX — 2.4 mi
 
-Never claim tickets or seats were purchased, reserved, held, or guaranteed. Movie Seat Finder only
-checks current availability and returns ticket links; availability can change before checkout.
+After the list, ask exactly one next-step question: "Would you like the seat map or ticket link for
+any option?" If the requested option is ambiguous, ask only for its number.
 
-NO RESULTS
+For a seat map, call show_movie_seat_map with the single selection_token copied exactly from that
+option's seatMapRequest. Never decode or reconstruct it. Send the returned image and concise caption.
+If the token expired, automatically repeat the exact retained search without asking, obtain a fresh
+token, and show the requested map. If availability changed, explain that briefly and show the new
+options. Do not automatically call the map tool before the user asks.
 
-When no matches are found, summarize the important constraints searched and ask whether the user
-wants to widen the date range, time window, radius, accepted formats, theatre selection, or seat
-area. Never weaken an explicit constraint without permission.
+For a ticket link, return the selected option's ticketUrl without repeating the showtime summary,
+followed only by a short warning that availability is not held or guaranteed and can change before
+checkout. Never claim that tickets or seats were purchased, reserved, held, or guaranteed.
+
+NO RESULTS AND RELAXATION
+
+If no matches are found, state the important constraints searched in one concise sentence and ask
+which one the user wants to change: date, time, radius, format, theatre, or seat area. The user must
+choose. Ask before every relaxation and change only the constraint they approve.
 """.strip()
 
 
@@ -286,7 +272,7 @@ movie_seat_mcp = MCPServer(
     description="Discover canonical movie options, then search live showtimes and adjacent available seats.",
     instructions=MCP_INSTRUCTIONS,
     website_url="https://movieseatfinder.com",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 
@@ -294,19 +280,22 @@ movie_seat_mcp = MCPServer(
     title="Get location and movie information",
     description=(
         "Resolve a ZIP code and list the exact live theatre names, movie titles, available dates, "
-        "and format strings that may be passed to find_movie_seats. Call this before searching, but "
-        "only after the user has supplied a movie, date or date range, party size, and ZIP code."
+        "and format strings that may be passed to find_movie_seats. Call only after movie, date, ZIP "
+        "code, radius, party size, and seat preference are known. Ask about format after this call."
     ),
     structured_output=True,
 )
 def get_location_and_movie_info(
     zip_code: Annotated[str, Field(pattern=r"^\d{5}$", description="Five-digit US ZIP code")],
     start_date: Annotated[date, Field(description="First calendar date in YYYY-MM-DD form")],
+    radius_miles: Annotated[
+        float,
+        Field(ge=1, le=100, description="Exact radius in miles supplied by the user"),
+    ],
     end_date: Annotated[
         date | None,
         Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
     ] = None,
-    radius_miles: Annotated[float, Field(ge=1, le=100, description="Search radius around the ZIP code")] = 25,
     theatre: Annotated[
         str,
         Field(max_length=120, description="Optional partial theatre-name filter; normally leave empty"),
@@ -336,8 +325,8 @@ def get_location_and_movie_info(
     title="Find available movie seats",
     description=(
         "Find real showtimes with adjacent available seats after discovery and clarification. Ordinary "
-        "good or best seats may be interpreted as a compact middle-center area, but concrete search "
-        "details must never be invented."
+        "good or best seats mean broadly centered and about two-thirds back. Format, radius, party "
+        "size, and seat preference must be explicitly established; never invent them."
     ),
     structured_output=True,
 )
@@ -352,10 +341,6 @@ def find_movie_seats(
         int,
         Field(ge=1, le=10, description="Exact user-provided number of adjacent seats needed"),
     ],
-    end_date: Annotated[
-        date | None,
-        Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
-    ] = None,
     movie_formats: Annotated[
         tuple[FormatName, ...],
         Field(
@@ -365,7 +350,7 @@ def find_movie_seats(
                 "selected value; use an empty array when every format is acceptable."
             ),
         ),
-    ] = (),
+    ],
     seat_cells: Annotated[
         tuple[GridCell, ...],
         Field(
@@ -376,13 +361,20 @@ def find_movie_seats(
                 "the back. Column 1 is the left edge of the displayed auditorium and column 15 "
                 "is the right edge. The geometric center is rows 6-10 and columns 6-10. Select "
                 "every cell acceptable to the user; arbitrary shapes are allowed. Use an empty "
-                "array when the user has no seat-position preference."
+                "array only when the user explicitly accepts anywhere in the auditorium."
             ),
         ),
-    ] = (),
-    radius_miles: Annotated[float, Field(ge=1, le=100, description="Search radius around the ZIP code")] = 25,
+    ],
+    radius_miles: Annotated[
+        float,
+        Field(ge=1, le=100, description="Exact radius in miles supplied by the user"),
+    ],
+    end_date: Annotated[
+        date | None,
+        Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
+    ] = None,
     start_time: Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Earliest time, HH:MM")]
-    = "00:00",
+    = "14:00",
     end_time: Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Latest time, HH:MM")]
     = "23:59",
     theatre: Annotated[str, Field(max_length=120, description="Optional theatre name filter")] = "",
@@ -390,8 +382,6 @@ def find_movie_seats(
         bool,
         Field(description="Exclude wheelchair and companion seats unless explicitly requested"),
     ] = True,
-    sort: Annotated[SortOrder, Field(description="How to order matching showtimes")] = "earliest",
-    max_results: Annotated[int, Field(ge=1, le=10, description="Maximum options to return")] = 5,
 ) -> dict[str, Any]:
     """Find live showtimes with seats matching a conversational preference."""
     if start_time > end_time:
@@ -421,7 +411,7 @@ def find_movie_seats(
         "end_time": end_time,
         "theatre": theatre,
         "exclude_accessible": exclude_accessible,
-        "sort": sort,
+        "sort": "nearest",
     }
     result = _run_seat_search(
         movie,
@@ -436,8 +426,8 @@ def find_movie_seats(
         end_time,
         theatre,
         exclude_accessible,
-        sort,
-        max_results,
+        "nearest",
+        5,
     )
     return compact_search_results(result, query, seat_map_request)
 
@@ -445,116 +435,74 @@ def find_movie_seats(
 @movie_seat_mcp.tool(
     title="Show a live movie seat map",
     description=(
-        "Render one numbered result from find_movie_seats as an image/png seat map. Call only after "
-        "the user asks to see a map. Copy every argument exactly from that option's seatMapRequest "
-        "object; do not reconstruct, alter, or guess the search."
+        "Refresh and render one numbered result from find_movie_seats as an image/png seat map. "
+        "Call only after the user asks to see a map. Copy the single selection_token exactly from "
+        "that option's seatMapRequest object; never decode, reconstruct, alter, or guess it."
     ),
     structured_output=False,
 )
 def show_movie_seat_map(
-    movie: Annotated[
+    selection_token: Annotated[
         str,
-        Field(min_length=1, max_length=120, description="Exact title from the selected seatMapRequest"),
+        Field(
+            min_length=20,
+            max_length=8192,
+            description="Opaque five-minute token copied exactly from the selected option's seatMapRequest",
+        ),
     ],
-    start_date: Annotated[date, Field(description="First date from the selected seatMapRequest")],
-    zip_code: Annotated[str, Field(pattern=r"^\d{5}$", description="ZIP code from the selected seatMapRequest")],
-    adjacent_seats: Annotated[
-        int,
-        Field(ge=1, le=10, description="Party size from the selected seatMapRequest"),
-    ],
-    option_number: Annotated[
-        int,
-        Field(ge=1, le=10, description="Number of the result whose live seat map the user requested"),
-    ],
-    expected_theatre: Annotated[
-        str,
-        Field(min_length=1, max_length=120, description="Exact theatre in the selected seatMapRequest"),
-    ],
-    expected_date: Annotated[
-        date,
-        Field(description="Exact show date in the selected seatMapRequest"),
-    ],
-    expected_time: Annotated[
-        str,
-        Field(min_length=1, max_length=24, description="Exact display time in the selected seatMapRequest"),
-    ],
-    expected_format: Annotated[
-        str,
-        Field(min_length=1, max_length=120, description="Exact format in the selected seatMapRequest"),
-    ],
-    expected_ticket_url: Annotated[
-        str,
-        Field(min_length=1, max_length=2048, description="Exact ticket URL in the selected seatMapRequest"),
-    ],
-    end_date: Annotated[
-        date | None,
-        Field(description="Last date from the selected seatMapRequest"),
-    ] = None,
-    movie_formats: Annotated[
-        tuple[FormatName, ...],
-        Field(max_length=10, description="Exact formats from the selected seatMapRequest"),
-    ] = (),
-    seat_cells: Annotated[
-        tuple[GridCell, ...],
-        Field(max_length=225, description="Exact acceptable grid cells from the selected seatMapRequest"),
-    ] = (),
-    radius_miles: Annotated[
-        float,
-        Field(ge=1, le=100, description="Radius from the selected seatMapRequest"),
-    ] = 25,
-    start_time: Annotated[
-        str,
-        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Start time from the selected seatMapRequest"),
-    ] = "00:00",
-    end_time: Annotated[
-        str,
-        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="End time from the selected seatMapRequest"),
-    ] = "23:59",
-    theatre: Annotated[
-        str,
-        Field(max_length=120, description="Theatre filter from the selected seatMapRequest"),
-    ] = "",
-    exclude_accessible: Annotated[
-        bool,
-        Field(description="Accessibility behavior from the selected seatMapRequest"),
-    ] = True,
-    sort: Annotated[SortOrder, Field(description="Sort order from the selected seatMapRequest")] = "earliest",
 ) -> list[Any]:
-    """Re-run a prior search and return the selected live layout as MCP image content."""
-    if start_time > end_time:
-        raise ValueError("start_time must be earlier than or equal to end_time.")
-    search_end_date = end_date or start_date
-    result = _run_seat_search(
-        movie,
-        start_date,
-        search_end_date,
-        zip_code,
-        movie_formats,
-        seat_cells,
-        adjacent_seats,
-        radius_miles,
-        start_time,
-        end_time,
-        theatre,
-        exclude_accessible,
-        sort,
-        10,
-    )
-    match = next((
-        candidate
-        for candidate in result["matches"]
-        if candidate["theatre"]["name"] == expected_theatre
-        and candidate["date"] == expected_date.isoformat()
-        and candidate["displayTime"] == expected_time
-        and candidate["format"] == expected_format
-        and candidate["ticketUrl"] == expected_ticket_url
-    ), None)
-    if match is None:
+    """Refresh only the selected showtime and return its live layout as MCP image content."""
+    selected = read_selection_token(selection_token, allow_expired=True)
+    if selected["tokenExpired"]:
+        search = selected["search"]
+        refreshed = _run_seat_search(
+            search["movie"],
+            date.fromisoformat(search["start_date"]),
+            date.fromisoformat(search["end_date"]),
+            search["zip_code"],
+            tuple(search["movie_formats"]),
+            tuple(search["seat_cells"]),
+            search["adjacent_seats"],
+            search["radius_miles"],
+            search["start_time"],
+            search["end_time"],
+            search["theatre"],
+            search["exclude_accessible"],
+            search["sort"],
+            5,
+        )
+        refreshed_match = next((
+            candidate for candidate in refreshed["matches"]
+            if candidate["theatre"]["name"] == selected["theatre"]["name"]
+            and candidate["date"] == selected["date"]
+            and candidate["displayTime"] == selected["time"]
+            and candidate["format"] == selected["format"]
+            and candidate["ticketUrl"] == selected["ticketUrl"]
+        ), None)
+        seat_map = refreshed_match["seatMap"] if refreshed_match else None
+    else:
+        seat_map = application.showtime_seat_match(
+            {"showtimeHashCode": selected["showtimeHashCode"]},
+            selected["adjacentSeats"],
+            application.parse_seat_grid(internal_seat_grid(selected["seatCells"])),
+            selected["excludeAccessible"],
+            application.seat_map,
+        )
+    if not seat_map:
         raise ValueError(
-            "That exact showtime is no longer available. Run find_movie_seats again to refresh the results."
+            "Those seats are no longer available for that exact showtime. Run find_movie_seats again."
         )
 
-    layout = match["seatMap"]["layout"]
+    layout = seat_map["layout"]
+    option_number = selected["optionNumber"]
+    match = {
+        "movieTitle": selected["movie"],
+        "theatre": selected["theatre"],
+        "date": selected["date"],
+        "displayTime": selected["time"],
+        "format": selected["format"],
+        "ticketUrl": selected["ticketUrl"],
+    }
     recommended_seats = [
         seat["id"]
         for seat in layout["seats"]
@@ -565,10 +513,23 @@ def show_movie_seat_map(
         f"Live seat map for option {option_number}: {match['movieTitle']} at {match['theatre']['name']} — "
         f"{match['date']} at {match['displayTime']} ({match['format']}). "
         f"Red = seats matching the request; white = available; gray = unavailable; "
-        f"blue = accessible. Matching seat examples: {recommended_summary}. "
-        f"Availability can change before checkout. Tickets: {match['ticketUrl']}"
+        f"blue = accessible. Matching seat examples: {recommended_summary}."
     )
-    return [caption, Image(data=render_seat_map_png(layout), format="png")]
+    details = {
+        "movie": match["movieTitle"],
+        "theatre": match["theatre"]["name"],
+        "date": match["date"],
+        "time": match["displayTime"],
+        "format": match["format"],
+    }
+    image = render_seat_map_png(
+        layout,
+        details=details,
+        available_count=seat_map["availableSeatCount"],
+        total_count=seat_map["totalSeatCount"],
+        accessible_seats_excluded=selected["excludeAccessible"],
+    )
+    return [caption, Image(data=image, format="png")]
 
 
 def _csv_environment(name, defaults):

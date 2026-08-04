@@ -1009,6 +1009,7 @@ def find_seat_matches(
     page_size: PageSize = DEFAULT_PAGE_SIZE,
     lat: float | None = None,
     lon: float | None = None,
+    include_showtime_hash: bool = False,
 ):
     """Run the shared live showtime and seat-map search operation."""
     try:
@@ -1053,7 +1054,7 @@ def find_seat_matches(
                 return None
             if not seat_match:
                 return None
-            return {
+            match = {
                 "theatre": {
                     "name": theatre_item["name"],
                     "address": theatre_item["address"],
@@ -1071,6 +1072,9 @@ def find_seat_matches(
                 "genres": showtime["genres"],
                 "seatMap": seat_match,
             }
+            if include_showtime_hash:
+                match["showtimeHashCode"] = showtime["showtimeHashCode"]
+            return match
 
         matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
 

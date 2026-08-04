@@ -13,6 +13,7 @@ dependencies = [
     "mcp>=2.0.0,<3.0.0",
     "pydantic>=2.13.0",
     "requests>=2.32.0",
+    "resvg>=0.2.0,<0.3",
     "uvicorn[standard]>=0.35.0",
 ]
 
