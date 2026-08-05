@@ -17,7 +17,7 @@ def _render_options():
     options = getattr(_RENDER_STATE, "options", None)
     if options is None:
         options = usvg.Options.default()
-        options.font_family = "Arial"
+        setattr(options, "font_family", "Arial")
         options.load_system_fonts()
         _RENDER_STATE.options = options
     return options
