@@ -228,10 +228,15 @@
           <p id="seatPreferenceHelp" class="seat-help">Drag to mark where you'd like to sit. Top is the screen. Shift-drag to erase. Leave blank for anywhere.</p>
           <div class="seat-stage">
             <div class="screen">SCREEN</div>
-            <div id="seatPreferenceGrid" class="seat-grid" role="group" aria-label="Seat area preference grid, 15 rows from the screen by 15 columns"></div>
+            <div class="seat-grid-wrap">
+              <div id="seatPreferenceGrid" class="seat-grid" role="group" aria-label="Seat area preference grid, 15 rows from the screen by 15 columns"></div>
+              <button id="editSeatGridButton" class="btn-small seat-edit-button" type="button" aria-controls="seatPreferenceGrid" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+                <span>Edit seat area</span>
+              </button>
+            </div>
           </div>
           <div class="grid-actions">
-            <button id="editSeatGridButton" class="btn-small seat-edit-button" type="button" aria-controls="seatPreferenceGrid" hidden>Edit seat area</button>
             <button id="selectCenterGridButton" class="btn-small" type="button">Center</button>
             <button id="clearGridButton" class="btn-small" type="button">Clear</button>
             <button id="cancelSeatGridButton" class="btn-small" type="button" aria-controls="seatPreferenceGrid" hidden>Cancel</button>

@@ -301,6 +301,7 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(clearButton).toBeHidden();
   await expect(grid).toHaveClass(/is-mobile-locked/);
   await expect(grid).toHaveCSS("touch-action", "pan-y");
+  await expect(grid).toHaveCSS("opacity", "0.56");
   await expect(firstCell).toHaveCSS("pointer-events", "none");
   await expect(page.locator("#seatPreferenceHelp")).toHaveText(
     "Tap Edit seat area to choose where you'd like to sit.",
@@ -312,11 +313,34 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   }));
   expect(seatSilhouette).toEqual({ backrest: '\"\"', cushion: '\"\"', cushionHeight: "5px" });
 
+  const overlayAppearance = await page.evaluate(() => {
+    const grid = document.querySelector("#seatPreferenceGrid").getBoundingClientRect();
+    const button = document.querySelector("#editSeatGridButton");
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return {
+      centerDeltaX: Math.abs((rect.left + rect.width / 2) - (grid.left + grid.width / 2)),
+      centerDeltaY: Math.abs((rect.top + rect.height / 2) - (grid.top + grid.height / 2)),
+      color: style.color,
+      backgroundImage: style.backgroundImage,
+      minHeight: rect.height,
+      overlapsGrid: rect.left < grid.right && rect.right > grid.left && rect.top < grid.bottom && rect.bottom > grid.top,
+    };
+  });
+  expect(overlayAppearance.centerDeltaX).toBeLessThan(1);
+  expect(overlayAppearance.centerDeltaY).toBeLessThan(1);
+  expect(overlayAppearance.color).toBe("rgb(255, 255, 255)");
+  expect(overlayAppearance.backgroundImage).toContain("linear-gradient");
+  expect(overlayAppearance.minHeight).toBeGreaterThanOrEqual(48);
+  expect(overlayAppearance.overlapsGrid).toBe(true);
+
   await firstCell.dispatchEvent("click");
   await expect(firstCell).toHaveAttribute("aria-pressed", "false");
 
   await editButton.click();
+  await expect(editButton).toBeHidden();
   await expect(grid).toHaveClass(/is-mobile-editing/);
+  await expect(grid).toHaveCSS("opacity", "1");
   await expect(grid).toHaveCSS("touch-action", "none");
   await expect(centerButton).toBeVisible();
   await expect(clearButton).toBeVisible();
@@ -389,6 +413,8 @@ test("field loading messages do not reflow later controls", async ({ page }) => 
   await expect(page.locator("#theatreMeta")).toContainText("Loading");
   await expect(page.locator("#theatreInput")).toBeDisabled();
   await expect(page.locator("#theatreInput")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#theatreInput")).toHaveCSS("background-color", "rgb(223, 227, 232)");
+  await expect(page.locator("#theatreInput")).toHaveCSS("border-top-style", "dashed");
   await expect(page.locator("#movieInput")).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeDisabled();
   const whileTheatresLoad = await page.evaluate(() => ({
@@ -640,6 +666,7 @@ test("movie search accepts a selected suggestion or an exact loaded title", asyn
   expect(searchUrl).toBe("");
 
   await movieInput.fill("Test Movie");
+  await expect(searchButton).toBeEnabled();
   await searchButton.click();
   await expect.poll(() => searchUrl).not.toBe("");
   await expect(searchButton).toBeEnabled();

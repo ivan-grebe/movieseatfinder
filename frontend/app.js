@@ -674,6 +674,11 @@ function bindEvents() {
   movieInput.addEventListener("input", () => {
     movieInput.setCustomValidity("");
     clearMovieSelection();
+    const exactMovie = movieWithTitle(movieInput.value.trim());
+    if (exactMovie) {
+      selectMovie(exactMovie);
+      loadFormats();
+    }
   });
 }
 

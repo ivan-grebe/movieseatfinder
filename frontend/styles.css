@@ -345,16 +345,17 @@ select {
 }
 
 .combo input:disabled {
-  border-color: rgba(91, 117, 151, .2);
-  background: #edf0f4;
-  color: var(--muted);
-  box-shadow: none;
+  border-color: #a8b0bc;
+  border-style: dashed;
+  background: #dfe3e8;
+  color: #6f7783;
+  box-shadow: inset 0 1px 2px rgba(38, 48, 62, .08);
   cursor: not-allowed;
   opacity: 1;
 }
 
 .combo input[aria-busy="true"] { cursor: progress; }
-.combo input:disabled::placeholder { color: #8a94a3; }
+.combo input:disabled::placeholder { color: #727b88; }
 
 input[type="date"],
 input[type="time"] {
@@ -855,6 +856,11 @@ a:focus-visible {
   align-items: center;
 }
 
+.seat-grid-wrap {
+  position: relative;
+  width: min(420px, 100%);
+}
+
 .screen {
   width: min(460px, 100%);
   height: 18px;
@@ -876,7 +882,7 @@ a:focus-visible {
   grid-template-columns: repeat(15, minmax(12px, 1fr));
   grid-template-rows: repeat(15, minmax(0, 1fr));
   gap: 2px;
-  width: min(420px, 100%);
+  width: 100%;
   aspect-ratio: 1;
   padding: 9px;
   border: 1px solid rgba(255,255,255,.68);
@@ -885,7 +891,7 @@ a:focus-visible {
   box-shadow: inset 0 2px 8px rgba(34, 65, 104, .1);
   user-select: none;
   touch-action: none;
-  transition-property: background-color, box-shadow;
+  transition-property: background-color, box-shadow, filter, opacity;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
 }
@@ -1638,20 +1644,45 @@ input[type="time"] {
   }
 
   .grid-actions {
-    min-height: 44px;
     align-items: center;
   }
+
+  .grid-actions:has(.btn-small:not([hidden])) { min-height: 44px; }
+  .grid-actions:not(:has(.btn-small:not([hidden]))) { margin-top: 0; }
 
   .grid-actions .btn-small {
     min-height: 44px;
   }
 
-  .seat-edit-button {
-    min-width: 142px;
-    color: var(--accent-deep);
-    background: var(--accent-soft);
-    box-shadow: 0 0 0 1px rgba(201, 58, 58, .14), inset 0 1px 0 rgba(255, 255, 255, .78);
+  .btn-small.seat-edit-button {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 166px;
+    min-height: 48px;
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, #df514d, var(--accent-deep));
+    box-shadow: 0 0 0 1px rgba(110, 22, 27, .2), 0 12px 28px rgba(111, 25, 31, .32), inset 0 1px 0 rgba(255, 255, 255, .28);
+    font-size: 13px;
+    transform: translate(-50%, -50%);
   }
+
+  .seat-edit-button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .btn-small.seat-edit-button:active:not(:disabled) {
+    transform: translate(-50%, -50%) scale(.96);
+  }
+
+  .btn-small.seat-edit-button[hidden] { display: none; }
 
   .seat-edit-done {
     color: #fff;
@@ -1659,13 +1690,18 @@ input[type="time"] {
     box-shadow: 0 0 0 1px rgba(142, 31, 31, .18), 0 4px 10px rgba(201, 58, 58, .18);
   }
 
-  .seat-grid {
+  .seat-grid-wrap {
     width: min(300px, 100%);
+  }
+
+  .seat-grid {
     padding: 7px;
     gap: 1.5px;
   }
 
   .seat-grid.is-mobile-locked {
+    filter: grayscale(.45);
+    opacity: .56;
     touch-action: pan-y;
   }
 
@@ -1698,9 +1734,9 @@ input[type="time"] {
 }
 
 @media (max-width: 700px) and (hover: hover) {
-  .seat-edit-button:hover {
-    background: #ffe2df;
-    box-shadow: 0 0 0 1px rgba(201, 58, 58, .2), inset 0 1px 0 rgba(255, 255, 255, .84);
+  .btn-small.seat-edit-button:hover {
+    background: linear-gradient(135deg, #eb5e58, #a92d34);
+    box-shadow: 0 0 0 1px rgba(110, 22, 27, .24), 0 14px 30px rgba(111, 25, 31, .36), inset 0 1px 0 rgba(255, 255, 255, .32);
   }
 }
 
@@ -1849,11 +1885,11 @@ input[type="time"] {
   select:focus { background: #1b2230; }
   input::placeholder { color: #6f7c92; }
   .combo input:disabled {
-    border-color: rgba(150, 170, 196, .12);
-    background: #202733;
-    color: #778398;
+    border-color: #495567;
+    background: #111720;
+    color: #697589;
   }
-  .combo input:disabled::placeholder { color: #778398; }
+  .combo input:disabled::placeholder { color: #697589; }
 
   .location-btn { background: var(--field); }
   .location-btn:hover { background: #1b2230; }
