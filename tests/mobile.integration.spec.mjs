@@ -387,13 +387,21 @@ test("field loading messages do not reflow later controls", async ({ page }) => 
   await page.locator("#zipInput").fill("10001");
   await theatresStarted;
   await expect(page.locator("#theatreMeta")).toContainText("Loading");
+  await expect(page.locator("#theatreInput")).toBeDisabled();
+  await expect(page.locator("#theatreInput")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#movieInput")).toBeDisabled();
+  await expect(page.locator("#searchButton")).toBeDisabled();
   const whileTheatresLoad = await page.evaluate(() => ({
     movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
   }));
 
   releaseTheatres();
   await moviesStarted;
+  await expect(page.locator("#theatreInput")).toBeEnabled();
+  await expect(page.locator("#theatreInput")).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator("#movieMeta")).toContainText("Loading");
+  await expect(page.locator("#movieInput")).toBeDisabled();
+  await expect(page.locator("#movieInput")).toHaveAttribute("aria-busy", "true");
   const whileMoviesLoad = await page.evaluate(() => ({
     movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
     preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
@@ -402,6 +410,8 @@ test("field loading messages do not reflow later controls", async ({ page }) => 
 
   releaseMovies();
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  await expect(page.locator("#movieInput")).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator("#movieStatus")).toBeEmpty();
   const settled = await page.evaluate(() => ({
     preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
@@ -603,7 +613,7 @@ test("mobile search keeps content stable while loading and then renders its resp
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("typing filters movies but only a selected suggestion can be searched", async ({ page }) => {
+test("movie search accepts a selected suggestion or an exact loaded title", async ({ page }) => {
   let searchUrl = "";
   let searchCount = 0;
   await mockSearchDependencies(page, route => {
@@ -621,16 +631,15 @@ test("typing filters movies but only a selected suggestion can be searched", asy
   await movieInput.fill("Test");
   const suggestion = page.getByRole("option", { name: "Test Movie", exact: true });
   await expect(suggestion).toBeVisible();
-  await movieInput.fill("Test Movie");
   await searchButton.click();
 
   await expect(movieInput).toHaveJSProperty(
     "validationMessage",
-    "Select a movie from the list before searching.",
+    "Select an exact movie from the list before searching.",
   );
   expect(searchUrl).toBe("");
 
-  await suggestion.click();
+  await movieInput.fill("Test Movie");
   await searchButton.click();
   await expect.poll(() => searchUrl).not.toBe("");
   await expect(searchButton).toBeEnabled();
@@ -642,11 +651,59 @@ test("typing filters movies but only a selected suggestion can be searched", asy
     input.dispatchEvent(new Event("input", { bubbles: true }));
     document.querySelector("#searchButton").click();
   });
-  await expect(movieInput).toHaveJSProperty(
-    "validationMessage",
-    "Select a movie from the list before searching.",
-  );
+  await expect(movieInput).toBeDisabled();
   expect(searchCount).toBe(1);
+  await expect(movieInput).toBeEnabled();
+  await expect(movieInput).toHaveValue("Test Movie");
+});
+
+test("theatre filter accepts only an empty, selected, or exact loaded theatre", async ({ page }) => {
+  let searchUrl = "";
+  let movieUrls = [];
+  await page.route("**/api/theatres*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      place: "Testville",
+      theatres: [{ name: "Test Cinema" }, { name: "Test Cinema East" }],
+    }),
+  }));
+  await page.route("**/api/movies*", route => {
+    movieUrls.push(route.request().url());
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+    });
+  });
+  await page.route("**/api/formats*", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ formats: ["Standard"] }),
+  }));
+  await page.route("**/api/search*", route => {
+    searchUrl = route.request().url();
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#theatreMeta")).toHaveText("2 nearby");
+
+  const theatreInput = page.locator("#theatreInput");
+  await theatreInput.fill("Test");
+  await expect(page.getByRole("option", { name: "Test Cinema", exact: true })).toBeVisible();
+  await page.locator("#searchButton").click();
+  await expect(theatreInput).toHaveJSProperty(
+    "validationMessage",
+    "Select an exact theatre from the list before searching.",
+  );
+  expect(searchUrl).toBe("");
+
+  await theatreInput.fill("Test Cinema");
+  await theatreInput.press("Tab");
+  await expect.poll(() => movieUrls.at(-1)).toContain("theatre=Test+Cinema");
+  await selectMovie(page);
+  await page.locator("#searchButton").click();
+  await expect.poll(() => searchUrl).not.toBe("");
+  expect(new URL(searchUrl).searchParams.get("theatre")).toBe("Test Cinema");
 });
 
 test("mobile format chips send every selected format to the search", async ({ page }) => {

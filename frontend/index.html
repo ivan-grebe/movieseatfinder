@@ -129,10 +129,10 @@
             <div class="field-block full">
               <label class="combo">
                 <span class="field-label-row">
-                  <span>Theatre <span class="field-hint">(optional)</span></span>
+                  <span>Theatre <span class="field-hint">(optional · select from list)</span></span>
                   <span id="theatreMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
-                <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre in radius" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu" aria-describedby="theatreStatus">
+                <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre in radius" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu" aria-describedby="theatreStatus" disabled>
                 <div id="theatreMenu" class="combo-menu" role="listbox" aria-label="Nearby theatres" hidden></div>
               </label>
               <div id="theatreStatus" class="status field-status" aria-live="polite"></div>
@@ -152,7 +152,7 @@
                   <span>Movie <span class="field-hint">(select from list)</span></span>
                   <span id="movieMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
-                <input id="movieInput" type="text" autocomplete="off" placeholder="Type to filter movies" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu" aria-describedby="movieStatus">
+                <input id="movieInput" type="text" autocomplete="off" placeholder="Type to filter movies" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu" aria-describedby="movieStatus" disabled>
                 <div id="movieMenu" class="combo-menu" role="listbox" aria-label="Matching movies" hidden></div>
               </label>
               <div id="movieStatus" class="status field-status" aria-live="polite"></div>

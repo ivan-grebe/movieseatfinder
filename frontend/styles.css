@@ -344,6 +344,18 @@ select {
   transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
 }
 
+.combo input:disabled {
+  border-color: rgba(91, 117, 151, .2);
+  background: #edf0f4;
+  color: var(--muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.combo input[aria-busy="true"] { cursor: progress; }
+.combo input:disabled::placeholder { color: #8a94a3; }
+
 input[type="date"],
 input[type="time"] {
   appearance: none;
@@ -1836,6 +1848,12 @@ input[type="time"] {
   input:focus,
   select:focus { background: #1b2230; }
   input::placeholder { color: #6f7c92; }
+  .combo input:disabled {
+    border-color: rgba(150, 170, 196, .12);
+    background: #202733;
+    color: #778398;
+  }
+  .combo input:disabled::placeholder { color: #778398; }
 
   .location-btn { background: var(--field); }
   .location-btn:hover { background: #1b2230; }
