@@ -355,6 +355,9 @@ class RouteTests(unittest.TestCase):
         redirect = self.client.get("/index.html", follow_redirects=False)
         self.assertEqual(redirect.status_code, 308)
         self.assertEqual(redirect.headers["location"], "/")
+        faq_redirect = self.client.get("/faq.html", follow_redirects=False)
+        self.assertEqual(faq_redirect.status_code, 308)
+        self.assertEqual(faq_redirect.headers["location"], "/faq")
         for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css", "/styles.bundle.css"):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
         for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png"):
@@ -620,7 +623,17 @@ class RouteTests(unittest.TestCase):
         self.assertIn("Sitemap:", self.client.get("/robots.txt").text)
         sitemap = self.client.get("/sitemap.xml").text
         self.assertIn("<urlset", sitemap)
+        self.assertIn("<loc>http://testserver/faq</loc>", sitemap)
         self.assertNotIn("<lastmod>", sitemap)
+
+    def test_faq_page_is_rendered_with_its_own_search_metadata(self):
+        response = self.client.get("/faq", headers={"host": "example.test"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Movie Seat Finder FAQ", response.text)
+        self.assertIn('rel="canonical" href="http://example.test/faq"', response.text)
+        self.assertIn('"@type": "FAQPage"', response.text)
+        self.assertNotIn("__FAQ_DESCRIPTION__", response.text)
+        self.assertNotIn("__CANONICAL_URL__", response.text)
 
 
 if __name__ == "__main__":

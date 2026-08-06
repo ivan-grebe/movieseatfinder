@@ -684,6 +684,30 @@ test("movie search accepts a selected suggestion or an exact loaded title", asyn
   await expect(movieInput).toHaveValue("Test Movie");
 });
 
+test("homepage footer opens the dedicated FAQ page", async ({ page }) => {
+  await page.goto("/");
+
+  const faqLink = page.getByRole("link", { name: "FAQ", exact: true });
+  await expect(faqLink).toBeVisible();
+  expect(await faqLink.evaluate(link => (
+    link.closest("footer").getBoundingClientRect().top >= document.querySelector("main").getBoundingClientRect().bottom - 1
+  ))).toBe(true);
+  await faqLink.click();
+
+  await expect(page).toHaveURL(/\/faq$/);
+  await expect(page.getByRole("heading", { name: "Movie Seat Finder FAQ" })).toBeVisible();
+  await expect(page).toHaveTitle("FAQ | Movie Seat Finder");
+
+  const firstQuestion = page.getByText("What does Movie Seat Finder do?", { exact: true });
+  const firstAnswer = page.getByText(/searches nearby movie showtimes and live seat maps/i);
+  await expect(firstAnswer).toBeHidden();
+  expect(await firstQuestion.evaluate(node => node.closest("summary").getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  await firstQuestion.click();
+  await expect(firstAnswer).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to seat finder" })).toHaveAttribute("href", "/");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
 test("theatre filter accepts only an empty, selected, or exact loaded theatre", async ({ page }) => {
   let searchUrl = "";
   let movieUrls = [];

@@ -48,6 +48,10 @@ SITE_NAME = "Movie Seat Finder"
 SITE_DESCRIPTION = (
     "Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets."
 )
+FAQ_DESCRIPTION = (
+    "Answers about finding nearby movie showtimes, comparing theatre formats, checking live seat maps, "
+    "and opening ticket links with Movie Seat Finder."
+)
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "frontend"
 INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
@@ -69,6 +73,12 @@ INDEX_TEMPLATE = (
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
     .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
+    .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
+)
+FAQ_TEMPLATE = (
+    (STATIC_DIR / "faq.html")
+    .read_text(encoding="utf-8")
+    .replace("__INLINE_STYLES__", INLINE_STYLES)
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
 DEFAULT_PAGE_SIZE = 20
@@ -589,13 +599,14 @@ def site_origin(request):
     return normalized_origin(str(request.base_url)) or "http://localhost"
 
 
-def seo_context(request):
+def seo_context(request, path="/"):
     origin = site_origin(request)
     return {
         "__SITE_NAME__": SITE_NAME,
         "__SITE_DESCRIPTION__": SITE_DESCRIPTION,
+        "__FAQ_DESCRIPTION__": FAQ_DESCRIPTION,
         "__SITE_URL__": origin,
-        "__CANONICAL_URL__": f"{origin}/",
+        "__CANONICAL_URL__": f"{origin}{path}",
         "__OG_IMAGE_URL__": f"{origin}/og-image.png",
     }
 
@@ -603,6 +614,13 @@ def seo_context(request):
 def render_index(request):
     markup = INDEX_TEMPLATE
     for token, value in seo_context(request).items():
+        markup = markup.replace(token, value)
+    return markup
+
+
+def render_faq(request):
+    markup = FAQ_TEMPLATE
+    for token, value in seo_context(request, "/faq").items():
         markup = markup.replace(token, value)
     return markup
 
@@ -666,6 +684,17 @@ def index_html():
     return RedirectResponse("/", status_code=308)
 
 
+@app.get("/faq", include_in_schema=False)
+def faq(request: Request):
+    return HTMLResponse(render_faq(request))
+
+
+@app.get("/faq.html", include_in_schema=False)
+def faq_html():
+    # Keep the extensionless URL canonical and never serve the raw template.
+    return RedirectResponse("/faq", status_code=308)
+
+
 @app.get("/robots.txt", include_in_schema=False)
 def robots(request: Request):
     origin = site_origin(request)
@@ -691,6 +720,11 @@ def sitemap(request: Request):
     <loc>{origin}/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>{origin}/faq</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
 </urlset>
 """
