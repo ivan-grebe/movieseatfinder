@@ -46,7 +46,7 @@ src/backend/             Python website and MCP server
 src/frontend/scripts/    Browser JavaScript modules
 src/frontend/styles/     Authored stylesheets
 src/frontend/templates/  Server-rendered HTML templates
-src/frontend/public/     Generated production bundles
+src/frontend/dist/       Generated production bundles
 branding/                Repository and website brand assets
 tests/                   Python, frontend, and browser tests
 ```

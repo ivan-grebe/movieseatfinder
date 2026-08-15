@@ -1,5 +1,5 @@
 {
   "entry": ["src/frontend/scripts/app.js"],
   "project": ["src/frontend/scripts/**/*.js"],
-  "ignore": ["src/frontend/public/app.bundle.js"]
+  "ignore": ["src/frontend/dist/app.bundle.js"]
 }

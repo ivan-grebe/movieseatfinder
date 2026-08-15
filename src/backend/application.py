@@ -54,7 +54,7 @@ FAQ_DESCRIPTION = (
 )
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "src" / "frontend"
-STATIC_DIR = FRONTEND_DIR / "public"
+STATIC_DIR = FRONTEND_DIR / "dist"
 TEMPLATE_DIR = FRONTEND_DIR / "templates"
 BRANDING_DIR = BASE_DIR / "branding"
 INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
