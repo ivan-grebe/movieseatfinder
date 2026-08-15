@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 node_modules/
 test-results/
+.vercel/
+.env.local

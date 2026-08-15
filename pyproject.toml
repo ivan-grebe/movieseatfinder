@@ -27,4 +27,4 @@ where = ["src"]
 include = ["backend*"]
 
 [tool.vercel]
-entrypoint = "backend.server:app"
+entrypoint = "src.backend.server:app"

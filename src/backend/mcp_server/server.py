@@ -11,7 +11,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from starlette.routing import Route
 
-from backend import application
+from .. import application
 from .seat_map_image import render_seat_map_png
 from .security import McpSecurityMiddleware
 from .selection_token import create_selection_token, read_selection_token
