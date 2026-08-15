@@ -52,8 +52,10 @@ FAQ_DESCRIPTION = (
     "Answers about finding nearby movie showtimes, comparing theatre formats, checking live seat maps, "
     "and opening ticket links with Movie Seat Finder."
 )
-BASE_DIR = Path(__file__).resolve().parent.parent
-STATIC_DIR = BASE_DIR / "frontend"
+BASE_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIR = BASE_DIR / "src" / "frontend"
+STATIC_DIR = FRONTEND_DIR / "public"
+TEMPLATE_DIR = FRONTEND_DIR / "templates"
 BRANDING_DIR = BASE_DIR / "branding"
 INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
 INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
@@ -72,14 +74,14 @@ ASSET_VERSIONS = {
 # Static tokens are substituted once at import; only the origin-dependent SEO
 # tokens vary per request.
 INDEX_TEMPLATE = (
-    (STATIC_DIR / "index.html")
+    (TEMPLATE_DIR / "index.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
     .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
 FAQ_TEMPLATE = (
-    (STATIC_DIR / "faq.html")
+    (TEMPLATE_DIR / "faq.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])

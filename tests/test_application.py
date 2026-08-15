@@ -336,7 +336,7 @@ class RouteTests(unittest.TestCase):
         self.assertIn("trusted-types 'none'", content_security_policy)
         self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
         self.assertLessEqual(application.INLINE_STYLES.count("\n"), 1)
-        source_styles = (application.STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        source_styles = (application.FRONTEND_DIR / "styles" / "styles.css").read_text(encoding="utf-8")
         self.assertLess(len(application.INLINE_STYLES), len(source_styles))
 
     def test_vercel_enforces_the_strong_hsts_policy(self):

@@ -39,6 +39,18 @@ uvicorn backend.server:app --reload --host 127.0.0.1 --port 4173
 
 Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.
 
+## Project layout
+
+```text
+src/backend/             Python website and MCP server
+src/frontend/scripts/    Browser JavaScript modules
+src/frontend/styles/     Authored stylesheets
+src/frontend/templates/  Server-rendered HTML templates
+src/frontend/public/     Generated production bundles
+branding/                Repository and website brand assets
+tests/                   Python, frontend, and browser tests
+```
+
 ## Poke / MCP integration
 
 The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It uses a discovery-first flow:

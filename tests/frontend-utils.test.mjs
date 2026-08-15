@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pickAmbientTarget } from "../frontend/ambient-motion.js";
-import { addDays, getJson, todayString } from "../frontend/utils.js";
-import { logTicketClick } from "../frontend/tracking.js";
+import { pickAmbientTarget } from "../src/frontend/scripts/ambient-motion.js";
+import { addDays, getJson, todayString } from "../src/frontend/scripts/utils.js";
+import { logTicketClick } from "../src/frontend/scripts/tracking.js";
 
 test("ambient targets stay bounded and a useful distance from the current glow position", () => {
   const bounds = { x: [-20, 10], y: [0, 18], minDistance: 12 };
