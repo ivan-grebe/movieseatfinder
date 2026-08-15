@@ -54,17 +54,20 @@ FAQ_DESCRIPTION = (
 )
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "frontend"
+BRANDING_DIR = BASE_DIR / "branding"
 INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
 INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg"}
-# The only frontend files the site serves; source modules stay private and the
+# The only browser files the site serves; source modules stay private and the
 # raw index.html template is only reachable through the rendered "/" route.
-PUBLIC_ASSETS = {"app.bundle.js", "favicon.svg", "og-image.png"}
+PUBLIC_ASSETS = {"app.bundle.js"}
+BRANDING_ASSETS = {"favicon.svg", "og-image.png"}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
 # instead of relying on hand-bumped version strings.
 ASSET_VERSIONS = {
-    name: hashlib.sha256((STATIC_DIR / name).read_bytes()).hexdigest()[:12] for name in ("app.bundle.js", "favicon.svg")
+    "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
+    "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
 }
 # Static tokens are substituted once at import; only the origin-dependent SEO
 # tokens vary per request.
@@ -1174,10 +1177,17 @@ def api_search(
 class PublicAssetFiles(StaticFiles):
     """Serve only the allowlisted production assets, not frontend sources."""
 
+    def __init__(self):
+        super().__init__(directory=STATIC_DIR)
+        self.branding = StaticFiles(directory=BRANDING_DIR)
+
     async def get_response(self, path, scope):
-        if path.replace("\\", "/") not in PUBLIC_ASSETS:
+        normalized_path = path.replace("\\", "/")
+        if normalized_path in BRANDING_ASSETS:
+            return await self.branding.get_response(normalized_path, scope)
+        if normalized_path not in PUBLIC_ASSETS:
             raise HTTPException(status_code=404, detail="Not found")
         return await super().get_response(path, scope)
 
 
-app.mount("/", PublicAssetFiles(directory=STATIC_DIR), name="static")
+app.mount("/", PublicAssetFiles(), name="static")

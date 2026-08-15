@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/movie-seat-finder-dark-4k.png" alt="Movie Seat Finder search form in dark mode" width="100%">
+  <img src="branding/movie-seat-finder-dark-4k.png" alt="Movie Seat Finder search form in dark mode" width="100%">
 </p>
 
 <h1 align="center">Movie Seat Finder</h1>
@@ -34,7 +34,7 @@ cd movieseatfinder
 pip install -e ".[test]"
 npm ci
 npm run build:frontend
-uvicorn app:app --reload --host 127.0.0.1 --port 4173
+uvicorn backend.server:app --reload --host 127.0.0.1 --port 4173
 ```
 
 Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.

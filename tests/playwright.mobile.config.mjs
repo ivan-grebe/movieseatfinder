@@ -19,7 +19,7 @@ export default defineConfig({
     hasTouch: true,
   },
   webServer: {
-    command: `"${python}" -m uvicorn app:app --host 127.0.0.1 --port 8765`,
+    command: `"${python}" -m uvicorn backend.server:app --host 127.0.0.1 --port 8765`,
     cwd: repositoryRoot,
     url: "http://127.0.0.1:8765",
     reuseExistingServer: !process.env.CI,

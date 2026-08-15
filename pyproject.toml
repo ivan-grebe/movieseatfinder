@@ -22,6 +22,8 @@ test = [
     "httpx2>=2.7.0",
 ]
 
-[tool.setuptools]
-packages = ["backend", "mcp_server"]
-py-modules = ["app"]
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.vercel]
+entrypoint = "backend.server:app"

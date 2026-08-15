@@ -1,12 +1,12 @@
-"""Vercel-compatible composition root for the website and MCP server."""
+"""Composition root for the website and MCP server."""
 
 from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-from backend.application import app as website_app
-from mcp_server.server import mcp_protocol_app, mcp_route
+from .application import app as website_app
+from .mcp_server.server import mcp_protocol_app, mcp_route
 
 
 @asynccontextmanager

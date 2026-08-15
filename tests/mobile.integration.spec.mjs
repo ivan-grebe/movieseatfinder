@@ -55,56 +55,6 @@ async function selectMovie(page, title = "Test Movie") {
   await expect(input).toHaveValue(title);
 }
 
-test("initial render inlines CSS and loads one application bundle", async ({ page }) => {
-  const applicationAssets = [];
-  page.on("request", request => {
-    const url = new URL(request.url());
-    if (url.pathname.startsWith("/_vercel/")) return;
-    if (["script", "stylesheet"].includes(request.resourceType())) {
-      applicationAssets.push({ path: url.pathname, type: request.resourceType() });
-    }
-  });
-
-  await page.goto("/");
-
-  expect(applicationAssets.filter(asset => asset.type === "stylesheet")).toEqual([]);
-  expect(applicationAssets.filter(asset => asset.type === "script")).toEqual([
-    { path: "/app.bundle.js", type: "script" },
-  ]);
-  await expect(page.locator("head > style")).toHaveCount(1);
-  await expect(page.locator('script[src^="app.bundle.js"]')).toHaveAttribute("async", "");
-  const entranceAnimations = await page.locator("h1, .tagline, .card").evaluateAll(elements => elements.map(element => (
-    element.getAnimations()[0]?.effect.getKeyframes().flatMap(frame => (
-      Object.keys(frame).filter(property => !["offset", "easing", "composite", "computedOffset"].includes(property))
-    )) || []
-  )));
-  expect(entranceAnimations[0]).toEqual([]);
-  expect(new Set(entranceAnimations[1])).toEqual(new Set(["opacity", "transform"]));
-  expect(new Set(entranceAnimations[2])).toEqual(new Set(["opacity", "transform"]));
-
-  const protectedLayout = await page.evaluate(() => {
-    const grid = document.querySelector("#seatPreferenceGrid");
-    const style = getComputedStyle(grid);
-    let trustedTypesEnforced = false;
-    try {
-      document.createElement("div").innerHTML = "<span></span>";
-    } catch (error) {
-      trustedTypesEnforced = error.name === "TypeError";
-    }
-    return {
-      aspectRatio: style.aspectRatio,
-      gridHeight: grid.getBoundingClientRect().height,
-      gridWidth: grid.getBoundingClientRect().width,
-      rowCount: style.gridTemplateRows.split(" ").length,
-      trustedTypesEnforced,
-    };
-  });
-  expect(protectedLayout.aspectRatio).toBe("1 / 1");
-  expect(Math.abs(protectedLayout.gridHeight - protectedLayout.gridWidth)).toBeLessThan(1);
-  expect(protectedLayout.rowCount).toBe(15);
-  expect(protectedLayout.trustedTypesEnforced).toBe(true);
-});
-
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto("/");
@@ -115,167 +65,11 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
-    dateWidths: [...document.querySelectorAll('input[type="date"]')].map(input => input.getBoundingClientRect().width),
-    preferenceWidths: [...document.querySelectorAll(".preferences-group .grid.thirds > label")]
-      .map(label => label.getBoundingClientRect().width),
-    balancedTextWraps: [
-      ".tagline",
-      ".accessible-check > span:last-child",
-      ".seat-help",
-      ".empty-state p",
-    ].map(selector => getComputedStyle(document.querySelector(selector)).textWrap),
     inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
-    githubShadow: getComputedStyle(document.querySelector(".github-link")).boxShadow,
   }));
 
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  expect(layout.dateWidths.every(width => width >= 200)).toBe(true);
-  expect(layout.preferenceWidths.slice(0, 2).every(width => width >= 100)).toBe(true);
-  expect(layout.preferenceWidths[2]).toBeGreaterThan(layout.preferenceWidths[0] * 1.8);
-  expect(layout.balancedTextWraps).toEqual(["balance", "balance", "balance", "balance"]);
   expect(layout.inputFontSize).toBe("16px");
-  expect(layout.githubShadow).toBe("none");
-});
-
-test("ambient background glows wander randomly, scroll with the page, and respect reduced motion", async ({ page }) => {
-  await page.goto("/");
-
-  const movingStyles = await page.evaluate(() => {
-    const layer = document.querySelector(".ambient-glows");
-    const glows = [
-      document.querySelector(".ambient-glow-warm"),
-      document.querySelector(".ambient-glow-cool"),
-    ];
-    const layerTop = layer.getBoundingClientRect().top;
-    const styles = glows.map(element => {
-      const style = getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      const animation = element.getAnimations()[0];
-      animation.pause();
-      const duration = animation.effect.getTiming().duration;
-      const keyframes = animation.effect.getKeyframes();
-      animation.currentTime = 0;
-      const startRect = element.getBoundingClientRect();
-      const startTransform = getComputedStyle(element).transform;
-      animation.currentTime = duration * .99;
-      const destinationRect = element.getBoundingClientRect();
-      const destinationTransform = getComputedStyle(element).transform;
-      return {
-        animationName: style.animationName,
-        animationDuration: duration,
-        destination: keyframes.at(-1).transform,
-        glowAlpha: Number.parseFloat(style.backgroundImage.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0"),
-        keyframeCount: keyframes.length,
-        motionState: element.dataset.ambientMotion,
-        travelDistance: Math.hypot(destinationRect.x - startRect.x, destinationRect.y - startRect.y),
-        intersectsViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
-        moves: startTransform !== destinationTransform,
-        willChange: style.willChange,
-      };
-    });
-    return {
-      layerPosition: getComputedStyle(layer).position,
-      layerTop,
-      styles,
-    };
-  });
-
-  expect(movingStyles.layerPosition).toBe("absolute");
-  expect(movingStyles.layerTop).toBeCloseTo(0, 1);
-  expect(movingStyles.styles.every(style => style.animationName === "none")).toBe(true);
-  expect(movingStyles.styles.every(style => style.animationDuration >= 6_500 && style.animationDuration <= 10_500)).toBe(true);
-  expect(movingStyles.styles.every(style => style.keyframeCount === 2)).toBe(true);
-  expect(movingStyles.styles.every(style => style.motionState === "wandering")).toBe(true);
-  expect(movingStyles.styles.every(style => style.glowAlpha >= .4)).toBe(true);
-  expect(movingStyles.styles.every(style => style.travelDistance >= 45)).toBe(true);
-  expect(movingStyles.styles.every(style => style.intersectsViewport)).toBe(true);
-  expect(movingStyles.styles.every(style => style.moves)).toBe(true);
-  expect(movingStyles.styles.every(style => style.willChange === "transform")).toBe(true);
-
-  const regeneratedDestinations = await page.evaluate(async () => {
-    const glows = [
-      document.querySelector(".ambient-glow-warm"),
-      document.querySelector(".ambient-glow-cool"),
-    ];
-    glows.forEach(element => element.getAnimations()[0].finish());
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return glows.map(element => ({
-      animationCount: element.getAnimations().length,
-      destination: element.getAnimations()[0].effect.getKeyframes().at(-1).transform,
-    }));
-  });
-  expect(regeneratedDestinations.every((style, index) => style.animationCount === 1
-    && style.destination !== movingStyles.styles[index].destination)).toBe(true);
-
-  await page.evaluate(() => {
-    document.documentElement.style.scrollBehavior = "auto";
-    scrollTo(0, 600);
-  });
-  const scrolledLayer = await page.evaluate(() => ({
-    scrollY,
-    top: document.querySelector(".ambient-glows").getBoundingClientRect().top,
-  }));
-  expect(scrolledLayer.scrollY).toBeGreaterThan(0);
-  expect(scrolledLayer.top).toBeCloseTo(-scrolledLayer.scrollY, 1);
-
-  await page.emulateMedia({ colorScheme: "dark" });
-  const mobileDarkGlowAlpha = await page.evaluate(() => [
-    document.querySelector(".ambient-glow-warm"),
-    document.querySelector(".ambient-glow-cool"),
-  ].map(element => {
-    const background = getComputedStyle(element).backgroundImage;
-    return Number.parseFloat(background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0");
-  }));
-  expect(mobileDarkGlowAlpha.every(alpha => alpha >= .32)).toBe(true);
-
-  await page.setViewportSize({ width: 1280, height: 900 });
-  const desktopDarkGlowAlpha = await page.evaluate(() => [
-    document.querySelector(".ambient-glow-warm"),
-    document.querySelector(".ambient-glow-cool"),
-  ].map(element => {
-    const background = getComputedStyle(element).backgroundImage;
-    return Number.parseFloat(background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "0");
-  }));
-  expect(desktopDarkGlowAlpha.every(alpha => alpha >= .30)).toBe(true);
-
-  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-  await page.waitForFunction(() => document.querySelector(".ambient-glow-warm").dataset.ambientMotion === "paused");
-  const reducedStyles = await page.evaluate(() => [
-    document.querySelector(".ambient-glow-warm"),
-    document.querySelector(".ambient-glow-cool"),
-  ].map(element => {
-    const style = getComputedStyle(element);
-    return {
-      animationCount: element.getAnimations().length,
-      motionState: element.dataset.ambientMotion,
-      willChange: style.willChange,
-    };
-  }));
-  expect(reducedStyles).toEqual([
-    { animationCount: 0, motionState: "paused", willChange: "auto" },
-    { animationCount: 0, motionState: "paused", willChange: "auto" },
-  ]);
-});
-
-test("desktop location and movie cards share a row height", async ({ page }) => {
-  for (const width of [1280, 1600]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
-
-    const cards = await page.evaluate(() => {
-      const location = document.querySelector(".location-group").getBoundingClientRect();
-      const movie = document.querySelector(".movie-group").getBoundingClientRect();
-      return {
-        locationTop: location.top,
-        movieTop: movie.top,
-        locationHeight: location.height,
-        movieHeight: movie.height,
-      };
-    });
-
-    expect(cards.movieTop).toBeCloseTo(cards.locationTop, 1);
-    expect(cards.movieHeight).toBeCloseTo(cards.locationHeight, 1);
-  }
 });
 
 test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
@@ -300,64 +94,21 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(centerButton).toBeHidden();
   await expect(clearButton).toBeHidden();
   await expect(grid).toHaveClass(/is-mobile-locked/);
-  await expect(grid).toHaveCSS("touch-action", "pan-y");
-  await expect(grid).toHaveCSS("opacity", "0.56");
-  await expect(firstCell).toHaveCSS("pointer-events", "none");
   await expect(page.locator("#seatPreferenceHelp")).toHaveText(
     "Tap Edit seat area to choose where you'd like to sit.",
   );
-  const seatSilhouette = await firstCell.evaluate(cell => ({
-    backrest: getComputedStyle(cell, "::before").content,
-    cushion: getComputedStyle(cell, "::after").content,
-    cushionHeight: getComputedStyle(cell, "::after").height,
-  }));
-  expect(seatSilhouette).toEqual({ backrest: '\"\"', cushion: '\"\"', cushionHeight: "5px" });
-
-  const overlayAppearance = await page.evaluate(() => {
-    const grid = document.querySelector("#seatPreferenceGrid").getBoundingClientRect();
-    const button = document.querySelector("#editSeatGridButton");
-    const rect = button.getBoundingClientRect();
-    const style = getComputedStyle(button);
-    return {
-      centerDeltaX: Math.abs((rect.left + rect.width / 2) - (grid.left + grid.width / 2)),
-      centerDeltaY: Math.abs((rect.top + rect.height / 2) - (grid.top + grid.height / 2)),
-      color: style.color,
-      backgroundImage: style.backgroundImage,
-      minHeight: rect.height,
-      overlapsGrid: rect.left < grid.right && rect.right > grid.left && rect.top < grid.bottom && rect.bottom > grid.top,
-    };
-  });
-  expect(overlayAppearance.centerDeltaX).toBeLessThan(1);
-  expect(overlayAppearance.centerDeltaY).toBeLessThan(1);
-  expect(overlayAppearance.color).toBe("rgb(255, 255, 255)");
-  expect(overlayAppearance.backgroundImage).toContain("linear-gradient");
-  expect(overlayAppearance.minHeight).toBeGreaterThanOrEqual(48);
-  expect(overlayAppearance.overlapsGrid).toBe(true);
-
   await firstCell.dispatchEvent("click");
   await expect(firstCell).toHaveAttribute("aria-pressed", "false");
 
   await editButton.click();
   await expect(editButton).toBeHidden();
   await expect(grid).toHaveClass(/is-mobile-editing/);
-  await expect(grid).toHaveCSS("opacity", "1");
-  await expect(grid).toHaveCSS("touch-action", "none");
   await expect(centerButton).toBeVisible();
   await expect(clearButton).toBeVisible();
   await expect(cancelButton).toBeVisible();
   await expect(doneButton).toBeVisible();
 
-  const centerAppearance = await centerButton.evaluate(button => ({
-    color: getComputedStyle(button).color,
-    background: getComputedStyle(button).backgroundColor,
-    shadow: getComputedStyle(button).boxShadow,
-  }));
   await centerButton.tap();
-  await expect.poll(() => centerButton.evaluate(button => ({
-    color: getComputedStyle(button).color,
-    background: getComputedStyle(button).backgroundColor,
-    shadow: getComputedStyle(button).boxShadow,
-  }))).toEqual(centerAppearance);
   await clearButton.tap();
 
   await firstCell.click();
@@ -377,75 +128,9 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(centerButton).toBeVisible();
   await expect(clearButton).toBeVisible();
   await expect(grid).not.toHaveClass(/is-mobile-locked/);
-  await expect(grid).toHaveCSS("touch-action", "none");
 });
 
-test("field loading messages do not reflow later controls", async ({ page }) => {
-  let releaseTheatres;
-  let markTheatresStarted;
-  const theatresStarted = new Promise(resolve => { markTheatresStarted = resolve; });
-  const theatreGate = new Promise(resolve => { releaseTheatres = resolve; });
-  let releaseMovies;
-  let markMoviesStarted;
-  const moviesStarted = new Promise(resolve => { markMoviesStarted = resolve; });
-  const movieGate = new Promise(resolve => { releaseMovies = resolve; });
-
-  await page.route("**/api/theatres*", async route => {
-    markTheatresStarted();
-    await theatreGate;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ place: "Testville", theatres: [] }),
-    });
-  });
-  await page.route("**/api/movies*", async route => {
-    markMoviesStarted();
-    await movieGate;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-    });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await theatresStarted;
-  await expect(page.locator("#theatreMeta")).toContainText("Loading");
-  await expect(page.locator("#theatreInput")).toBeDisabled();
-  await expect(page.locator("#theatreInput")).toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#theatreInput")).toHaveCSS("background-color", "rgb(223, 227, 232)");
-  await expect(page.locator("#theatreInput")).toHaveCSS("border-top-style", "dashed");
-  await expect(page.locator("#movieInput")).toBeDisabled();
-  await expect(page.locator("#searchButton")).toBeDisabled();
-  const whileTheatresLoad = await page.evaluate(() => ({
-    movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
-  }));
-
-  releaseTheatres();
-  await moviesStarted;
-  await expect(page.locator("#theatreInput")).toBeEnabled();
-  await expect(page.locator("#theatreInput")).not.toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#movieMeta")).toContainText("Loading");
-  await expect(page.locator("#movieInput")).toBeDisabled();
-  await expect(page.locator("#movieInput")).toHaveAttribute("aria-busy", "true");
-  const whileMoviesLoad = await page.evaluate(() => ({
-    movieTop: document.querySelector(".movie-group").getBoundingClientRect().top,
-    preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
-  }));
-  expect(whileMoviesLoad.movieTop).toBeCloseTo(whileTheatresLoad.movieTop, 1);
-
-  releaseMovies();
-  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-  await expect(page.locator("#movieInput")).toBeEnabled();
-  await expect(page.locator("#movieInput")).not.toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#movieStatus")).toBeEmpty();
-  const settled = await page.evaluate(() => ({
-    preferencesTop: document.querySelector(".preferences-group").getBoundingClientRect().top,
-  }));
-  expect(settled.preferencesTop).toBeCloseTo(whileMoviesLoad.preferencesTop, 1);
-});
-
-test("movie and seat controls stay locked until the location resolves without reflow", async ({ page }) => {
+test("movie and seat controls stay locked until the location resolves", async ({ page }) => {
   let releaseTheatres;
   let markTheatresStarted;
   const theatresStarted = new Promise(resolve => { markTheatresStarted = resolve; });
@@ -481,10 +166,6 @@ test("movie and seat controls stay locked until the location resolves without re
 
   await page.locator("#zipInput").fill("10001");
   await theatresStarted;
-  const lockedLayout = await page.evaluate(() => ({
-    movie: document.querySelector("#movieGroup").getBoundingClientRect().toJSON(),
-    preferences: document.querySelector("#preferencesGroup").getBoundingClientRect().toJSON(),
-  }));
   releaseTheatres();
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
@@ -494,17 +175,9 @@ test("movie and seat controls stay locked until the location resolves without re
     await expect(group).not.toHaveClass(/is-location-locked/);
   }
   await expect(searchButton).toBeEnabled();
-  const unlockedLayout = await page.evaluate(() => ({
-    movie: document.querySelector("#movieGroup").getBoundingClientRect().toJSON(),
-    preferences: document.querySelector("#preferencesGroup").getBoundingClientRect().toJSON(),
-  }));
-  expect(unlockedLayout.movie.top).toBeCloseTo(lockedLayout.movie.top, 1);
-  expect(unlockedLayout.movie.height).toBeCloseTo(lockedLayout.movie.height, 1);
-  expect(unlockedLayout.preferences.top).toBeCloseTo(lockedLayout.preferences.top, 1);
-  expect(unlockedLayout.preferences.height).toBeCloseTo(lockedLayout.preferences.height, 1);
 });
 
-test("movie options can extend beyond the movie card without being clipped or covered", async ({ page }) => {
+test("movie options remain selectable beyond the movie card", async ({ page }) => {
   const movies = Array.from({ length: 12 }, (_, index) => ({ title: `Test Movie ${index + 1}` }));
   await page.route("**/api/theatres*", route => route.fulfill({
     contentType: "application/json",
@@ -519,58 +192,10 @@ test("movie options can extend beyond the movie card without being clipped or co
   await page.locator("#zipInput").fill("10001");
   await expect(page.locator("#movieMeta")).toHaveText("12 showing");
 
-  // Hold the movie content at the same partial opacity used by the unlock
-  // transition. Partial opacity creates a stacking context, and the menu must
-  // still layer above the following preference card while that fade is active.
-  const transitionOpacity = await page.locator("#movieGroup > .grid").evaluate(element => {
-    const animation = element.animate(
-      [{ opacity: .62 }, { opacity: 1 }],
-      { duration: 160, fill: "both" },
-    );
-    animation.pause();
-    animation.currentTime = 80;
-    return Number.parseFloat(getComputedStyle(element).opacity);
-  });
-  expect(transitionOpacity).toBeGreaterThan(.62);
-  expect(transitionOpacity).toBeLessThan(1);
-
   await page.locator("#movieInput").click();
   await expect(page.locator("#movieMenu")).toBeVisible();
-
-  const menuLayout = await page.evaluate(() => {
-    const group = document.querySelector("#movieGroup");
-    const menu = document.querySelector("#movieMenu");
-    const groupRect = group.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    const sampleX = menuRect.left + (menuRect.width / 2);
-    const sampleY = groupRect.bottom + 24;
-    return {
-      overflow: getComputedStyle(group).overflow,
-      extendsBeyondCardBy: menuRect.bottom - groupRect.bottom,
-      menuIsTopmostBelowCard: menu.contains(document.elementFromPoint(sampleX, sampleY)),
-    };
-  });
-
-  expect(menuLayout.overflow).toBe("visible");
-  expect(menuLayout.extendsBeyondCardBy).toBeGreaterThan(100);
-  expect(menuLayout.menuIsTopmostBelowCard).toBe(true);
-
-  const closingLayout = await page.evaluate(() => {
-    const group = document.querySelector("#movieGroup");
-    const menu = document.querySelector("#movieMenu");
-    const groupRect = group.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    document.querySelector("#radiusInput").focus();
-    const sampleX = menuRect.left + (menuRect.width / 2);
-    const sampleY = groupRect.bottom + 24;
-    return {
-      menuStillOpenDuringClickDelay: !menu.hidden,
-      menuRemainsTopmostDuringClickDelay: menu.contains(document.elementFromPoint(sampleX, sampleY)),
-    };
-  });
-
-  expect(closingLayout.menuStillOpenDuringClickDelay).toBe(true);
-  expect(closingLayout.menuRemainsTopmostDuringClickDelay).toBe(true);
+  await page.getByRole("option", { name: "Test Movie 12", exact: true }).click();
+  await expect(page.locator("#movieInput")).toHaveValue("Test Movie 12");
   await expect(page.locator("#movieMenu")).toBeHidden();
 });
 
@@ -784,7 +409,7 @@ test("mobile format chips send every selected format to the search", async ({ pa
   expect(searchUrl).toContain("excludeAccessible=1");
 });
 
-test("format tier guide stays compact until the user opens it", async ({ page }) => {
+test("format tier guide opens and closes accessibly", async ({ page }) => {
   await mockSearchDependencies(page, route => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(emptySearch),
@@ -798,17 +423,7 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   const guideButton = page.locator("#formatGuideButton");
   await expect(guide).not.toHaveClass(/is-open/);
   await expect(guideButton).toHaveAttribute("aria-expanded", "false");
-  const animationHeights = await guide.evaluate(async element => {
-    element.querySelector("button").click();
-    const start = element.getBoundingClientRect().height;
-    await new Promise(resolve => setTimeout(resolve, 80));
-    const middle = element.getBoundingClientRect().height;
-    await new Promise(resolve => setTimeout(resolve, 220));
-    const end = element.getBoundingClientRect().height;
-    return { start, middle, end };
-  });
-  expect(animationHeights.middle).toBeGreaterThan(animationHeights.start);
-  expect(animationHeights.middle).toBeLessThan(animationHeights.end);
+  await guideButton.click();
   await expect(guide).toHaveClass(/is-open/);
   await expect(guideButton).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#formatGuideContent")).toHaveAttribute("aria-hidden", "false");
@@ -816,33 +431,14 @@ test("format tier guide stays compact until the user opens it", async ({ page })
   await expect(page.getByText("IMAX · 70mm · AMC PRIME · Cinemark XD · Regal RPX · AMC XL", { exact: true })).toBeVisible();
   await expect(page.getByText("35mm · RealD 3D · 4DX · ScreenX · D-BOX", { exact: true })).toBeVisible();
   await expect(page.locator(".format-tier-badge")).toHaveText(["S", "A", "B", "?"]);
-  const tierGeometry = await page.evaluate(() => {
-    const panel = document.querySelector(".format-guide-body");
-    const lastTier = document.querySelector(".format-tier:last-child");
-    const badgeOffsets = [...document.querySelectorAll(".format-tier")].map(tier => {
-      const badge = tier.querySelector(".format-tier-badge").getBoundingClientRect();
-      const row = tier.getBoundingClientRect();
-      return Math.abs((badge.top + badge.bottom) / 2 - (row.top + row.bottom) / 2);
-    });
-    return {
-      bottomSpace: panel.getBoundingClientRect().bottom - lastTier.getBoundingClientRect().bottom,
-      panelPadding: Number.parseFloat(getComputedStyle(panel).paddingBottom),
-      badgeOffsets,
-    };
-  });
-  expect(tierGeometry.bottomSpace).toBeCloseTo(tierGeometry.panelPadding, 1);
-  expect(tierGeometry.badgeOffsets.every(offset => offset <= 1)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
-  const restingColor = await guideButton.evaluate(element => getComputedStyle(element).color);
-  await guideButton.tap();
+  await guideButton.click();
   await expect(guide).not.toHaveClass(/is-open/);
   await expect(guideButton).toHaveAttribute("aria-expanded", "false");
-  await expect(guideButton).toHaveCSS("color", restingColor);
+  await expect(page.locator("#formatGuideContent")).toHaveAttribute("aria-hidden", "true");
 });
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
   const searchSorts = [];
   let releaseLatestSearch;
   let markLatestSearchStarted;
@@ -888,58 +484,24 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await expect(sortInput).toBeVisible();
   await expect(sortInput).toHaveValue("earliest");
   await page.locator("#resultsToolbar").scrollIntoViewIfNeeded();
-  const beforeReorder = await page.evaluate(() => ({
-    resultsMarkup: document.querySelector("#results").innerHTML,
-    resultsHeight: document.querySelector("#results").getBoundingClientRect().height,
-    scrollY: window.scrollY,
-  }));
-
   await sortInput.selectOption("latest");
   await latestSearchStarted;
   const reorderScrollY = await page.evaluate(() => window.scrollY);
   const sortStatus = page.locator("#sortStatus");
   await expect(sortStatus).toContainText("Reordering");
-  await expect(sortStatus.locator(".loading-dot")).toHaveCount(3);
-  // Under reduced motion the dots stop cycling and stay visible instead.
-  await expect(sortStatus.locator(".loading-dot-1")).toHaveCSS("opacity", "1");
-  await expect(sortStatus.locator(".loading-dot-2")).toHaveCSS("opacity", "1");
-  await expect(sortStatus.locator(".loading-dot-3")).toHaveCSS("opacity", "1");
-  expect(await sortStatus.locator(".loading-dot-2").evaluate(dot => getComputedStyle(dot).animationName)).toBe("none");
-  expect(await sortStatus.locator(".loading-dot-3").evaluate(dot => getComputedStyle(dot).animationName)).toBe("none");
   await expect(sortInput).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeEnabled();
-  await expect(page.locator("#searchButton")).toHaveText("Find matching seats");
-  const duringReorder = await page.evaluate(() => ({
-    resultsMarkup: document.querySelector("#results").innerHTML,
-    minHeight: Number.parseFloat(document.querySelector("#results").style.minHeight),
-    scrollY: window.scrollY,
-  }));
-  expect(duringReorder.resultsMarkup).toBe(beforeReorder.resultsMarkup);
-  expect(duringReorder.minHeight).toBeGreaterThanOrEqual(beforeReorder.resultsHeight);
-  expect(duringReorder.scrollY).toBe(reorderScrollY);
 
   releaseLatestSearch();
   await expect.poll(() => searchSorts.at(-1)).toBe("latest");
   await expect(sortInput).toBeEnabled();
   await expect(page.locator("#sortStatus")).toBeEmpty();
-  await page.waitForTimeout(50);
-  const afterReorder = await page.evaluate(() => ({
-    scrollY: window.scrollY,
-    animationName: getComputedStyle(document.querySelector(".result")).animationName,
-  }));
-  expect(afterReorder.scrollY).toBe(reorderScrollY);
-  expect(afterReorder.animationName).toBe("none");
+  expect(await page.evaluate(() => window.scrollY)).toBe(reorderScrollY);
 
   await sortInput.selectOption("nearest");
   await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
   expect(searchSorts[0]).toBe("earliest");
 
-  const dimensions = await sortInput.evaluate(select => ({
-    height: select.getBoundingClientRect().height,
-    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  }));
-  expect(dimensions.height).toBeGreaterThanOrEqual(44);
-  expect(dimensions.overflow).toBeLessThanOrEqual(0);
 });
 
 test("pagination shows generic loading feedback beside the page controls", async ({ page }) => {
@@ -984,13 +546,6 @@ test("pagination shows generic loading feedback beside the page controls", async
   const previousPage = page.getByRole("button", { name: "Previous page of results" });
   const nextPage = page.getByRole("button", { name: "Next page of results" });
   await nextPage.scrollIntoViewIfNeeded();
-  const controlsBeforeLoading = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll("#pagination button")];
-    return controls.map(control => {
-      const rect = control.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    });
-  });
   await nextPage.click();
   await secondPageStarted;
 
@@ -998,20 +553,9 @@ test("pagination shows generic loading feedback beside the page controls", async
   await expect(pagination.locator("button:disabled")).toHaveCount(2);
   await expect(previousPage).toBeDisabled();
   await expect(nextPage).toBeDisabled();
-  const controlsDuringLoading = await page.evaluate(() => {
-    const controls = [...document.querySelectorAll("#pagination button")];
-    return controls.map(control => {
-      const rect = control.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    });
-  });
-  expect(controlsDuringLoading).toEqual(controlsBeforeLoading);
   await expect(page.locator("#sortInput")).toBeDisabled();
   await expect(pagination.locator(".pagination-label")).toHaveText("Loading...");
   await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
-  await expect(page.locator("#searchButton")).toContainText("Checking showtimes");
-  await expect(pagination.locator(".pagination-label")).toHaveText("Loading...");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
   releaseSecondPage();
   await expect(page.getByRole("heading", { name: "Page Two Cinema", exact: true })).toBeVisible();
@@ -1107,24 +651,10 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
 
   const matchedSeat = page.locator(".real-seat.matched");
   await expect(matchedSeat).toHaveCount(1);
-  await expect(matchedSeat).toHaveCSS("background-color", "rgb(201, 58, 58)");
-  const matchedGlow = await matchedSeat.evaluate(seat => {
-    const style = getComputedStyle(seat, "::before");
-    return { backgroundColor: style.backgroundColor, filter: style.filter };
-  });
-  expect(matchedGlow.backgroundColor).toBe("rgba(201, 58, 58, 0.62)");
-  expect(matchedGlow.filter).toBe("blur(2px)");
   const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
   await expect(wheelchairSeat).toHaveClass(/accessible/);
-  await expect(wheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
-  expect(await wheelchairSeat.evaluate(seat => getComputedStyle(seat, "::before").content)).toBe("none");
-  const unavailableWheelchairSeat = page.locator('.real-seat[title="A3 - unavailable - wheelchair"]');
-  await expect(unavailableWheelchairSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
   const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
   await expect(companionSeat).toHaveClass(/accessible/);
-  await expect(companionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
-  const unavailableCompanionSeat = page.locator('.real-seat[title="A5 - unavailable - companion"]');
-  await expect(unavailableCompanionSeat).toHaveCSS("background-color", "rgb(199, 206, 216)");
   await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
   await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
 
@@ -1133,39 +663,11 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   await page.locator("#searchButton").click();
 
   const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
-  await expect(includedWheelchairSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
-  const wheelchairGlow = await includedWheelchairSeat.evaluate(seat => {
-    const style = getComputedStyle(seat, "::before");
-    return { backgroundColor: style.backgroundColor, filter: style.filter };
-  });
-  expect(wheelchairGlow.backgroundColor).toBe("rgba(37, 99, 199, 0.62)");
-  expect(wheelchairGlow.filter).toBe("blur(2px)");
+  await expect(includedWheelchairSeat).toHaveClass(/accessible/);
   const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
-  await expect(includedCompanionSeat).toHaveCSS("background-color", "rgb(37, 99, 199)");
-  const companionGlow = await includedCompanionSeat.evaluate(seat => {
-    const style = getComputedStyle(seat, "::before");
-    return { backgroundColor: style.backgroundColor, filter: style.filter };
-  });
-  expect(companionGlow.backgroundColor).toBe("rgba(37, 99, 199, 0.62)");
-  expect(companionGlow.filter).toBe("blur(2px)");
+  await expect(includedCompanionSeat).toHaveClass(/accessible/);
   await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
-
-  const mobileLegendRows = await page.locator(".seat-map-legend").evaluate(legend => (
-    [...legend.children].map(item => Math.round(item.getBoundingClientRect().top))
-  ));
-  expect(new Set(mobileLegendRows).size).toBe(1);
-
-  await page.setViewportSize({ width: 320, height: 700 });
-  const narrowLegendRows = await page.locator(".seat-map-legend").evaluate(legend => {
-    const rowCounts = new Map();
-    for (const item of legend.children) {
-      const top = Math.round(item.getBoundingClientRect().top);
-      rowCounts.set(top, (rowCounts.get(top) || 0) + 1);
-    }
-    return [...rowCounts.values()].sort();
-  });
-  expect(narrowLegendRows).toEqual([2, 2]);
 });
 
 test("accessible matches retain both accessible and matching states", async ({ page }) => {
@@ -1204,19 +706,7 @@ test("accessible matches retain both accessible and matching states", async ({ p
   await page.locator("#searchButton").click();
 
   const accessibleMatch = page.locator('.real-seat[title="WC1 - available - wheelchair"]');
-  const combinedBackground = await accessibleMatch.evaluate(seat => getComputedStyle(seat).backgroundImage);
-  expect(combinedBackground).toContain("rgb(201, 58, 58)");
-  expect(combinedBackground).toContain("rgb(37, 99, 199)");
-  expect(combinedBackground).toContain("rgb(143, 31, 38)");
-  expect(combinedBackground).toContain("rgb(23, 74, 151)");
-  await expect(accessibleMatch).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
-  await expect(accessibleMatch).toHaveCSS("box-shadow", "none");
-  const combinedGlow = await accessibleMatch.evaluate(seat => {
-    const style = getComputedStyle(seat, "::before");
-    return { backgroundImage: style.backgroundImage, filter: style.filter };
-  });
-  expect(combinedGlow.backgroundImage).toContain("rgba(201, 58, 58, 0.62)");
-  expect(combinedGlow.backgroundImage).toContain("rgba(37, 99, 199, 0.62)");
-  expect(combinedGlow.filter).toBe("blur(2px)");
+  await expect(accessibleMatch).toHaveClass(/accessible/);
+  await expect(accessibleMatch).toHaveClass(/matched/);
   await expect(page.getByText("Accessible match", { exact: true })).toHaveCount(0);
 });

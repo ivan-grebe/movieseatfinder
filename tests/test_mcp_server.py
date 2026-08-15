@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-import app as entrypoint
-from mcp_server import seat_map_image, security, server
+from backend import server as entrypoint
+from backend.mcp_server import seat_map_image, security, server
 
 
 def sample_search_result():
@@ -223,7 +223,7 @@ class McpToolTests(unittest.TestCase):
     @patch.object(server.application, "showtime_seat_match")
     @patch.object(server, "_run_seat_search", return_value=sample_search_result())
     def test_expired_seat_map_token_repeats_the_exact_search(self, run_seat_search, showtime_seat_match):
-        with patch("mcp_server.selection_token.time.time", return_value=401):
+        with patch("backend.mcp_server.selection_token.time.time", return_value=401):
             result = server.show_movie_seat_map(selection_token=sample_selection_token(now=100))
 
         self.assertTrue(result[1].data.startswith(b"\x89PNG"))

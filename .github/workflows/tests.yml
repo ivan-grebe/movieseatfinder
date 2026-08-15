@@ -27,9 +27,9 @@ jobs:
           python -m pip install vulture==2.16
           npm ci
       - name: Find dead Python code
-        run: python -m vulture backend/ mcp_server/ app.py --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
+        run: python -m vulture backend/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
       - name: Find dead frontend code
-        run: npx knip --no-config-hints
+        run: npm run lint:frontend
 
   test:
     runs-on: ubuntu-latest
@@ -54,7 +54,7 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Run frontend tests
-        run: node --test tests/frontend-utils.test.mjs
+        run: npm run test:frontend
 
   mobile-integration:
     runs-on: ubuntu-latest
