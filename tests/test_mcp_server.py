@@ -287,7 +287,7 @@ class McpProtocolTests(unittest.TestCase):
         with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
             response = self.client.post("/mcp", headers=self.request_headers(token="wrong"), json={})
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.headers["www-authenticate"], "Bearer")
+        self.assertNotIn("www-authenticate", response.headers)
 
     @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, False])
     def test_mcp_endpoint_applies_global_and_user_limits(self, rate_limit_hit):

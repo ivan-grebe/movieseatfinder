@@ -7,3 +7,4 @@ node_modules/
 test-results/
 .vercel/
 .env.local
+build/
