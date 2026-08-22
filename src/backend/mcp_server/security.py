@@ -185,7 +185,6 @@ class McpSecurityMiddleware:
             response = JSONResponse(
                 {"error": "The supplied MCP API key is invalid."},
                 status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
             )
             await response(scope, receive, send)
             return
