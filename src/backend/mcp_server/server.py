@@ -191,25 +191,34 @@ def _run_seat_search(
 MCP_INSTRUCTIONS = """
 Help users find live movie showtimes and adjacent available seats. Carry forward details already
 provided and ask only when required information is genuinely missing, ambiguous, or unavailable.
-Never invent a movie, date, ZIP code, radius, party size, format, or seat preference.
+When you need to ask, always use the client's user-question or input tool if one is available. If
+the client has no such tool, ask in your response. Collect all and only the currently blocking
+details in one concise question instead of asking for them one at a time. Never invent a movie,
+date, ZIP code, party size, format, or seat preference.
 
-Use get_location_and_movie_info once ZIP code, radius, and date or date range are known. Pass
-movie_query and format_query whenever the user has expressed those preferences so discovery stays
-focused. If one returned title or normalized format unambiguously matches the request, proceed
-without asking the user to repeat it. Ask a concise question only when multiple plausible choices
-remain or the requested choice is unavailable. An empty movie_formats array searches every format.
-Do not treat IMAX, IMAX with Laser, and IMAX 70mm as interchangeable.
+Do not ask for an optional preference when a default is defined. When presenting results, briefly
+state every default applied because the user omitted that preference.
+
+Use get_location_and_movie_info before the first search and whenever the location, date, theatre,
+movie, or format changes. ZIP code and date or date range must be known; radius defaults to 25 miles.
+Pass movie_query and format_query whenever the user has expressed those preferences so discovery
+stays focused. If one returned title or normalized format unambiguously matches the request, proceed
+without asking the user to repeat it. Ask only when multiple plausible choices remain or the
+requested choice is unavailable. An empty movie_formats array searches every format. Do not treat
+IMAX, IMAX with Laser, and IMAX 70mm as interchangeable.
 
 Translate ordinary rectangular seat preferences into seat_region. The grid has 15 rows and 15
 columns: row 1 is nearest the screen, row 15 is the back, column 1 is the displayed left edge, and
-column 15 is the right edge. Useful mappings are: good/best = rows 8-12 and columns 5-11; dead center
-= rows 7-9 and columns 7-9; center = rows 6-10 and columns 6-10. Use seat_cells only for an arbitrary
-non-rectangular shape. Use seat_region=null and an empty seat_cells array when anywhere is acceptable.
+column 15 is the right edge. When the user's preference is vague, reasonable defaults are: good/best
+= rows 8-12 and columns 5-11; dead center = rows 7-9 and columns 7-9; center = rows 6-10 and columns
+6-10. Honor more specific wording. Use seat_cells only for an arbitrary non-rectangular shape. Use
+seat_region=null and an empty seat_cells array when anywhere is acceptable.
 
-Search 14:00-23:59 when no time is given, all theatres when none is named, and exclude accessible
-seats unless accessible seating is requested. Treat "ASAP" as the earliest future date with matching
-seats across the requested or supported date range, not merely the earliest time today. Never weaken
-an explicit constraint without permission.
+Search 00:00-23:59 when no time is given, all theatres when none is named, every format when none is
+requested, anywhere in the auditorium when no seat preference is given, and exclude accessible seats
+unless accessible seating is requested. Treat "ASAP" as the earliest future date with matching seats
+across the requested or supported date range, not merely the earliest time today. Never weaken an
+explicit constraint without permission.
 
 Present up to five concise numbered options with movie, date, time, theatre, format, distance, and
 bestGroup when useful. Use the selected option's ticketUrl for checkout or copy its seatMapRequest
@@ -233,8 +242,7 @@ movie_seat_mcp = MCPServer(
     title="Get location and movie information",
     description=(
         "List live theatre names, canonical movie titles, dates, and normalized formats for a location. "
-        "Pass movie_query and format_query when known to keep the response focused. Proceed without "
-        "clarification when one returned value unambiguously matches the user's request."
+        "Pass movie_query and format_query when known to keep the response focused."
     ),
     structured_output=True,
 )
@@ -243,8 +251,8 @@ def get_location_and_movie_info(
     start_date: Annotated[date, Field(description="First calendar date in YYYY-MM-DD form")],
     radius_miles: Annotated[
         float,
-        Field(ge=1, le=100, description="Exact radius in miles supplied by the user"),
-    ],
+        Field(ge=1, le=100, description="Search radius in miles; defaults to 25 when unspecified"),
+    ] = 25,
     end_date: Annotated[
         date | None,
         Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
@@ -288,8 +296,7 @@ def get_location_and_movie_info(
     title="Find available movie seats",
     description=(
         "Find real showtimes with adjacent available seats. Prefer seat_region for a rectangular "
-        "preference and seat_cells only for an arbitrary shape. Preserve every explicit constraint; "
-        "an empty movie_formats array means any format."
+        "preference and seat_cells only for an arbitrary shape."
     ),
     structured_output=True,
 )
@@ -320,17 +327,26 @@ def find_movie_seats(
     ],
     radius_miles: Annotated[
         float,
-        Field(ge=1, le=100, description="Exact radius in miles supplied by the user"),
-    ],
+        Field(ge=1, le=100, description="Search radius in miles; defaults to 25 when unspecified"),
+    ] = 25,
     end_date: Annotated[
         date | None,
         Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
     ] = None,
-    start_time: Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Earliest time, HH:MM")]
-    = "14:00",
-    end_time: Annotated[str, Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Latest time, HH:MM")]
+    start_time: Annotated[
+        str,
+        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Earliest time, HH:MM; defaults to 00:00"),
+    ]
+    = "00:00",
+    end_time: Annotated[
+        str,
+        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Latest time, HH:MM; defaults to 23:59"),
+    ]
     = "23:59",
-    theatre: Annotated[str, Field(max_length=120, description="Optional theatre name filter")] = "",
+    theatre: Annotated[
+        str,
+        Field(max_length=120, description="Optional theatre filter; empty searches all theatres"),
+    ] = "",
     exclude_accessible: Annotated[
         bool,
         Field(description="Exclude wheelchair and companion seats unless explicitly requested"),
@@ -360,6 +376,7 @@ def find_movie_seats(
         "radiusMiles": radius_miles,
         "timeRange": {"start": start_time, "end": end_time},
         "theatre": theatre,
+        "excludeAccessible": exclude_accessible,
     }
     seat_map_request = {
         "movie": movie,
