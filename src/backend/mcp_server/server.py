@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Image
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp_types import CallToolResult, TextContent
+from mcp_types import Annotations, CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import Route
 
@@ -223,8 +223,10 @@ explicit constraint without permission.
 Present up to five concise numbered options with movie, date, time, theatre, format, distance, and
 bestGroup when useful. Use the selected option's ticketUrl for checkout or copy its seatMapRequest
 into show_movie_seat_map to refresh availability. The map tool returns both an image and structured
-seat groups so the result remains useful when a client cannot display images. Never claim seats are
-held, reserved, purchased, or guaranteed.
+seat groups. When the user asks to see the map, include the returned image in the user-visible
+response instead of leaving it only in the tool trace. If the client cannot display tool-result
+images, say so and present the structured seat groups. Never claim seats are held, reserved,
+purchased, or guaranteed.
 """.strip()
 
 
@@ -416,8 +418,9 @@ def find_movie_seats(
 @movie_seat_mcp.tool(
     title="Show a live movie seat map",
     description=(
-        "Refresh one numbered result from find_movie_seats and return an image/png plus structured "
-        "matchingGroups and bestGroup fallback data. Copy the selected option's seatMapRequest values."
+        "Refresh one numbered result from find_movie_seats and return a user-facing image/png plus "
+        "structured matchingGroups and bestGroup fallback data. Copy the selected option's "
+        "seatMapRequest values and include the returned image in the response to the user."
     ),
     structured_output=True,
 )
@@ -465,6 +468,7 @@ def show_movie_seat_map(
     best_group = seat_map["bestGroup"]
     recommended_summary = "-".join(best_group) or "none currently highlighted"
     caption = (
+        f"Display the attached seat-map image directly to the user. "
         f"Live seat map for option {option_number}: {movie} at {theatre} — "
         f"{show_date.isoformat()} at {show_time} ({movie_format}). "
         f"Red = seats matching the request; white = available; gray = unavailable; "
@@ -489,9 +493,12 @@ def show_movie_seat_map(
         totalSeatCount=seat_map["totalSeatCount"],
         seatMapAvailable=True,
     )
+    image_content = Image(data=image, format="png").to_image_content().model_copy(update={
+        "annotations": Annotations(audience=["user"], priority=1.0),
+    })
     # MCPServer validates structuredContent against SeatMapOutput while preserving image content.
     return CallToolResult(
-        content=[TextContent(text=caption), Image(data=image, format="png").to_image_content()],
+        content=[image_content, TextContent(text=caption)],
         structuredContent=output.model_dump(mode="json", by_alias=True),
     )
 
