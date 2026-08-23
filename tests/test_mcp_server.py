@@ -350,10 +350,12 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["result"]
         self.assertFalse(result["isError"])
-        self.assertEqual([item["type"] for item in result["content"]], ["text", "image"])
-        self.assertIn("Live seat map for option 1: The Odyssey", result["content"][0]["text"])
-        self.assertEqual(result["content"][1]["mimeType"], "image/png")
-        self.assertTrue(base64.b64decode(result["content"][1]["data"]).startswith(b"\x89PNG"))
+        self.assertEqual([item["type"] for item in result["content"]], ["image", "text"])
+        self.assertEqual(result["content"][0]["annotations"], {"audience": ["user"], "priority": 1.0})
+        self.assertEqual(result["content"][0]["mimeType"], "image/png")
+        self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
+        self.assertIn("Display the attached seat-map image", result["content"][1]["text"])
+        self.assertIn("Live seat map for option 1: The Odyssey", result["content"][1]["text"])
         self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
         self.assertEqual(result["structuredContent"]["bestGroup"], ["H10", "H11"])
 
