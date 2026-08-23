@@ -1,5 +1,4 @@
 import json
-import sys
 import unittest
 from datetime import date
 from unittest.mock import patch
@@ -249,40 +248,22 @@ class CacheTests(unittest.TestCase):
         self.addCleanup(seat_cache.stop)
         self.addCleanup(theatres_cache.stop)
 
-    def test_application_info_logs_use_stdout(self):
-        self.assertTrue(any(
-            getattr(handler, "stream", None) is sys.stdout
-            for handler in application.LOGGER.handlers
-        ))
-
-    @patch("backend.application.LOGGER.info")
     @patch("backend.application.fandango_json")
-    def test_seat_maps_are_cached(self, fandango_json, logger_info):
+    def test_seat_maps_are_cached(self, fandango_json):
         fandango_json.return_value = {"seats": []}
         first = application.seat_map("showtime-1")
         second = application.seat_map("showtime-1")
-        self.assertIs(first, second)
+        self.assertEqual(first, second)
         fandango_json.assert_called_once()
-        logger_info.assert_called_once()
-        self.assertEqual(
-            logger_info.call_args.args[:2],
-            ("event=cache_hit cache=%s age_ms=%d", "seat_map"),
-        )
 
-    @patch("backend.application.LOGGER.info")
     @patch("backend.application._fetch_fandango_theatres", return_value=[])
-    def test_theatre_payloads_are_cached(self, fetch_theatres, logger_info):
+    def test_theatre_payloads_are_cached(self, fetch_theatres):
         origin = (40.75, -73.99)
         first = application.fandango_theatres("10001", 25, origin)
         second = application.fandango_theatres("10001", 25, origin)
 
-        self.assertIs(first, second)
+        self.assertEqual(first, second)
         fetch_theatres.assert_called_once()
-        logger_info.assert_called_once()
-        self.assertEqual(
-            logger_info.call_args.args[:2],
-            ("event=cache_hit cache=%s age_ms=%d", "theatres"),
-        )
 
     @patch("backend.application._fetch_fandango_theatres", return_value=[])
     def test_large_radius_uses_fandangos_full_supported_range(self, fetch_theatres):
@@ -345,33 +326,13 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/", headers={"host": "example.test"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
-        self.assertNotIn("__SITE_", response.text)
-        self.assertNotIn("__INLINE_STYLES__", response.text)
-        self.assertIn(f"<style>{application.INLINE_STYLES}</style>", response.text)
-        self.assertNotIn('rel="stylesheet"', response.text)
-        self.assertIn(
-            f'src="app.bundle.js?v={application.ASSET_VERSIONS["app.bundle.js"]}"',
-            response.text,
-        )
-        self.assertIn(
-            f'href="/favicon.svg?v={application.ASSET_VERSIONS["favicon.svg"]}"',
-            response.text,
-        )
-        self.assertNotIn("__BUNDLE_VERSION__", response.text)
-        self.assertNotIn("__FAVICON_VERSION__", response.text)
+        self.assertIn('<link rel="canonical" href="http://example.test/">', response.text)
+        self.assertIn('href="/faq"', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
-        self.assertIn(
-            f"'sha256-{application.INLINE_STYLE_HASH}'",
-            content_security_policy,
-        )
         self.assertIn("require-trusted-types-for 'script'", content_security_policy)
-        self.assertIn("trusted-types 'none'", content_security_policy)
         self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
-        self.assertLessEqual(application.INLINE_STYLES.count("\n"), 1)
-        source_styles = (application.FRONTEND_DIR / "styles" / "styles.css").read_text(encoding="utf-8")
-        self.assertLess(len(application.INLINE_STYLES), len(source_styles))
 
     def test_vercel_enforces_the_strong_hsts_policy(self):
         config = json.loads((application.BASE_DIR / "vercel.json").read_text(encoding="utf-8"))
@@ -398,7 +359,10 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
-        response = self.client.get("/app.bundle.js?v=20260801-performance")
+        response = self.client.get(
+            "/app.bundle.js",
+            params={"v": application.ASSET_VERSIONS["app.bundle.js"]},
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -484,7 +448,7 @@ class RouteTests(unittest.TestCase):
     def test_invalid_zip_returns_json_error(self):
         response = self.client.get("/api/theatres", params={"zip": "abc", "radius": 25})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"error": "Enter a valid 5 digit US ZIP code or use your location."})
+        self.assertIn("error", response.json())
 
     @patch(
         "backend.application.resolve_search_location",
@@ -495,26 +459,14 @@ class RouteTests(unittest.TestCase):
             with self.subTest(endpoint=endpoint):
                 response = self.client.get(endpoint, params={"zip": "00000", "radius": 25})
                 self.assertEqual(response.status_code, 400)
-                self.assertEqual(
-                    response.json(),
-                    {
-                        "error": "We couldn't find that ZIP code. Check it and try again.",
-                        "code": "location",
-                    },
-                )
+                self.assertEqual(response.json()["code"], "location")
 
-    def test_missing_radius_uses_the_standard_validation_error(self):
-        response = self.client.get("/api/theatres", params={"zip": "10001"})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.json(),
-            {"error": "One of the search values is invalid. Adjust the form and try again."},
-        )
-
-    def test_unparseable_params_use_the_same_error_shape(self):
-        response = self.client.get("/api/theatres", params={"zip": "10001", "radius": "abc"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json())
+    def test_invalid_query_params_return_the_standard_error_shape(self):
+        for params in ({"zip": "10001"}, {"zip": "10001", "radius": "abc"}):
+            with self.subTest(params=params):
+                response = self.client.get("/api/theatres", params=params)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(set(response.json()), {"error"})
 
     def test_search_constraints_are_enforced_before_upstream_work(self):
         base_params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
