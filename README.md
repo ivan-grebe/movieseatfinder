@@ -57,7 +57,7 @@ The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It 
 
 - `get_location_and_movie_info` finds live theatres, titles, dates, and formats.
 - `find_movie_seats` searches an exact discovered title and format for a party, time window, and optional 15x15 `row:column` seat region.
-- `show_movie_seat_map` refreshes a selected showtime with a signed five-minute token.
+- `show_movie_seat_map` refreshes a selected showtime from the chosen result's seat-map request.
 
 Agents should discover and reuse exact titles and formats before searching, then offer compact nearest-first results with a seat map or ticket link.
 
@@ -68,7 +68,7 @@ URL: https://movieseatfinder.com/mcp
 Authentication: None
 ```
 
-The MCP endpoint is public and requires no authentication. Set `MCP_SELECTION_SECRET` to a stable random deployment secret. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` optionally override the production allowlists.
+The MCP endpoint is public and requires no authentication. Requests are accepted on the production and local-development hosts; browser-originated requests are accepted only from localhost.
 
 ## Testing
 
