@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import seat_map_visual
 from backend import server as entrypoint
 from backend.mcp_server import security, server
 
@@ -52,9 +51,7 @@ def sample_search_result():
                 "totalSeatCount": 100,
                 "matchingGroups": [["H10", "H11"]],
                 "bestGroup": ["H10", "H11"],
-                "visualSvg": seat_map_visual.render_seat_map_svg(
-                    sample_seat_layout(), available_count=42, total_count=100,
-                ),
+                "layout": sample_seat_layout(),
             },
         }],
         "checkedShowtimes": 7,
