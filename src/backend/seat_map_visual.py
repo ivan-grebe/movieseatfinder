@@ -1,4 +1,4 @@
-"""Render an MCP seat-map image matching the website's live seat-map styles."""
+"""Render the website seat-map layout as a dark MCP image."""
 
 import base64
 import math
@@ -60,20 +60,20 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
         stroke = "url(#matched-accessible-border)"
         glow_fill = "url(#matched-accessible-glow)"
     elif matched:
-        fill = "#c93a3a"
-        stroke = "#8f1f26"
-        glow_fill = "rgba(201,58,58,.62)"
+        fill = "#ef4444"
+        stroke = "#fca5a5"
+        glow_fill = "rgba(239,68,68,.66)"
     elif available and accessible:
-        fill = "#2563c7"
-        stroke = "#174a97"
-        glow_fill = "rgba(37,99,199,.62)"
+        fill = "#3b82f6"
+        stroke = "#93c5fd"
+        glow_fill = "rgba(59,130,246,.66)"
     elif available:
-        fill = "#ffffff"
-        stroke = "#9fabbb"
+        fill = "#f8fafc"
+        stroke = "#cbd5e1"
         glow_fill = ""
     else:
-        fill = "#c7ced8"
-        stroke = "#adb5c0"
+        fill = "#475569"
+        stroke = "#64748b"
         glow_fill = ""
 
     right = x + width
@@ -117,12 +117,12 @@ def _legend_item(x, label, fill, stroke):
 
 
 def _legend_svg(accessible_seats_excluded):
-    items = [("Available", "#ffffff", "#9fabbb")]
+    items = [("Available", "#f8fafc", "#cbd5e1")]
     if not accessible_seats_excluded:
-        items.append(("Accessible", "#2563c7", "#174a97"))
+        items.append(("Accessible", "#3b82f6", "#93c5fd"))
     items.extend([
-        ("Unavailable / excluded" if accessible_seats_excluded else "Unavailable", "#c7ced8", "#adb5c0"),
-        ("Matches", "#c93a3a", "#8f1f26"),
+        ("Unavailable / excluded" if accessible_seats_excluded else "Unavailable", "#475569", "#64748b"),
+        ("Matches", "#ef4444", "#fca5a5"),
     ])
     text_widths = [len(label) * 6.1 for label, _, _ in items]
     item_widths = [17 + width for width in text_widths]
@@ -141,7 +141,7 @@ def _legend_svg(accessible_seats_excluded):
 
 
 def render_seat_map_svg(layout, available_count=None, total_count=None, accessible_seats_excluded=True):
-    """Create the MCP image using the website seat map's light-theme appearance."""
+    """Create a dark MCP image using the website seat map's layout."""
     seats = layout.get("seats") or []
     if not seats:
         raise ValueError("This showtime does not have a seat map to display.")
@@ -190,24 +190,24 @@ def render_seat_map_svg(layout, available_count=None, total_count=None, accessib
     glow_blur = max(2 * layout_width / CONTENT_WIDTH, 0.5)
     output_width = CANVAS_WIDTH * OUTPUT_SCALE
     output_height = canvas_height * OUTPUT_SCALE
-    stage_fill = "#f7fbff" if background_svg else "url(#stage)"
+    stage_fill = "#0b1220" if background_svg else "url(#stage)"
 
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{output_width}" height="{output_height}" viewBox="0 0 {CANVAS_WIDTH} {canvas_height}">
       <defs>
         <linearGradient id="stage" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#f8fbff"/><stop offset="1" stop-color="#edf4fb"/>
+          <stop offset="0" stop-color="#182334"/><stop offset="1" stop-color="#0b1220"/>
         </linearGradient>
         <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#fffafa"/><stop offset="1" stop-color="#ffd7d2"/>
+          <stop offset="0" stop-color="#4c2730"/><stop offset="1" stop-color="#27171d"/>
         </linearGradient>
         <linearGradient id="matched-accessible" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0.49" stop-color="#c93a3a"/><stop offset="0.51" stop-color="#2563c7"/>
+          <stop offset="0.49" stop-color="#ef4444"/><stop offset="0.51" stop-color="#3b82f6"/>
         </linearGradient>
         <linearGradient id="matched-accessible-border" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0.49" stop-color="#8f1f26"/><stop offset="0.51" stop-color="#174a97"/>
+          <stop offset="0.49" stop-color="#fca5a5"/><stop offset="0.51" stop-color="#93c5fd"/>
         </linearGradient>
         <linearGradient id="matched-accessible-glow" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0.49" stop-color="rgba(201,58,58,.62)"/><stop offset="0.51" stop-color="rgba(37,99,199,.62)"/>
+          <stop offset="0.49" stop-color="rgba(239,68,68,.66)"/><stop offset="0.51" stop-color="rgba(59,130,246,.66)"/>
         </linearGradient>
         <filter id="seat-glow" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="{glow_blur:g}"/>
@@ -215,16 +215,16 @@ def render_seat_map_svg(layout, available_count=None, total_count=None, accessib
         <clipPath id="stage-clip"><rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12"/></clipPath>
         <style>
           text {{ font-family: Arial, sans-serif; }}
-          .title {{ fill:#405069; font-size:11px; font-weight:850; }}
-          .count {{ fill:#667085; font-size:11px; font-weight:750; font-variant-numeric:tabular-nums; }}
-          .legend {{ fill:#667085; font-size:11px; font-weight:400; }}
-          .screen-label {{ fill:rgba(49,64,87,.58); font-size:9px; font-weight:900; letter-spacing:1.44px; }}
+          .title {{ fill:#f1f5f9; font-size:11px; font-weight:850; }}
+          .count {{ fill:#aebacd; font-size:11px; font-weight:750; font-variant-numeric:tabular-nums; }}
+          .legend {{ fill:#aebacd; font-size:11px; font-weight:400; }}
+          .screen-label {{ fill:#e8b4bd; font-size:9px; font-weight:900; letter-spacing:1.44px; }}
         </style>
       </defs>
-      <rect x="0.5" y="0.5" width="641" height="{canvas_height - 1}" rx="22" fill="#f5f9fd" fill-opacity=".8" stroke="#6882a4" stroke-opacity=".18"/>
+      <rect x="0.5" y="0.5" width="641" height="{canvas_height - 1}" rx="22" fill="#111827" stroke="#475569" stroke-opacity=".72"/>
       <text x="11" y="20" class="title">{_text(title)}</text>
       <text x="631" y="20" class="count" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
-      <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#6882a4" stroke-opacity=".24"/>
+      <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#64748b" stroke-opacity=".5"/>
       {screen_node}
       <g clip-path="url(#stage-clip)">
         <svg x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none" overflow="hidden">
