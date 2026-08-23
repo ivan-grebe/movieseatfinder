@@ -1,4 +1,4 @@
-"""Public-Poke request validation and throttling for the MCP endpoint."""
+"""Public request handling and throttling for the MCP endpoint."""
 
 import base64
 import hashlib
@@ -9,7 +9,6 @@ from limits.strategies import MovingWindowRateLimiter
 from starlette.datastructures import Headers
 from starlette.responses import HTMLResponse, JSONResponse
 
-MCP_USER_RATE_LIMIT = RateLimitItemPerMinute(60)
 MCP_GLOBAL_RATE_LIMIT = RateLimitItemPerMinute(1200)
 MCP_RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 
@@ -96,7 +95,7 @@ MCP_BROWSER_PAGE = f"""<!doctype html>
   <main>
     <span class="eyebrow">Connection endpoint</span>
     <h1>Movie Seat Finder MCP</h1>
-    <p>This URL connects assistants such as Poke to Movie Seat Finder. There is nothing you need to configure on this page.</p>
+    <p>This URL connects MCP-compatible assistants to Movie Seat Finder. There is nothing you need to configure on this page.</p>
     <a href="/">Open Movie Seat Finder</a>
   </main>
 </body>
@@ -129,17 +128,8 @@ def _browser_response():
     )
 
 
-def _valid_poke_user_id(headers):
-    poke_user_id = headers.get("x-poke-user-id", "").strip()
-    if not poke_user_id or len(poke_user_id) > 128:
-        return ""
-    if not all(character.isalnum() or character in "-_.:" for character in poke_user_id):
-        return ""
-    return poke_user_id
-
-
 class McpSecurityMiddleware:
-    """Accept public Poke traffic while containing anonymous abuse."""
+    """Accept public MCP traffic while containing anonymous abuse."""
 
     def __init__(self, app):
         self.app = app
@@ -154,29 +144,13 @@ class McpSecurityMiddleware:
             await _browser_response()(scope, receive, send)
             return
 
-        supplied_poke_user_id = headers.get("x-poke-user-id", "").strip()
-        poke_user_id = _valid_poke_user_id(headers)
-        if supplied_poke_user_id and not poke_user_id:
+        if not MCP_RATE_LIMITER.hit(MCP_GLOBAL_RATE_LIMIT, "/mcp", "global", "all"):
             response = JSONResponse(
-                {"error": "The supplied X-Poke-User-Id header is invalid."},
-                status_code=403,
+                {"error": "Too many MCP requests. Please wait a moment and try again."},
+                status_code=429,
+                headers={"Retry-After": "60"},
             )
             await response(scope, receive, send)
             return
-
-        rate_limits = [
-            (MCP_GLOBAL_RATE_LIMIT, "global", "all"),
-        ]
-        if poke_user_id:
-            rate_limits.append((MCP_USER_RATE_LIMIT, "poke", poke_user_id))
-        for rate_limit, dimension, value in rate_limits:
-            if not MCP_RATE_LIMITER.hit(rate_limit, "/mcp", dimension, value):
-                response = JSONResponse(
-                    {"error": "Too many MCP requests. Please wait a moment and try again."},
-                    status_code=429,
-                    headers={"Retry-After": "60"},
-                )
-                await response(scope, receive, send)
-                return
 
         await self.app(scope, receive, send)
