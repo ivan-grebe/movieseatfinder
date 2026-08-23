@@ -275,7 +275,6 @@ class McpProtocolTests(unittest.TestCase):
                     "zip_code": "10023",
                     "start_date": "2026-08-04",
                     "end_date": "2026-08-06",
-                    "radius_miles": 25,
                     "movie_query": "Odyssey",
                     "format_query": "IMAX 70mm",
                 },
@@ -300,7 +299,7 @@ class McpProtocolTests(unittest.TestCase):
         )
 
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_client_can_call_the_tool_and_receive_structured_ticket_options(self, _find_seat_matches):
+    def test_client_can_call_the_tool_and_receive_structured_ticket_options(self, find_seat_matches):
         request = {
             "jsonrpc": "2.0",
             "id": 2,
@@ -317,7 +316,6 @@ class McpProtocolTests(unittest.TestCase):
                         "row_min": 11, "row_max": 12, "column_min": 6, "column_max": 8,
                     },
                     "adjacent_seats": 2,
-                    "radius_miles": 25,
                 },
             },
         }
@@ -330,6 +328,11 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(structured["options"][0]["matchingGroups"], [["H10", "H11"]])
         self.assertEqual(structured["options"][0]["bestGroup"], ["H10", "H11"])
         self.assertEqual(structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
+        self.assertEqual(structured["query"]["radiusMiles"], 25)
+        self.assertEqual(structured["query"]["timeRange"], {"start": "00:00", "end": "23:59"})
+        self.assertTrue(structured["query"]["excludeAccessible"])
+        self.assertEqual(find_seat_matches.call_args.kwargs["radius"], 25)
+        self.assertEqual(find_seat_matches.call_args.kwargs["start_time"], "00:00")
 
     @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
     def test_client_receives_an_image_and_structured_seat_map_fallback(self, _showtime_seat_match):
