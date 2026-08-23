@@ -13,6 +13,22 @@ CONTENT_WIDTH = 620
 WRAPPER_PADDING = 10
 ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}
 _RENDER_STATE = threading.local()
+TITLE_TEXT_STYLE = (
+    "display:inline;visibility:visible;opacity:1;fill:#f1f5f9;"
+    "font-family:Arial,sans-serif;font-size:11px;font-weight:850"
+)
+COUNT_TEXT_STYLE = (
+    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
+    "font-family:Arial,sans-serif;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums"
+)
+LEGEND_TEXT_STYLE = (
+    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
+    "font-family:Arial,sans-serif;font-size:11px;font-weight:400"
+)
+SCREEN_TEXT_STYLE = (
+    "display:inline;visibility:visible;opacity:1;fill:#e8b4bd;"
+    "font-family:Arial,sans-serif;font-size:9px;font-weight:900;letter-spacing:1.44px"
+)
 
 
 def _render_options():
@@ -112,7 +128,7 @@ def _legend_item(x, label, fill, stroke):
     return (
         f'<rect x="{x:g}" y="0" width="12" height="12" rx="3" '
         f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>'
-        + f'<text x="{x + 17:g}" y="10" class="legend">{_text(label)}</text>'
+        + f'<text x="{x + 17:g}" y="10" style="{LEGEND_TEXT_STYLE}">{_text(label)}</text>'
     )
 
 
@@ -183,7 +199,8 @@ def render_seat_map_svg(layout, available_count=None, total_count=None, accessib
     )
     screen_node = "" if background_svg else (
         f'<g><rect x="91" y="{screen_y}" width="460" height="18" rx="9" fill="url(#screen)"/>'
-        f'<text x="321" y="{screen_y + 12}" class="screen-label" text-anchor="middle">SCREEN</text></g>'
+        f'<text x="321" y="{screen_y + 12}" style="{SCREEN_TEXT_STYLE}" '
+        f'text-anchor="middle">SCREEN</text></g>'
     )
 
     legend = _legend_svg(accessible_seats_excluded)
@@ -213,17 +230,10 @@ def render_seat_map_svg(layout, available_count=None, total_count=None, accessib
           <feGaussianBlur stdDeviation="{glow_blur:g}"/>
         </filter>
         <clipPath id="stage-clip"><rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12"/></clipPath>
-        <style>
-          text {{ font-family: Arial, sans-serif; }}
-          .title {{ fill:#f1f5f9; font-size:11px; font-weight:850; }}
-          .count {{ fill:#aebacd; font-size:11px; font-weight:750; font-variant-numeric:tabular-nums; }}
-          .legend {{ fill:#aebacd; font-size:11px; font-weight:400; }}
-          .screen-label {{ fill:#e8b4bd; font-size:9px; font-weight:900; letter-spacing:1.44px; }}
-        </style>
       </defs>
       <rect x="0.5" y="0.5" width="641" height="{canvas_height - 1}" rx="22" fill="#111827" stroke="#475569" stroke-opacity=".72"/>
-      <text x="11" y="20" class="title">{_text(title)}</text>
-      <text x="631" y="20" class="count" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
+      <text x="11" y="20" style="{TITLE_TEXT_STYLE}">{_text(title)}</text>
+      <text x="631" y="20" style="{COUNT_TEXT_STYLE}" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
       <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#64748b" stroke-opacity=".5"/>
       {screen_node}
       <g clip-path="url(#stage-clip)">
