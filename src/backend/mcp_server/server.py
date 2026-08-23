@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import Route
 
 from .. import application
-from ..seat_map_visual import render_svg_png
+from ..seat_map_visual import render_seat_map_svg, render_svg_png
 from .security import McpSecurityMiddleware
 
 GridCell = Annotated[
@@ -453,7 +453,12 @@ def show_movie_seat_map(
         f"Red = seats matching the request; white = available; gray = unavailable; "
         f"blue = accessible. Best matching group: {recommended_summary}."
     )
-    image = render_svg_png(seat_map["visualSvg"])
+    image = render_svg_png(render_seat_map_svg(
+        seat_map["layout"],
+        available_count=seat_map["availableSeatCount"],
+        total_count=seat_map["totalSeatCount"],
+        accessible_seats_excluded=exclude_accessible,
+    ))
     output = SeatMapOutput(
         option=option_number,
         movie=movie,

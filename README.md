@@ -57,7 +57,7 @@ The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It 
 
 - `get_location_and_movie_info` finds live theatres, titles, dates, and formats.
 - `find_movie_seats` searches a discovered title and normalized format using a compact rectangular seat region or an advanced arbitrary shape.
-- `show_movie_seat_map` refreshes a selected showtime and returns the shared website seat-map visual plus structured seat groups.
+- `show_movie_seat_map` refreshes a selected showtime and returns an image matching the website seat map, plus structured seat groups.
 
 Agents can pass movie and format hints during discovery, proceed on an unambiguous normalized match, and offer compact nearest-first results with ranked seat groups, a seat map, or a ticket link.
 

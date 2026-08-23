@@ -602,8 +602,7 @@ class RouteTests(unittest.TestCase):
         matched_map = response.json()["matches"][0]["seatMap"]
         self.assertEqual(matched_map["matchingGroups"], [["A1"]])
         self.assertEqual(matched_map["bestGroup"], ["A1"])
-        self.assertIn("<svg", matched_map["visualSvg"])
-        self.assertNotIn("layout", matched_map)
+        self.assertEqual(matched_map["layout"]["seats"][0]["id"], "A1")
         seat_map.assert_called_once_with("showtime-1")
 
     def test_manifest_and_discovery_routes(self):

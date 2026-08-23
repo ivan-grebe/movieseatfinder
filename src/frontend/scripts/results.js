@@ -11,13 +11,88 @@ const ICON_CALENDAR = [
   ["rect", { x: "3", y: "4.5", width: "18", height: "16", rx: "2" }],
   ["path", { d: "M3 9h18M8 2.5v4M16 2.5v4" }],
 ];
-function renderRealSeatMap(seatMap) {
-  const image = document.createElement("img");
-  image.className = "real-seat-map-image";
-  image.alt = `Live Fandango seat map: ${seatMap.availableSeatCount} available of ${seatMap.totalSeatCount} total seats`;
-  image.loading = "lazy";
-  image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(seatMap.visualSvg);
-  return image;
+const ACCESSIBLE_SEAT_TYPES = ["wheelchair", "companion"];
+
+function createLegendItem(label, className) {
+  const item = document.createElement("span");
+  item.className = "legend-item";
+  const swatch = document.createElement("span");
+  swatch.className = "legend-swatch" + (className ? ` ${className}` : "");
+  item.append(swatch, document.createTextNode(label));
+  return item;
+}
+
+function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
+  const layout = seatMap.layout;
+  const hasBackground = Boolean(layout.backgroundSvg);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "real-seat-map";
+  const title = document.createElement("div");
+  title.className = "real-seat-map-title";
+  const titleLabel = document.createElement("span");
+  titleLabel.textContent = "Live Fandango seat map";
+  const titleCount = document.createElement("span");
+  titleCount.textContent = `${seatMap.availableSeatCount} available / ${seatMap.totalSeatCount} total`;
+  title.append(titleLabel, titleCount);
+  wrapper.appendChild(title);
+
+  if (!hasBackground) {
+    const screen = document.createElement("div");
+    screen.className = "real-screen";
+    screen.title = "Screen";
+    screen.textContent = "SCREEN";
+    wrapper.appendChild(screen);
+  }
+
+  const stage = document.createElement("div");
+  stage.className = "real-seat-map-stage";
+  if (hasBackground) stage.classList.add("has-background");
+  const { width, height } = layout;
+  stage.style.aspectRatio = `${width} / ${height}`;
+  stage.style.minHeight = "150px";
+  if (hasBackground) {
+    const background = document.createElement("img");
+    background.className = "real-seat-map-background";
+    background.alt = "";
+    background.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(layout.backgroundSvg);
+    stage.appendChild(background);
+  }
+
+  layout.seats.forEach(seat => {
+    const node = document.createElement("span");
+    const isAvailable = seat.status === "A";
+    const accessibilityType = ACCESSIBLE_SEAT_TYPES.includes(seat.type) ? seat.type : "";
+    const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
+    node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
+    if (accessibilityType) node.classList.add("accessible");
+    if (seat.matched) node.classList.add("matched");
+    node.title = [
+      seat.id || "Seat",
+      isAvailable ? "available" : "unavailable",
+      accessibilityType,
+      isExcluded ? "excluded by filter" : "",
+    ].filter(Boolean).join(" - ");
+    node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
+    node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
+    node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
+    node.style.height = `${(Math.max(Number(seat.height) || 1, 1) / height) * 100}%`;
+    stage.appendChild(node);
+  });
+  wrapper.appendChild(stage);
+
+  const legend = document.createElement("div");
+  legend.className = "seat-map-legend";
+  legend.appendChild(createLegendItem("Available", ""));
+  if (!accessibleSeatsExcluded) {
+    legend.appendChild(createLegendItem("Accessible", "accessible"));
+  }
+  legend.append(
+    createLegendItem(accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable", "unavailable"),
+    createLegendItem("Matches", "matched"),
+  );
+  wrapper.appendChild(legend);
+  return wrapper;
 }
 
 function createIcon(definition) {
@@ -212,7 +287,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
         amenities.textContent = match.amenities;
         item.appendChild(amenities);
       }
-      item.appendChild(renderRealSeatMap(match.seatMap));
+      item.appendChild(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
       if (match.ticketUrl) {
         const link = document.createElement("a");
         link.className = "buy-btn";

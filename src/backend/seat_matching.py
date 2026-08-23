@@ -1,7 +1,5 @@
 """Pure seat-map normalization and matching rules."""
 
-from .seat_map_visual import render_seat_map_svg
-
 # Must match GRID_SIZE in src/frontend/scripts/seat-grid.js.
 GRID_SIZE = 15
 
@@ -175,10 +173,5 @@ def showtime_seat_match(showtime, min_adjacent, selected_cells, exclude_accessib
         "totalSeatCount": total_count,
         "matchingGroups": matching_groups,
         "bestGroup": matching_groups[0],
-        "visualSvg": render_seat_map_svg(
-            layout,
-            available_count=available_count,
-            total_count=total_count,
-            accessible_seats_excluded=exclude_accessible,
-        ),
+        "layout": layout,
     }
