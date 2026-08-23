@@ -10,10 +10,6 @@ const emptySearch = {
   checkedSeatMaps: 1,
 };
 
-function seatMapSvg(label = "Matches") {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200"><text>${label}</text><rect id="matched-seat" fill="#c93a3a" width="20" height="20"/></svg>`;
-}
-
 function makeSimpleMatch(theatreName, time) {
   return {
     theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1 },
@@ -26,7 +22,11 @@ function makeSimpleMatch(theatreName, time) {
     seatMap: {
       availableSeatCount: 1,
       totalSeatCount: 1,
-      visualSvg: seatMapSvg(),
+      layout: {
+        width: 30,
+        height: 30,
+        seats: [{ id: `${theatreName}-${time}`, status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+      },
     },
   };
 }
@@ -380,7 +380,11 @@ test("result sorting defaults to earliest and reruns the search when changed", a
       seatMap: {
         availableSeatCount: 1,
         totalSeatCount: 1,
-        visualSvg: seatMapSvg(),
+        layout: {
+          width: 30,
+          height: 30,
+          seats: [{ id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+        },
       },
     }],
   };
@@ -517,7 +521,7 @@ test("stale movie responses do not replace options for newer criteria", async ({
   await expect(page.getByRole("option", { name: "Stale Movie", exact: true })).toHaveCount(0);
 });
 
-test("mobile results render the canonical seat map and update it after filter changes", async ({ page }) => {
+test("mobile results render the native seat map and update accessibility states", async ({ page }) => {
   const matchingSearch = {
     ...emptySearch,
     accessibleSeatsExcluded: true,
@@ -532,20 +536,25 @@ test("mobile results render the canonical seat map and update it after filter ch
       seatMap: {
         availableSeatCount: 2,
         totalSeatCount: 2,
-        visualSvg: seatMapSvg("Unavailable / excluded"),
+        layout: {
+          width: 100,
+          height: 50,
+          seats: [
+            { id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true },
+            { id: "A2", status: "A", type: "wheelchair", x: 30, y: 10, width: 10, height: 10, matched: false },
+            { id: "A3", status: "U", type: "wheelchair", x: 50, y: 10, width: 10, height: 10, matched: false },
+            { id: "A4", status: "A", type: "companion", x: 70, y: 10, width: 10, height: 10, matched: false },
+            { id: "A5", status: "U", type: "companion", x: 90, y: 10, width: 10, height: 10, matched: false },
+          ],
+        },
       },
     }],
   };
   await mockSearchDependencies(page, route => {
     const accessibleSeatsExcluded = new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
-    const visualSvg = seatMapSvg(accessibleSeatsExcluded ? "Unavailable / excluded" : "Accessible Unavailable");
-    const matches = matchingSearch.matches.map(match => ({
-      ...match,
-      seatMap: { ...match.seatMap, visualSvg },
-    }));
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded, matches }),
+      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded }),
     });
   });
 
@@ -554,13 +563,23 @@ test("mobile results render the canonical seat map and update it after filter ch
   await selectMovie(page);
   await page.locator("#searchButton").click();
 
-  const seatMapImage = page.locator(".real-seat-map-image");
-  await expect(seatMapImage).toBeVisible();
-  await expect.poll(() => seatMapImage.evaluate(node => decodeURIComponent(node.src.split(",")[1]))).toContain("Unavailable / excluded");
+  const matchedSeat = page.locator(".real-seat.matched");
+  await expect(matchedSeat).toHaveCount(1);
+  const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
+  await expect(wheelchairSeat).toHaveClass(/accessible/);
+  const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
+  await expect(companionSeat).toHaveClass(/accessible/);
+  await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
 
   await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
   await page.locator("#searchButton").click();
 
-  await expect.poll(() => seatMapImage.evaluate(node => decodeURIComponent(node.src.split(",")[1]))).toContain("Accessible Unavailable");
+  const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
+  await expect(includedWheelchairSeat).toHaveClass(/accessible/);
+  const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
+  await expect(includedCompanionSeat).toHaveClass(/accessible/);
+  await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
 });
