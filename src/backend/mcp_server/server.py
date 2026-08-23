@@ -1,6 +1,5 @@
 """Remote MCP server exposing Movie Seat Finder as an agent tool."""
 
-import os
 from datetime import date
 from typing import Annotated, Any
 
@@ -14,7 +13,6 @@ from starlette.routing import Route
 from .. import application
 from .seat_map_image import render_seat_map_png
 from .security import McpSecurityMiddleware
-from .selection_token import create_selection_token, read_selection_token
 
 GridCell = Annotated[
     str,
@@ -56,21 +54,18 @@ def compact_search_results(result, query, seat_map_request):
             for seat in layout["seats"]
             if seat.get("matched") and seat.get("id")
         ]
-        selection_token = create_selection_token({
-            "showtimeHashCode": match["showtimeHashCode"],
+        showtime_request = {
+            "showtime_hash_code": match["showtimeHashCode"],
+            "option_number": position,
             "movie": match["movieTitle"],
-            "theatre": match["theatre"],
-            "date": match["date"],
-            "time": match["displayTime"],
-            "format": match["format"],
-            "amenities": match["amenities"],
-            "ticketUrl": match["ticketUrl"],
-            "seatCells": seat_map_request["seat_cells"],
-            "adjacentSeats": seat_map_request["adjacent_seats"],
-            "excludeAccessible": seat_map_request["exclude_accessible"],
-            "optionNumber": position,
-            "search": seat_map_request,
-        })
+            "theatre": match["theatre"]["name"],
+            "show_date": match["date"],
+            "show_time": match["displayTime"],
+            "movie_format": match["format"],
+            "seat_cells": seat_map_request["seat_cells"],
+            "adjacent_seats": seat_map_request["adjacent_seats"],
+            "exclude_accessible": seat_map_request["exclude_accessible"],
+        }
         options.append({
             "option": position,
             "movie": match["movieTitle"],
@@ -85,7 +80,7 @@ def compact_search_results(result, query, seat_map_request):
             "matchingSeatCount": len(matching_seats),
             "matchingSeatExamples": matching_seats[:12],
             "ticketUrl": match["ticketUrl"],
-            "seatMapRequest": {"selection_token": selection_token},
+            "seatMapRequest": showtime_request,
         })
     return {
         "query": query,
@@ -248,11 +243,10 @@ amenity prose, warnings, or a long explanation. Use this shape:
 After the list, ask exactly one next-step question: "Would you like the seat map or ticket link for
 any option?" If the requested option is ambiguous, ask only for its number.
 
-For a seat map, call show_movie_seat_map with the single selection_token copied exactly from that
-option's seatMapRequest. Never decode or reconstruct it. Send the returned image and concise caption.
-If the token expired, automatically repeat the exact retained search without asking, obtain a fresh
-token, and show the requested map. If availability changed, explain that briefly and show the new
-options. Do not automatically call the map tool before the user asks.
+For a seat map, call show_movie_seat_map with every argument copied exactly from that option's
+seatMapRequest. Do not reconstruct or alter the values. Send the returned image and concise caption.
+If availability changed, explain that briefly and offer to run the search again. Do not automatically
+call the map tool before the user asks.
 
 For a ticket link, return the selected option's ticketUrl without repeating the showtime summary,
 followed only by a short warning that availability is not held or guaranteed and can change before
@@ -436,73 +430,47 @@ def find_movie_seats(
     title="Show a live movie seat map",
     description=(
         "Refresh and render one numbered result from find_movie_seats as an image/png seat map. "
-        "Call only after the user asks to see a map. Copy the single selection_token exactly from "
-        "that option's seatMapRequest object; never decode, reconstruct, alter, or guess it."
+        "Call only after the user asks to see a map. Copy every argument exactly from that option's "
+        "seatMapRequest object; never reconstruct, alter, or guess the values."
     ),
     structured_output=False,
 )
 def show_movie_seat_map(
-    selection_token: Annotated[
+    showtime_hash_code: Annotated[
         str,
         Field(
-            min_length=20,
-            max_length=8192,
-            description="Opaque five-minute token copied exactly from the selected option's seatMapRequest",
+            min_length=1,
+            max_length=512,
+            description="Exact showtime hash copied from the selected option's seatMapRequest",
         ),
     ],
+    option_number: Annotated[int, Field(ge=1, le=5, description="Selected option number")],
+    movie: Annotated[str, Field(min_length=1, max_length=120, description="Selected movie title")],
+    theatre: Annotated[str, Field(min_length=1, max_length=200, description="Selected theatre name")],
+    show_date: Annotated[date, Field(description="Selected calendar date in YYYY-MM-DD form")],
+    show_time: Annotated[str, Field(min_length=1, max_length=40, description="Selected display time")],
+    movie_format: Annotated[str, Field(min_length=1, max_length=120, description="Selected format")],
+    seat_cells: Annotated[
+        tuple[GridCell, ...],
+        Field(max_length=225, description="Acceptable seat cells copied from the selected option"),
+    ],
+    adjacent_seats: Annotated[int, Field(ge=1, le=10, description="Required adjacent seat count")],
+    exclude_accessible: Annotated[bool, Field(description="Whether accessible seats remain excluded")],
 ) -> list[Any]:
     """Refresh only the selected showtime and return its live layout as MCP image content."""
-    selected = read_selection_token(selection_token, allow_expired=True)
-    if selected["tokenExpired"]:
-        search = selected["search"]
-        refreshed = _run_seat_search(
-            search["movie"],
-            date.fromisoformat(search["start_date"]),
-            date.fromisoformat(search["end_date"]),
-            search["zip_code"],
-            tuple(search["movie_formats"]),
-            tuple(search["seat_cells"]),
-            search["adjacent_seats"],
-            search["radius_miles"],
-            search["start_time"],
-            search["end_time"],
-            search["theatre"],
-            search["exclude_accessible"],
-            search["sort"],
-            5,
-        )
-        refreshed_match = next((
-            candidate for candidate in refreshed["matches"]
-            if candidate["theatre"]["name"] == selected["theatre"]["name"]
-            and candidate["date"] == selected["date"]
-            and candidate["displayTime"] == selected["time"]
-            and candidate["format"] == selected["format"]
-            and candidate["ticketUrl"] == selected["ticketUrl"]
-        ), None)
-        seat_map = refreshed_match["seatMap"] if refreshed_match else None
-    else:
-        seat_map = application.showtime_seat_match(
-            {"showtimeHashCode": selected["showtimeHashCode"]},
-            selected["adjacentSeats"],
-            application.parse_seat_grid(internal_seat_grid(selected["seatCells"])),
-            selected["excludeAccessible"],
-            application.seat_map,
-        )
+    seat_map = application.showtime_seat_match(
+        {"showtimeHashCode": showtime_hash_code},
+        adjacent_seats,
+        application.parse_seat_grid(internal_seat_grid(seat_cells)),
+        exclude_accessible,
+        application.seat_map,
+    )
     if not seat_map:
         raise ValueError(
             "Those seats are no longer available for that exact showtime. Run find_movie_seats again."
         )
 
     layout = seat_map["layout"]
-    option_number = selected["optionNumber"]
-    match = {
-        "movieTitle": selected["movie"],
-        "theatre": selected["theatre"],
-        "date": selected["date"],
-        "displayTime": selected["time"],
-        "format": selected["format"],
-        "ticketUrl": selected["ticketUrl"],
-    }
     recommended_seats = [
         seat["id"]
         for seat in layout["seats"]
@@ -510,55 +478,42 @@ def show_movie_seat_map(
     ]
     recommended_summary = ", ".join(recommended_seats[:12]) or "none currently highlighted"
     caption = (
-        f"Live seat map for option {option_number}: {match['movieTitle']} at {match['theatre']['name']} — "
-        f"{match['date']} at {match['displayTime']} ({match['format']}). "
+        f"Live seat map for option {option_number}: {movie} at {theatre} — "
+        f"{show_date.isoformat()} at {show_time} ({movie_format}). "
         f"Red = seats matching the request; white = available; gray = unavailable; "
         f"blue = accessible. Matching seat examples: {recommended_summary}."
     )
     details = {
-        "movie": match["movieTitle"],
-        "theatre": match["theatre"]["name"],
-        "date": match["date"],
-        "time": match["displayTime"],
-        "format": match["format"],
+        "movie": movie,
+        "theatre": theatre,
+        "date": show_date.isoformat(),
+        "time": show_time,
+        "format": movie_format,
     }
     image = render_seat_map_png(
         layout,
         details=details,
         available_count=seat_map["availableSeatCount"],
         total_count=seat_map["totalSeatCount"],
-        accessible_seats_excluded=selected["excludeAccessible"],
+        accessible_seats_excluded=exclude_accessible,
     )
     return [caption, Image(data=image, format="png")]
 
 
-def _csv_environment(name, defaults):
-    configured = [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
-    return configured or defaults
-
-
 transport_security = TransportSecuritySettings(
     enable_dns_rebinding_protection=True,
-    allowed_hosts=_csv_environment(
-        "MCP_ALLOWED_HOSTS",
-        [
-            "movieseatfinder.com",
-            "www.movieseatfinder.com",
-            "movieseatfinder.vercel.app",
-            "testserver",
-            "localhost:*",
-            "127.0.0.1:*",
-        ],
-    ),
-    allowed_origins=_csv_environment(
-        "MCP_ALLOWED_ORIGINS",
-        [
-            "https://poke.com",
-            "https://www.poke.com",
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-        ],
-    ),
+    allowed_hosts=[
+        "movieseatfinder.com",
+        "www.movieseatfinder.com",
+        "movieseatfinder.vercel.app",
+        "testserver",
+        "localhost:*",
+        "127.0.0.1:*",
+    ],
+    allowed_origins=[
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+    ],
 )
 
 mcp_protocol_app = movie_seat_mcp.streamable_http_app(
