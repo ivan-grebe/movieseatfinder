@@ -14,10 +14,7 @@ _DEFAULT_SIGNING_KEY = b"movie-seat-finder-selection-token-v1"
 
 
 def _signing_key():
-    configured = (
-        os.environ.get("MCP_SELECTION_SECRET", "")
-        or os.environ.get("MCP_API_KEY", "")
-    ).encode("utf-8")
+    configured = os.environ.get("MCP_SELECTION_SECRET", "").encode("utf-8")
     return configured or _DEFAULT_SIGNING_KEY
 
 
