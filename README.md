@@ -68,7 +68,7 @@ URL: https://movieseatfinder.com/mcp
 Authentication: None
 ```
 
-Public Recipes need no key. Private integrations may use `MCP_API_KEY`; set `MCP_SELECTION_SECRET` to a stable random deployment secret. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` optionally override the production allowlists.
+The MCP endpoint is public and requires no authentication. Set `MCP_SELECTION_SECRET` to a stable random deployment secret. `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` optionally override the production allowlists.
 
 ## Testing
 

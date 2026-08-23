@@ -1,5 +1,4 @@
 import base64
-import os
 import struct
 import unittest
 from xml.etree import ElementTree
@@ -257,10 +256,9 @@ class McpProtocolTests(unittest.TestCase):
             headers["X-Poke-User-Id"] = user_id
         return headers
 
-    def test_public_poke_request_does_not_require_a_server_key(self):
+    def test_public_poke_request_does_not_require_authentication(self):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-        with patch.dict(os.environ, {"MCP_API_KEY": ""}):
-            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["result"].get("isError", False))
 
@@ -283,11 +281,16 @@ class McpProtocolTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_mcp_endpoint_rejects_an_invalid_bearer_key(self):
-        with patch.dict(os.environ, {"MCP_API_KEY": "test-secret"}):
-            response = self.client.post("/mcp", headers=self.request_headers(token="wrong"), json={})
-        self.assertEqual(response.status_code, 401)
-        self.assertNotIn("www-authenticate", response.headers)
+    def test_public_mcp_request_ignores_an_authorization_header(self):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        response = self.client.post(
+            "/mcp",
+            headers=self.request_headers(token="irrelevant"),
+            json=request,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["result"].get("isError", False))
 
     @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, False])
     def test_mcp_endpoint_applies_global_and_user_limits(self, rate_limit_hit):
