@@ -1,1 +1,1 @@
-"""Poke-compatible MCP integration for Movie Seat Finder."""
+"""Vendor-neutral MCP integration for Movie Seat Finder."""

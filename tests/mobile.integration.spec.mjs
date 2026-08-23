@@ -10,6 +10,10 @@ const emptySearch = {
   checkedSeatMaps: 1,
 };
 
+function seatMapSvg(label = "Matches") {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200"><text>${label}</text><rect id="matched-seat" fill="#c93a3a" width="20" height="20"/></svg>`;
+}
+
 function makeSimpleMatch(theatreName, time) {
   return {
     theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1 },
@@ -22,6 +26,7 @@ function makeSimpleMatch(theatreName, time) {
     seatMap: {
       availableSeatCount: 1,
       totalSeatCount: 1,
+      visualSvg: seatMapSvg(),
       layout: {
         width: 30,
         height: 30,
@@ -457,6 +462,7 @@ test("result sorting defaults to earliest and reruns the search when changed", a
       seatMap: {
         availableSeatCount: 1,
         totalSeatCount: 1,
+        visualSvg: seatMapSvg(),
         layout: {
           width: 30,
           height: 30,
@@ -622,6 +628,7 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
       seatMap: {
         availableSeatCount: 2,
         totalSeatCount: 2,
+        visualSvg: seatMapSvg("Unavailable / excluded"),
         layout: {
           width: 100,
           height: 50,
@@ -638,9 +645,14 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   };
   await mockSearchDependencies(page, route => {
     const accessibleSeatsExcluded = new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
+    const visualSvg = seatMapSvg(accessibleSeatsExcluded ? "Unavailable / excluded" : "Accessible Unavailable");
+    const matches = matchingSearch.matches.map(match => ({
+      ...match,
+      seatMap: { ...match.seatMap, visualSvg },
+    }));
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded }),
+      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded, matches }),
     });
   });
 
@@ -649,25 +661,17 @@ test("mobile results visibly highlight seats that match the filter", async ({ pa
   await selectMovie(page);
   await page.locator("#searchButton").click();
 
-  const matchedSeat = page.locator(".real-seat.matched");
-  await expect(matchedSeat).toHaveCount(1);
-  const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
-  await expect(wheelchairSeat).toHaveClass(/accessible/);
-  const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
-  await expect(companionSeat).toHaveClass(/accessible/);
-  await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
+  const seatMapImage = page.locator(".real-seat-map-image");
+  await expect(seatMapImage).toBeVisible();
+  await expect(seatMapImage).toHaveAttribute("alt", "Live Fandango seat map: 2 available of 2 total seats");
+  await expect.poll(() => seatMapImage.evaluate(node => decodeURIComponent(node.src.split(",")[1]))).toContain("Unavailable / excluded");
+  await expect.poll(() => seatMapImage.evaluate(node => decodeURIComponent(node.src.split(",")[1]))).toContain('fill="#c93a3a"');
 
   await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
   await page.locator("#searchButton").click();
 
-  const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
-  await expect(includedWheelchairSeat).toHaveClass(/accessible/);
-  const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
-  await expect(includedCompanionSeat).toHaveClass(/accessible/);
-  await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
-  await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect.poll(() => seatMapImage.evaluate(node => decodeURIComponent(node.src.split(",")[1]))).toContain("Accessible Unavailable");
 });
 
 test("accessible matches retain both accessible and matching states", async ({ page }) => {
@@ -685,6 +689,7 @@ test("accessible matches retain both accessible and matching states", async ({ p
       seatMap: {
         availableSeatCount: 1,
         totalSeatCount: 1,
+        visualSvg: seatMapSvg("Accessible match"),
         layout: {
           width: 50,
           height: 30,
@@ -705,8 +710,7 @@ test("accessible matches retain both accessible and matching states", async ({ p
   await selectMovie(page);
   await page.locator("#searchButton").click();
 
-  const accessibleMatch = page.locator('.real-seat[title="WC1 - available - wheelchair"]');
-  await expect(accessibleMatch).toHaveClass(/accessible/);
-  await expect(accessibleMatch).toHaveClass(/matched/);
-  await expect(page.getByText("Accessible match", { exact: true })).toHaveCount(0);
+  const visual = await page.locator(".real-seat-map-image").evaluate(node => decodeURIComponent(node.src.split(",")[1]));
+  expect(visual).toContain("Accessible match");
+  expect(visual).toContain('id="matched-seat"');
 });
