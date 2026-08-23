@@ -1,5 +1,7 @@
 """Pure seat-map normalization and matching rules."""
 
+from .seat_map_visual import render_seat_map_svg
+
 # Must match GRID_SIZE in src/frontend/scripts/seat-grid.js.
 GRID_SIZE = 15
 
@@ -122,6 +124,36 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     return [[seat.get("id", "") for seat in block] for block in blocks]
 
 
+def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
+    """Return exact-size adjacent groups, closest to the requested region first."""
+    seat_by_id = {seat.get("id", ""): seat for seat in seats if seat.get("id")}
+    rows = [seat.get("row", 0) for seat in seats]
+    xs = [seat.get("x", 0) for seat in seats]
+    min_row, row_span = min(rows), max(max(rows) - min(rows), 1)
+    min_x, x_span = min(xs), max(max(xs) - min(xs), 1)
+
+    if selected_cells:
+        target_row = sum((row + 0.5) / GRID_SIZE for row, _ in selected_cells) / len(selected_cells)
+        target_x = sum((column + 0.5) / GRID_SIZE for _, column in selected_cells) / len(selected_cells)
+    else:
+        target_row = target_x = 0.5
+
+    groups = []
+    for block in blocks:
+        for start in range(len(block) - group_size + 1):
+            group = block[start : start + group_size]
+            group_seats = [seat_by_id[seat_id] for seat_id in group if seat_id in seat_by_id]
+            if len(group_seats) != group_size:
+                continue
+            row_position = sum((seat.get("row", 0) - min_row) / row_span for seat in group_seats) / group_size
+            x_position = sum((seat.get("x", 0) - min_x) / x_span for seat in group_seats) / group_size
+            distance = (row_position - target_row) ** 2 + (x_position - target_x) ** 2
+            groups.append((distance, group))
+
+    groups.sort(key=lambda item: (item[0], item[1]))
+    return [group for _, group in groups]
+
+
 def showtime_seat_match(showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader):
     data = seat_map_loader(showtime.get("showtimeHashCode"))
     if not data:
@@ -130,14 +162,23 @@ def showtime_seat_match(showtime, min_adjacent, selected_cells, exclude_accessib
     blocks = adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible)
     if not blocks:
         return None
+    matching_groups = ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells)
     available_count = data.get("totalAvailableSeatCount")
     if available_count is None:
         available_count = sum(1 for seat in seats if seat.get("status") == "A")
     total_count = data.get("totalSeatCount")
     if total_count is None:
         total_count = len(seats)
+    layout = normalized_seat_layout(data, blocks)
     return {
         "availableSeatCount": available_count,
         "totalSeatCount": total_count,
-        "layout": normalized_seat_layout(data, blocks),
+        "matchingGroups": matching_groups,
+        "bestGroup": matching_groups[0],
+        "visualSvg": render_seat_map_svg(
+            layout,
+            available_count=available_count,
+            total_count=total_count,
+            accessible_seats_excluded=exclude_accessible,
+        ),
     }

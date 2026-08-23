@@ -239,6 +239,41 @@ def movie_matches(title, query):
     return bool(title) and title == query
 
 
+FORMAT_LABEL_ALIASES = {
+    "dolby": "Dolby Cinema",
+    "dolby cinema": "Dolby Cinema",
+    "dolby cinema amc": "Dolby Cinema",
+    "dolby cinema at amc": "Dolby Cinema",
+    "imax 70": "IMAX 70mm",
+    "imax70": "IMAX 70mm",
+    "imax 70 mm": "IMAX 70mm",
+    "imax 70mm": "IMAX 70mm",
+    "imax 70 mm film": "IMAX 70mm",
+    "imax 70mm film": "IMAX 70mm",
+    "imax laser": "IMAX with Laser",
+    "imax with laser": "IMAX with Laser",
+}
+
+
+def canonical_format_label(value):
+    """Collapse equivalent upstream format labels into one public label."""
+    cleaned = clean_title(value)
+    return FORMAT_LABEL_ALIASES.get(normalized_text(cleaned), cleaned)
+
+
+def intent_query_matches(value, query):
+    """Match a human hint without requiring an exact display string."""
+    value_text = normalized_text(value)
+    query_text = normalized_text(query)
+    return not query_text or query_text in value_text
+
+
+def format_intent_matches(value, query):
+    canonical_value = canonical_format_label(value)
+    canonical_query = canonical_format_label(query)
+    return normalized_text(canonical_query) in normalized_text(canonical_value)
+
+
 def format_matches(format_name, amenity_text, requested):
     if requested == "any":
         return True
@@ -250,21 +285,14 @@ def format_matches(format_name, amenity_text, requested):
     )
 
 
-# Requested formats whose match set is more than the literal requested value.
-FORMAT_ALIASES = {
-    "imax 70": {"imax 70", "imax 70mm", "imax 70 mm"},
-    "imax 70mm": {"imax 70", "imax 70mm", "imax 70 mm"},
-    "imax70": {"imax 70", "imax 70mm", "imax 70 mm"},
-    "imax with laser": {"imax with laser", "imax laser"},
-    "dolby": {"dolby", "dolby cinema"},
-}
-
-
 def format_matches_one(format_name, amenity_text, requested):
     values = [
-        normalized_text(value) for value in [format_name, *(amenity_text or "").split(",")] if normalized_text(value)
+        normalized_text(canonical_format_label(value))
+        for value in [format_name, *(amenity_text or "").split(",")]
+        if normalized_text(value)
     ]
     value_set = set(values)
+    requested = normalized_text(canonical_format_label(requested))
     if requested == "imax":
         # Plain IMAX must not match the premium IMAX variants.
         return "imax" in value_set and not any(value.startswith("imax ") for value in values)
@@ -273,7 +301,7 @@ def format_matches_one(format_name, amenity_text, requested):
         return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
     if requested in ("70mm", "70 mm"):
         return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
-    return bool(value_set & FORMAT_ALIASES.get(requested, {requested}))
+    return requested in value_set
 
 
 def fandango_theatres(zip_code, radius, origin, show_date=None):
@@ -395,12 +423,12 @@ def group_formats(format_name, group):
     for amenity in clean_title(group.get("amenityString", "")).split(","):
         amenity = amenity.strip()
         if any(term in amenity.lower() for term in PREMIUM_FORMAT_TERMS):
-            labels.add(amenity)
+            labels.add(canonical_format_label(amenity))
             visible.append(amenity)
     for amenity in group.get("amenities") or []:
         name = clean_title(amenity.get("name", ""))
         if any(term in name.lower() for term in PREMIUM_FORMAT_TERMS) and should_list_amenity_format(name, visible):
-            labels.add(name)
+            labels.add(canonical_format_label(name))
     return labels
 
 
@@ -469,11 +497,11 @@ def showtime_format(format_header, group, showtime):
     for format_item in showtime.get("filmFormat") or []:
         name = clean_title(format_item.get("filterName", ""))
         if name:
-            return name
+            return canonical_format_label(name)
 
     header = clean_title(format_header)
     if normalized_text(header) not in {"premium format", "format", ""}:
-        return header
+        return canonical_format_label(header)
 
     premium_terms = (
         "imax",
@@ -490,8 +518,8 @@ def showtime_format(format_header, group, showtime):
     for amenity in group.get("amenities") or []:
         name = clean_title(amenity.get("name", ""))
         if name and any(term in normalized_text(name) for term in premium_terms):
-            return name
-    return header or "Standard"
+            return canonical_format_label(name)
+    return canonical_format_label(header or "Standard")
 
 
 def normalize_showtimes(movies):
@@ -814,6 +842,8 @@ def location_movie_info(
     start_date,
     end_date=None,
     theatre="",
+    movie_query="",
+    format_query="",
     lat=None,
     lon=None,
 ):
@@ -847,6 +877,7 @@ def location_movie_info(
                         "title": title,
                         "dates": set(),
                         "formats": set(),
+                        "formatTheatres": {},
                         "theatres": set(),
                     })
                     movie_info["dates"].add(show_date)
@@ -854,23 +885,45 @@ def location_movie_info(
                     for variant in movie.get("variants") or []:
                         format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
                         for group in variant.get("amenityGroups") or []:
-                            movie_info["formats"].update(group_formats(format_name, group))
+                            for format_label in group_formats(format_name, group):
+                                movie_info["formats"].add(format_label)
+                                movie_info["formatTheatres"].setdefault(format_label, set()).add(theatre_name)
+
+        filtered_movies = []
+        relevant_theatres = set()
+        for movie in movies.values():
+            if movie_query and not intent_query_matches(movie["title"], movie_query):
+                continue
+            formats = sorted(
+                value
+                for value in movie["formats"]
+                if not format_query or format_intent_matches(value, format_query)
+            )
+            if format_query and not formats:
+                continue
+            movie_theatres = movie["theatres"]
+            if format_query:
+                movie_theatres = set().union(*(movie["formatTheatres"][value] for value in formats))
+            relevant_theatres.update(movie_theatres)
+            filtered_movies.append({
+                "title": movie["title"],
+                "dates": sorted(movie["dates"]),
+                "formats": formats,
+                "theatres": sorted(movie_theatres),
+            })
 
         return {
             "place": place,
             "zipCode": search_zip,
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
-            "theatres": sorted(theatres.values(), key=lambda item: (item["distanceMiles"], item["name"])),
-            "movies": sorted(
-                ({
-                    "title": movie["title"],
-                    "dates": sorted(movie["dates"]),
-                    "formats": sorted(movie["formats"]),
-                    "theatres": sorted(movie["theatres"]),
-                } for movie in movies.values()),
-                key=lambda movie: movie["title"],
+            "movieQuery": movie_query,
+            "formatQuery": format_query,
+            "theatres": sorted(
+                (item for item in theatres.values() if not (movie_query or format_query) or item["name"] in relevant_theatres),
+                key=lambda item: (item["distanceMiles"], item["name"]),
             ),
+            "movies": sorted(filtered_movies, key=lambda movie: movie["title"]),
         }
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

@@ -51,17 +51,17 @@ branding/                Repository and website brand assets
 tests/                   Python, frontend, and browser tests
 ```
 
-## Poke / MCP integration
+## MCP integration
 
 The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It uses a discovery-first flow:
 
 - `get_location_and_movie_info` finds live theatres, titles, dates, and formats.
-- `find_movie_seats` searches an exact discovered title and format for a party, time window, and optional 15x15 `row:column` seat region.
-- `show_movie_seat_map` refreshes a selected showtime from the chosen result's seat-map request.
+- `find_movie_seats` searches a discovered title and normalized format using a compact rectangular seat region or an advanced arbitrary shape.
+- `show_movie_seat_map` refreshes a selected showtime and returns the shared website seat-map visual plus structured seat groups.
 
-Agents should discover and reuse exact titles and formats before searching, then offer compact nearest-first results with a seat map or ticket link.
+Agents can pass movie and format hints during discovery, proceed on an unambiguous normalized match, and offer compact nearest-first results with ranked seat groups, a seat map, or a ticket link.
 
-For a public Poke Recipe, use:
+For any MCP client, use:
 
 ```text
 URL: https://movieseatfinder.com/mcp

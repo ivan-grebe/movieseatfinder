@@ -7,8 +7,31 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from backend import seat_map_visual
 from backend import server as entrypoint
-from backend.mcp_server import seat_map_image, security, server
+from backend.mcp_server import security, server
+
+
+def sample_seat_layout():
+    return {
+        "width": 100,
+        "height": 100,
+        "backgroundSvg": "<svg>large payload</svg>",
+        "seats": [
+            {
+                "id": "H10", "matched": True, "status": "A", "type": "standard",
+                "x": 40, "y": 50, "width": 8, "height": 8,
+            },
+            {
+                "id": "H11", "matched": True, "status": "A", "type": "standard",
+                "x": 50, "y": 50, "width": 8, "height": 8,
+            },
+            {
+                "id": "A1", "matched": False, "status": "S", "type": "standard",
+                "x": 10, "y": 10, "width": 8, "height": 8,
+            },
+        ],
+    }
 
 
 def sample_search_result():
@@ -29,25 +52,11 @@ def sample_search_result():
             "seatMap": {
                 "availableSeatCount": 42,
                 "totalSeatCount": 100,
-                "layout": {
-                    "width": 100,
-                    "height": 100,
-                    "backgroundSvg": "<svg>large payload</svg>",
-                    "seats": [
-                        {
-                            "id": "H10", "matched": True, "status": "A", "type": "standard",
-                            "x": 40, "y": 50, "width": 8, "height": 8,
-                        },
-                        {
-                            "id": "H11", "matched": True, "status": "A", "type": "standard",
-                            "x": 50, "y": 50, "width": 8, "height": 8,
-                        },
-                        {
-                            "id": "A1", "matched": False, "status": "S", "type": "standard",
-                            "x": 10, "y": 10, "width": 8, "height": 8,
-                        },
-                    ],
-                },
+                "matchingGroups": [["H10", "H11"]],
+                "bestGroup": ["H10", "H11"],
+                "visualSvg": seat_map_visual.render_seat_map_svg(
+                    sample_seat_layout(), available_count=42, total_count=100,
+                ),
             },
         }],
         "checkedShowtimes": 7,
@@ -64,7 +73,7 @@ def sample_seat_map_request(serialized=False):
         "show_date": "2026-08-04" if serialized else date(2026, 8, 4),
         "show_time": "7:30 PM",
         "movie_format": "IMAX",
-        "seat_cells": ["7:7", "7:8", "8:7", "8:8"],
+        "seat_region": {"row_min": 7, "row_max": 8, "column_min": 7, "column_max": 8},
         "adjacent_seats": 2,
         "exclude_accessible": True,
     }
@@ -72,36 +81,38 @@ def sample_seat_map_request(serialized=False):
 
 class McpToolTests(unittest.TestCase):
     def test_renderer_covers_every_website_seat_state_and_centers_each_legend(self):
-        matched_accessible = seat_map_image._seat_svg({
+        matched_accessible = seat_map_visual._seat_svg({
             "status": "A", "type": "wheelchair", "matched": True,
             "x": 10, "y": 10, "width": 8, "height": 8,
         }, 0.5, False)
-        excluded_accessible = seat_map_image._seat_svg({
+        excluded_accessible = seat_map_visual._seat_svg({
             "status": "A", "type": "companion", "matched": False,
             "x": 10, "y": 10, "width": 8, "height": 8,
         }, 0.5, True)
 
         self.assertIn('fill="url(#matched-accessible)"', matched_accessible)
         self.assertIn('stroke="url(#matched-accessible-border)"', matched_accessible)
-        self.assertIn('fill="#3a4250"', excluded_accessible)
+        self.assertIn('fill="#c7ced8"', excluded_accessible)
         for excluded in (False, True):
-            legend = ElementTree.fromstring(seat_map_image._legend_svg(excluded))
+            legend = ElementTree.fromstring(seat_map_visual._legend_svg(excluded))
             start = float(legend.attrib["data-start"])
             width = float(legend.attrib["data-width"])
             self.assertAlmostEqual(start + width / 2, 900, places=4)
-        full_legend = seat_map_image._legend_svg(False)
+        full_legend = seat_map_visual._legend_svg(False)
         self.assertIn("Accessible match", full_legend)
         self.assertIn("url(#matched-accessible-border)", full_legend)
-        self.assertIn("Unavailable / excluded", seat_map_image._legend_svg(True))
+        self.assertIn("Unavailable / excluded", seat_map_visual._legend_svg(True))
 
-    def test_dark_seat_map_renderer_is_high_resolution_and_uses_auditorium_svg(self):
-        layout = sample_search_result()["matches"][0]["seatMap"]["layout"]
+    def test_shared_seat_map_renderer_is_high_resolution_and_uses_auditorium_svg(self):
+        layout = sample_seat_layout()
         layout["backgroundSvg"] = (
             '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
             '<path d="M10 12 Q50 2 90 12" fill="none" stroke="#94a3b8"/></svg>'
         )
-        with_background = server.render_seat_map_png(layout)
-        without_background = server.render_seat_map_png({**layout, "backgroundSvg": ""})
+        with_background = seat_map_visual.render_svg_png(seat_map_visual.render_seat_map_svg(layout))
+        without_background = seat_map_visual.render_svg_png(
+            seat_map_visual.render_seat_map_svg({**layout, "backgroundSvg": ""})
+        )
 
         self.assertEqual(with_background[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(struct.unpack(">II", with_background[16:24]), (1800, 1200))
@@ -114,6 +125,15 @@ class McpToolTests(unittest.TestCase):
         )
         self.assertEqual(server.internal_seat_grid(()), "")
 
+    def test_rectangular_region_expands_to_the_expected_cells(self):
+        region = server.SeatRegion(row_min=6, row_max=7, column_min=1, column_max=2)
+        self.assertEqual(
+            server.resolved_seat_cells(region, ()),
+            ("6:1", "6:2", "7:1", "7:2"),
+        )
+        with self.assertRaisesRegex(ValueError, "not both"):
+            server.resolved_seat_cells(region, ("8:8",))
+
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
     def test_find_movie_seats_calls_the_shared_search_and_returns_compact_options(self, find_seat_matches):
         result = server.find_movie_seats(
@@ -122,7 +142,7 @@ class McpToolTests(unittest.TestCase):
             end_date=date(2026, 8, 6),
             zip_code="10023",
             movie_formats=("IMAX", "IMAX 70mm"),
-            seat_cells=("6:1", "6:2", "7:1", "7:2"),
+            seat_region=server.SeatRegion(row_min=6, row_max=7, column_min=1, column_max=2),
             adjacent_seats=2,
             radius_miles=25,
         )
@@ -145,8 +165,13 @@ class McpToolTests(unittest.TestCase):
             {"start": "2026-08-04", "end": "2026-08-06"},
         )
         self.assertEqual(result["query"]["formats"], ["IMAX", "IMAX 70mm"])
+        self.assertEqual(
+            result["query"]["seatRegion"],
+            {"row_min": 6, "row_max": 7, "column_min": 1, "column_max": 2},
+        )
         self.assertEqual(result["resultCount"], 1)
-        self.assertEqual(result["options"][0]["matchingSeatExamples"], ["H10", "H11"])
+        self.assertEqual(result["options"][0]["matchingGroups"], [["H10", "H11"]])
+        self.assertEqual(result["options"][0]["bestGroup"], ["H10", "H11"])
         self.assertEqual(result["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
         seat_map_request = result["options"][0]["seatMapRequest"]
         self.assertEqual(seat_map_request, {
@@ -157,7 +182,8 @@ class McpToolTests(unittest.TestCase):
             "show_date": "2026-08-04",
             "show_time": "7:30 PM",
             "movie_format": "IMAX",
-            "seat_cells": ["6:1", "6:2", "7:1", "7:2"],
+            "seat_region": {"row_min": 6, "row_max": 7, "column_min": 1, "column_max": 2},
+            "seat_cells": [],
             "adjacent_seats": 2,
             "exclude_accessible": True,
         })
@@ -172,7 +198,7 @@ class McpToolTests(unittest.TestCase):
                     zip_code="10023",
                     adjacent_seats=2,
                     movie_formats=("IMAX",),
-                    seat_cells=("8:7", "8:8"),
+                    seat_region=server.SeatRegion(row_min=8, row_max=8, column_min=7, column_max=8),
                     radius_miles=10,
                     start_time="20:00",
                     end_time="18:00",
@@ -183,10 +209,11 @@ class McpToolTests(unittest.TestCase):
     def test_show_movie_seat_map_refreshes_the_selected_showtime(self, showtime_seat_match):
         result = server.show_movie_seat_map(**sample_seat_map_request())
 
-        self.assertIn("Live seat map for option 1: The Odyssey", result[0])
-        self.assertIn("Red = seats matching the request", result[0])
-        self.assertTrue(result[1].data.startswith(b"\x89PNG\r\n\x1a\n"))
-        self.assertEqual(result[1]._mime_type, "image/png")
+        self.assertIn("Live seat map for option 1: The Odyssey", result.content[0].text)
+        self.assertIn("Red = seats matching the request", result.content[0].text)
+        self.assertTrue(base64.b64decode(result.content[1].data).startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(result.content[1].mime_type, "image/png")
+        self.assertEqual(result.structured_content["bestGroup"], ["H10", "H11"])
         self.assertEqual(showtime_seat_match.call_count, 1)
         self.assertEqual(showtime_seat_match.call_args.args[0]["showtimeHashCode"], "showtime-123")
 
@@ -201,7 +228,7 @@ class McpProtocolTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.client_context.__exit__(None, None, None)
 
-    def request_headers(self, token=None, user_id="00000000-0000-0000-0000-000000000001"):
+    def request_headers(self, token=None):
         headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json",
@@ -209,34 +236,24 @@ class McpProtocolTests(unittest.TestCase):
         }
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
-        if user_id is not None:
-            headers["X-Poke-User-Id"] = user_id
         return headers
 
-    def test_public_poke_request_does_not_require_authentication(self):
+    def test_public_mcp_request_does_not_require_authentication(self):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         response = self.client.post("/mcp", headers=self.request_headers(), json=request)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["result"].get("isError", False))
 
     @patch.object(security.MCP_RATE_LIMITER, "hit", return_value=True)
-    def test_connection_probe_can_discover_tools_without_a_poke_user_identifier(self, rate_limit_hit):
+    def test_connection_probe_can_discover_tools(self, rate_limit_hit):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         response = self.client.post(
             "/mcp",
-            headers=self.request_headers(user_id=None),
+            headers=self.request_headers(),
             json=request,
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(rate_limit_hit.call_count, 1)
-
-    def test_mcp_endpoint_rejects_a_malformed_poke_user_identifier(self):
-        response = self.client.post(
-            "/mcp",
-            headers=self.request_headers(user_id="not a safe identifier"),
-            json={},
-        )
-        self.assertEqual(response.status_code, 403)
 
     def test_public_mcp_request_ignores_an_authorization_header(self):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
@@ -249,13 +266,13 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["result"].get("isError", False))
 
-    @patch.object(security.MCP_RATE_LIMITER, "hit", side_effect=[True, False])
-    def test_mcp_endpoint_applies_global_and_user_limits(self, rate_limit_hit):
+    @patch.object(security.MCP_RATE_LIMITER, "hit", return_value=False)
+    def test_mcp_endpoint_applies_the_global_limit(self, rate_limit_hit):
         response = self.client.post("/mcp", headers=self.request_headers(), json={})
 
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.headers["retry-after"], "60")
-        self.assertEqual(rate_limit_hit.call_count, 2)
+        self.assertEqual(rate_limit_hit.call_count, 1)
 
     def test_mcp_endpoint_rejects_an_untrusted_browser_origin(self):
         headers = self.request_headers()
@@ -293,7 +310,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("Find the perfect movie seats", response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
-    def test_poke_receives_the_complete_clarification_first_instructions(self):
+    def test_client_receives_permissive_intent_preserving_instructions(self):
         request = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -309,16 +326,15 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         instructions = response.json()["result"]["instructions"]
         normalized_instructions = " ".join(instructions.split())
-        self.assertIn("CONVERSATION STATE", normalized_instructions)
-        self.assertIn("Find good seats for Dune tomorrow", normalized_instructions)
-        self.assertIn("Ask one focused question per turn", normalized_instructions)
-        self.assertIn("rows 8-12, columns 5-11", normalized_instructions)
-        self.assertIn("2:00 PM through midnight", normalized_instructions)
-        self.assertIn("DISCOVERY, THEN FORMAT", normalized_instructions)
+        self.assertIn("ask only when required information is genuinely missing", normalized_instructions)
+        self.assertIn("movie_query and format_query", normalized_instructions)
+        self.assertIn("rows 8-12 and columns 5-11", normalized_instructions)
+        self.assertIn("14:00-23:59", normalized_instructions)
+        self.assertIn("earliest future date", normalized_instructions)
         self.assertIn("show_movie_seat_map", normalized_instructions)
-        self.assertIn("Ask before every relaxation", normalized_instructions)
+        self.assertIn("Never weaken an explicit constraint without permission", normalized_instructions)
 
-    def test_poke_can_discover_the_discovery_and_search_tools(self):
+    def test_client_can_discover_the_discovery_and_search_tools(self):
         request = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -336,20 +352,24 @@ class McpProtocolTests(unittest.TestCase):
 
         discovery_schema = tools["get_location_and_movie_info"]["inputSchema"]
         self.assertEqual(discovery_schema["required"], ["zip_code", "start_date", "radius_miles"])
-        self.assertIn("exact live theatre names", tools["get_location_and_movie_info"]["description"])
+        self.assertIn("normalized formats", tools["get_location_and_movie_info"]["description"])
+        self.assertIn("movie_query", discovery_schema["properties"])
+        self.assertIn("format_query", discovery_schema["properties"])
 
         schema = tools["find_movie_seats"]["inputSchema"]
         self.assertEqual(
             schema["required"],
             [
                 "movie", "start_date", "zip_code", "adjacent_seats",
-                "movie_formats", "seat_cells", "radius_miles",
+                "movie_formats", "seat_region", "radius_miles",
             ],
         )
+        self.assertIn("$defs", schema)
+        self.assertIn("SeatRegion", schema["$defs"])
         seat_cells = schema["properties"]["seat_cells"]
-        self.assertNotIn("default", seat_cells)
+        self.assertEqual(seat_cells["default"], [])
         self.assertEqual(seat_cells["maxItems"], 225)
-        self.assertIn("Row 1 is nearest the screen", seat_cells["description"])
+        self.assertIn("Advanced arbitrary-shape override", seat_cells["description"])
         self.assertNotIn("default", schema["properties"]["adjacent_seats"])
         self.assertNotIn("default", schema["properties"]["movie_formats"])
         self.assertEqual(schema["properties"]["movie_formats"]["maxItems"], 10)
@@ -362,13 +382,16 @@ class McpProtocolTests(unittest.TestCase):
             map_schema["required"],
             [
                 "showtime_hash_code", "option_number", "movie", "theatre", "show_date",
-                "show_time", "movie_format", "seat_cells", "adjacent_seats", "exclude_accessible",
+                "show_time", "movie_format", "adjacent_seats", "exclude_accessible", "seat_region",
             ],
         )
         self.assertIn("seatMapRequest", tools["show_movie_seat_map"]["description"])
+        output_schema = tools["show_movie_seat_map"]["outputSchema"]
+        self.assertIn("matchingGroups", output_schema["properties"])
+        self.assertIn("bestGroup", output_schema["properties"])
 
     @patch.object(server.application, "location_movie_info")
-    def test_poke_can_discover_exact_titles_before_searching(self, location_movie_info):
+    def test_client_can_discover_exact_titles_before_searching(self, location_movie_info):
         location_movie_info.return_value = {
             "place": "New York, NY",
             "zipCode": "10023",
@@ -397,6 +420,8 @@ class McpProtocolTests(unittest.TestCase):
                     "start_date": "2026-08-04",
                     "end_date": "2026-08-06",
                     "radius_miles": 25,
+                    "movie_query": "Odyssey",
+                    "format_query": "IMAX 70mm",
                 },
             },
         }
@@ -414,10 +439,12 @@ class McpProtocolTests(unittest.TestCase):
             start_date=date(2026, 8, 4),
             end_date=date(2026, 8, 6),
             theatre="",
+            movie_query="Odyssey",
+            format_query="IMAX 70mm",
         )
 
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_poke_can_call_the_tool_and_receive_structured_ticket_options(self, _find_seat_matches):
+    def test_client_can_call_the_tool_and_receive_structured_ticket_options(self, _find_seat_matches):
         request = {
             "jsonrpc": "2.0",
             "id": 2,
@@ -430,7 +457,9 @@ class McpProtocolTests(unittest.TestCase):
                     "end_date": "2026-08-06",
                     "zip_code": "10023",
                     "movie_formats": ["IMAX", "IMAX 70mm"],
-                    "seat_cells": ["11:6", "11:7", "11:8", "12:6", "12:7", "12:8"],
+                    "seat_region": {
+                        "row_min": 11, "row_max": 12, "column_min": 6, "column_max": 8,
+                    },
                     "adjacent_seats": 2,
                     "radius_miles": 25,
                 },
@@ -442,11 +471,12 @@ class McpProtocolTests(unittest.TestCase):
         result = response.json()["result"]
         self.assertFalse(result["isError"])
         structured = result["structuredContent"]
-        self.assertEqual(structured["options"][0]["matchingSeatExamples"], ["H10", "H11"])
+        self.assertEqual(structured["options"][0]["matchingGroups"], [["H10", "H11"]])
+        self.assertEqual(structured["options"][0]["bestGroup"], ["H10", "H11"])
         self.assertEqual(structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
 
     @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
-    def test_poke_can_receive_a_seat_map_as_image_content(self, _showtime_seat_match):
+    def test_client_receives_an_image_and_structured_seat_map_fallback(self, _showtime_seat_match):
         request = {
             "jsonrpc": "2.0",
             "id": 3,
@@ -465,6 +495,8 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("Live seat map for option 1: The Odyssey", result["content"][0]["text"])
         self.assertEqual(result["content"][1]["mimeType"], "image/png")
         self.assertTrue(base64.b64decode(result["content"][1]["data"]).startswith(b"\x89PNG"))
+        self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
+        self.assertEqual(result["structuredContent"]["bestGroup"], ["H10", "H11"])
 
 
 if __name__ == "__main__":
