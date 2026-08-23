@@ -69,6 +69,15 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertTrue(application.format_matches("IMAX", "", "dolby,imax"))
         self.assertFalse(application.format_matches("Standard", "", "dolby,imax"))
 
+    def test_equivalent_upstream_format_labels_collapse_to_one_public_name(self):
+        self.assertEqual(application.canonical_format_label("IMAX 70MM"), "IMAX 70mm")
+        self.assertEqual(application.canonical_format_label("IMAX® 70MM Film"), "IMAX 70mm")
+        self.assertEqual(application.canonical_format_label("Dolby Cinema @ AMC"), "Dolby Cinema")
+        self.assertEqual(application.canonical_format_label("IMAX with Laser"), "IMAX with Laser")
+        self.assertEqual(application.canonical_format_label("IMAX"), "IMAX")
+        self.assertTrue(application.format_intent_matches("IMAX 70MM Film", "IMAX 70mm"))
+        self.assertFalse(application.format_intent_matches("IMAX", "IMAX 70mm"))
+
     def test_movie_metadata_is_normalized(self):
         movie = {
             "poster": {"size": {"200": "poster.jpg"}},
@@ -167,6 +176,17 @@ class MovieAndFormatTests(unittest.TestCase):
             ["2026-08-04", "2026-08-05"],
         )
 
+        focused = application.location_movie_info(
+            radius=25,
+            zip_code="10023",
+            start_date=date(2026, 8, 4),
+            end_date=date(2026, 8, 5),
+            movie_query="Odyssey (2026)",
+            format_query="IMAX 70",
+        )
+        self.assertEqual([movie["title"] for movie in focused["movies"]], ["The Odyssey (2026)"])
+        self.assertEqual(focused["movies"][0]["formats"], ["IMAX 70mm"])
+
 
 class SeatSelectionTests(unittest.TestCase):
     def setUp(self):
@@ -196,6 +216,20 @@ class SeatSelectionTests(unittest.TestCase):
         self.assertNotIn("B1", seat_ids)
         self.assertNotIn("B3", seat_ids)
         self.assertIn("B2", seat_ids)
+
+    def test_adjacent_groups_are_exact_party_size_and_ranked(self):
+        seats = [
+            {"id": f"A{column}", "row": 0, "column": column, "x": column * 10, "status": "A"}
+            for column in range(1, 5)
+        ]
+        groups = seat_matching.ranked_adjacent_groups(
+            seats,
+            [["A1", "A2", "A3", "A4"]],
+            2,
+            [],
+        )
+        self.assertCountEqual(groups, [["A1", "A2"], ["A2", "A3"], ["A3", "A4"]])
+        self.assertTrue(all(len(group) == 2 for group in groups))
 
 
 class CacheTests(unittest.TestCase):
@@ -613,9 +647,11 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["matches"]), 1)
         self.assertTrue(response.json()["accessibleSeatsExcluded"])
-        layout_seats = response.json()["matches"][0]["seatMap"]["layout"]["seats"]
-        matched_by_id = {seat["id"]: seat["matched"] for seat in layout_seats}
-        self.assertEqual(matched_by_id, {"A1": True, "A2": False, "A3": False})
+        matched_map = response.json()["matches"][0]["seatMap"]
+        self.assertEqual(matched_map["matchingGroups"], [["A1"]])
+        self.assertEqual(matched_map["bestGroup"], ["A1"])
+        self.assertIn("<svg", matched_map["visualSvg"])
+        self.assertNotIn("layout", matched_map)
         seat_map.assert_called_once_with("showtime-1")
 
     def test_manifest_and_discovery_routes(self):

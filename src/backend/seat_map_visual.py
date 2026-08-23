@@ -1,4 +1,4 @@
-"""Render the website's live seat-map treatment as a high-resolution dark PNG."""
+"""Render the canonical seat-map visual shared by the website and MCP."""
 
 import base64
 import math
@@ -47,9 +47,10 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
     height = max(_number(seat.get("height")), 1)
     top_radius = max(min(width, height) * 0.18, stroke_width)
     bottom_radius = max(min(width, height) * 0.30, stroke_width)
-    available = seat.get("status") == "A"
+    source_available = seat.get("status") == "A"
     accessible = str(seat.get("type") or "").lower() in ACCESSIBLE_SEAT_TYPES
-    available = available and not (accessible and accessible_seats_excluded)
+    excluded = source_available and accessible and accessible_seats_excluded
+    available = source_available and not excluded
     matched = bool(seat.get("matched"))
 
     if matched and accessible:
@@ -57,20 +58,20 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
         stroke = "url(#matched-accessible-border)"
         glow = ' filter="url(#match-glow)"'
     elif matched:
-        fill = "#e2605a"
-        stroke = "#c1403f"
+        fill = "#c93a3a"
+        stroke = "#8f1f26"
         glow = ' filter="url(#match-glow)"'
     elif available and accessible:
         fill = "#2563c7"
         stroke = "#174a97"
         glow = ' filter="url(#accessible-glow)"'
     elif available:
-        fill = "#d7deea"
-        stroke = "#b7c0cd"
+        fill = "#ffffff"
+        stroke = "#9fabbb"
         glow = ""
     else:
-        fill = "#3a4250"
-        stroke = "#4a5464"
+        fill = "#c7ced8"
+        stroke = "#adb5c0"
         glow = ""
 
     right = x + width
@@ -82,9 +83,20 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
         f"H{x + bottom_radius:g} Q{x:g},{bottom:g} {x:g},{bottom - bottom_radius:g} "
         f"V{y + top_radius:g} Q{x:g},{y:g} {x + top_radius:g},{y:g} Z"
     )
+    description = " - ".join(
+        value
+        for value in [
+            str(seat.get("id") or "Seat"),
+            "available" if source_available else "unavailable",
+            str(seat.get("type") or "") if accessible else "",
+            "excluded by filter" if excluded else "",
+            "matching" if matched else "",
+        ]
+        if value
+    )
     return (
         f'<path d="{seat_path}" fill="{fill}" stroke="{stroke}" '
-        f'stroke-width="{stroke_width:g}"{glow}/>'
+        f'stroke-width="{stroke_width:g}"{glow}><title>{_text(description)}</title></path>'
     )
 
 
@@ -97,15 +109,15 @@ def _legend_item(x, label, fill, stroke):
 
 
 def _legend_svg(accessible_seats_excluded):
-    items = [("Available", "#d7deea", "#b7c0cd")]
+    items = [("Available", "#ffffff", "#9fabbb")]
     if not accessible_seats_excluded:
         items.extend([
             ("Accessible", "#2563c7", "#174a97"),
             ("Accessible match", "url(#matched-accessible)", "url(#matched-accessible-border)"),
         ])
     items.extend([
-        ("Unavailable / excluded" if accessible_seats_excluded else "Unavailable", "#3a4250", "#4a5464"),
-        ("Matches", "#e2605a", "#c1403f"),
+        ("Unavailable / excluded" if accessible_seats_excluded else "Unavailable", "#c7ced8", "#adb5c0"),
+        ("Matches", "#c93a3a", "#8f1f26"),
     ])
     text_widths = [max(78, len(label) * 11.5) for label, _, _ in items]
     item_widths = [42 + width for width in text_widths]
@@ -123,13 +135,12 @@ def _legend_svg(accessible_seats_excluded):
     )
 
 
-def render_seat_map_png(layout, details=None, available_count=None, total_count=None, accessible_seats_excluded=True):
-    """Create a high-resolution PNG that mirrors the website's real-seat-map component."""
+def render_seat_map_svg(layout, available_count=None, total_count=None, accessible_seats_excluded=True):
+    """Create the canonical seat-map visual shared by the website and MCP."""
     seats = layout.get("seats") or []
     if not seats:
         raise ValueError("This showtime does not have a seat map to display.")
 
-    details = details or {}
     layout_width = max(
         _number(layout.get("width"), 1),
         max(_number(seat.get("x")) + _number(seat.get("width")) for seat in seats),
@@ -142,14 +153,6 @@ def render_seat_map_png(layout, details=None, available_count=None, total_count=
     )
     background_svg = str(layout.get("backgroundSvg") or "")
     title = "Live Fandango seat map"
-    subtitle_parts = [
-        details.get("movie"),
-        details.get("theatre"),
-        details.get("date"),
-        details.get("time"),
-        details.get("format"),
-    ]
-    subtitle = "  •  ".join(str(part) for part in subtitle_parts if part)
     if available_count is None:
         available_count = sum(1 for seat in seats if seat.get("status") == "A")
     if total_count is None:
@@ -190,19 +193,19 @@ def render_seat_map_png(layout, details=None, available_count=None, total_count=
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS_WIDTH}" height="{CANVAS_HEIGHT}" viewBox="0 0 {CANVAS_WIDTH} {CANVAS_HEIGHT}">
       <defs>
         <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#12151c"/><stop offset="0.4" stop-color="#0f1218"/><stop offset="1" stop-color="#0b0d12"/>
+          <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f5f9fd"/>
         </linearGradient>
         <linearGradient id="stage" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#1b222d"/><stop offset="1" stop-color="#141a24"/>
+          <stop offset="0" stop-color="#f8fbff"/><stop offset="1" stop-color="#edf4fb"/>
         </linearGradient>
         <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#fffafa"/><stop offset="1" stop-color="#ffd7d2"/>
         </linearGradient>
         <linearGradient id="matched-accessible" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0.49" stop-color="#e2605a"/><stop offset="0.51" stop-color="#2563c7"/>
+          <stop offset="0.49" stop-color="#c93a3a"/><stop offset="0.51" stop-color="#2563c7"/>
         </linearGradient>
         <linearGradient id="matched-accessible-border" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0.49" stop-color="#c1403f"/><stop offset="0.51" stop-color="#174a97"/>
+          <stop offset="0.49" stop-color="#8f1f26"/><stop offset="0.51" stop-color="#174a97"/>
         </linearGradient>
         <filter id="match-glow" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="{glow_blur:g}" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -213,20 +216,17 @@ def render_seat_map_png(layout, details=None, available_count=None, total_count=
         <clipPath id="stage-clip"><rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="28"/></clipPath>
         <style>
           text {{ font-family: Arial, sans-serif; }}
-          .title {{ fill:#f8fafc; font-size:38px; font-weight:800; }}
-          .subtitle {{ fill:#9aa8bc; font-size:22px; font-weight:600; }}
-          .count {{ fill:#aeb9c9; font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; }}
-          .legend {{ fill:#aeb9c9; font-size:22px; font-weight:650; }}
+          .title {{ fill:#405069; font-size:38px; font-weight:800; }}
+          .count {{ fill:#667085; font-size:23px; font-weight:700; font-variant-numeric:tabular-nums; }}
+          .legend {{ fill:#667085; font-size:22px; font-weight:650; }}
           .screen-label {{ fill:#5a2730; font-size:16px; font-weight:900; letter-spacing:5px; }}
         </style>
       </defs>
       <rect width="1800" height="1200" fill="url(#canvas)"/>
-      <rect x="24" y="24" width="1752" height="1152" rx="34" fill="none" stroke="#fff" stroke-opacity="0.10"/>
+      <rect x="24" y="24" width="1752" height="1152" rx="34" fill="none" stroke="#6882a4" stroke-opacity="0.18"/>
       <text x="80" y="92" class="title">{_text(title)}</text>
-      <text x="80" y="132" class="subtitle">{_text(subtitle)}</text>
       <text x="1720" y="92" class="count" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
-      <text x="1720" y="132" class="subtitle" text-anchor="end">Live seat availability</text>
-      <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="28" fill="url(#stage)" stroke="#fff" stroke-opacity="0.10"/>
+      <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="28" fill="url(#stage)" stroke="#6882a4" stroke-opacity="0.24"/>
       {screen_node}
       <g clip-path="url(#stage-clip)">
         <svg x="{inner_x:g}" y="{inner_y:g}" width="{inner_width:g}" height="{inner_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none" overflow="hidden">
@@ -235,6 +235,11 @@ def render_seat_map_png(layout, details=None, available_count=None, total_count=
       </g>
       {legend}
     </svg>'''
+    return svg
+
+
+def render_svg_png(svg):
+    """Rasterize an already-generated canonical seat-map SVG."""
     tree = usvg.Tree.from_str(svg, _render_options())
     # resvg expects a row-major 2x3 affine matrix, not SVG's transform ordering.
     return bytes(render(tree, (1, 0, 0, 0, 1, 0)))
