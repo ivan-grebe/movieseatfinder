@@ -2,8 +2,6 @@
 
 import base64
 import hashlib
-import os
-import secrets
 
 from limits import RateLimitItemPerMinute
 from limits.storage import MemoryStorage
@@ -140,21 +138,6 @@ def _valid_poke_user_id(headers):
     return poke_user_id
 
 
-def _valid_optional_bearer(headers):
-    authorization = headers.get("authorization", "").strip()
-    if not authorization:
-        return True
-    expected_key = os.environ.get("MCP_API_KEY", "").strip()
-    scheme, separator, supplied_key = authorization.partition(" ")
-    return (
-        bool(expected_key)
-        and separator == " "
-        and scheme.lower() == "bearer"
-        and bool(supplied_key)
-        and secrets.compare_digest(supplied_key, expected_key)
-    )
-
-
 class McpSecurityMiddleware:
     """Accept public Poke traffic while containing anonymous abuse."""
 
@@ -177,15 +160,6 @@ class McpSecurityMiddleware:
             response = JSONResponse(
                 {"error": "The supplied X-Poke-User-Id header is invalid."},
                 status_code=403,
-            )
-            await response(scope, receive, send)
-            return
-
-        if not _valid_optional_bearer(headers):
-            response = JSONResponse(
-                {"error": "The supplied MCP API key is invalid."},
-                status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
             )
             await response(scope, receive, send)
             return
