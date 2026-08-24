@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from backend import seat_map_visual
 from backend import server as entrypoint
 from backend.mcp_server import security, server
 
@@ -75,6 +76,10 @@ def sample_seat_map_request(serialized=False):
 
 
 class McpToolTests(unittest.TestCase):
+    def test_seat_map_renderer_loads_its_bundled_font(self):
+        self.assertTrue(seat_map_visual._FONT_PATH.is_file())
+        self.assertIn("Inter Variable", seat_map_visual._render_options().list_fonts())
+
     def test_exact_one_based_cells_map_to_the_internal_zero_based_grid(self):
         self.assertEqual(
             server.internal_seat_grid(("1:1", "6:6", "15:15", "6:6")),

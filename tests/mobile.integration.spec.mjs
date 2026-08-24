@@ -58,15 +58,21 @@ async function selectMovie(page, title = "Test Movie") {
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto("/");
+  await page.evaluate(() => document.fonts.ready);
 
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
     inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
+    fontFamily: getComputedStyle(document.body).fontFamily,
+    fontResourceLoaded: performance.getEntriesByType("resource")
+      .some(entry => new URL(entry.name).pathname === "/inter-variable.woff2"),
   }));
 
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
   expect(layout.inputFontSize).toBe("16px");
+  expect(layout.fontFamily).toContain("Inter");
+  expect(layout.fontResourceLoaded).toBe(true);
 });
 
 test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {

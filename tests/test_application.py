@@ -328,6 +328,10 @@ class RouteTests(unittest.TestCase):
         self.assertIn("Movie Seat Finder", response.text)
         self.assertIn('<link rel="canonical" href="http://example.test/">', response.text)
         self.assertIn('href="/faq"', response.text)
+        self.assertIn(
+            f'/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}',
+            response.text,
+        )
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
@@ -355,29 +359,31 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(faq_redirect.headers["location"], "/faq")
         for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css", "/styles.bundle.css"):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
-        for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png"):
+        for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png", "/inter-variable.woff2"):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
-        response = self.client.get(
-            "/app.bundle.js",
-            params={"v": application.ASSET_VERSIONS["app.bundle.js"]},
-        )
+        for asset in ("app.bundle.js", application.FONT_ASSET):
+            response = self.client.get(
+                f"/{asset}",
+                params={"v": application.ASSET_VERSIONS[asset]},
+            )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.headers["cache-control"],
-            "public, max-age=31536000, immutable",
-        )
-        self.assertEqual(
-            response.headers["cdn-cache-control"],
-            "public, max-age=31536000, immutable",
-        )
-        self.assertEqual(
-            response.headers["vercel-cdn-cache-control"],
-            "public, max-age=31536000, immutable",
-        )
-        self.assertNotIn("import ", response.text)
+            self.assertEqual(response.status_code, 200, asset)
+            self.assertEqual(
+                response.headers["cache-control"],
+                "public, max-age=31536000, immutable",
+            )
+            self.assertEqual(
+                response.headers["cdn-cache-control"],
+                "public, max-age=31536000, immutable",
+            )
+            self.assertEqual(
+                response.headers["vercel-cdn-cache-control"],
+                "public, max-age=31536000, immutable",
+            )
+
+        self.assertNotIn("import ", self.client.get("/app.bundle.js").text)
 
     def test_unversioned_assets_are_not_cached_as_immutable(self):
         response = self.client.get("/app.bundle.js")
