@@ -60,16 +60,29 @@ BRANDING_DIR = BASE_DIR / "branding"
 BACKEND_ASSET_DIR = Path(__file__).resolve().parent / "assets"
 FONT_ASSET = "inter-variable.woff2"
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg", ".woff2"}
+VERSIONED_ASSET_SUFFIXES = {".ico", ".js", ".png", ".svg", ".woff2"}
 # The only browser files the site serves; source modules stay private and the
 # raw index.html template is only reachable through the rendered "/" route.
 PUBLIC_ASSETS = {"app.bundle.js"}
-BRANDING_ASSETS = {"favicon.svg", "og-image.png"}
+BRANDING_ASSETS = {
+    "apple-touch-icon-precomposed.png",
+    "apple-touch-icon.png",
+    "favicon.ico",
+    "favicon.svg",
+    "og-image.png",
+}
 BACKEND_ASSETS = {FONT_ASSET}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
 # instead of relying on hand-bumped version strings.
 ASSET_VERSIONS = {
     "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
+    "apple-touch-icon-precomposed.png": hashlib.sha256(
+        (BRANDING_DIR / "apple-touch-icon-precomposed.png").read_bytes()
+    ).hexdigest()[:12],
+    "apple-touch-icon.png": hashlib.sha256(
+        (BRANDING_DIR / "apple-touch-icon.png").read_bytes()
+    ).hexdigest()[:12],
+    "favicon.ico": hashlib.sha256((BRANDING_DIR / "favicon.ico").read_bytes()).hexdigest()[:12],
     "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
     FONT_ASSET: hashlib.sha256((BACKEND_ASSET_DIR / FONT_ASSET).read_bytes()).hexdigest()[:12],
 }
@@ -86,12 +99,24 @@ INDEX_TEMPLATE = (
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
     .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
+    .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
+    .replace(
+        "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
+        ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
+    )
+    .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
 FAQ_TEMPLATE = (
     (TEMPLATE_DIR / "faq.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
+    .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
+    .replace(
+        "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
+        ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
+    )
+    .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
 DEFAULT_PAGE_SIZE = 20
@@ -750,6 +775,11 @@ def robots(request: Request):
         )
         + "\n"
     )
+
+
+@app.get("/llms.txt", include_in_schema=False)
+def llms_txt():
+    return PlainTextResponse((BASE_DIR / "llms.txt").read_text(encoding="utf-8"))
 
 
 @app.get("/sitemap.xml", include_in_schema=False)

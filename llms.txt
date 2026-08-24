@@ -1,0 +1,26 @@
+# Movie Seat Finder
+
+> Find real nearby Fandango showtimes with reserved seating, inspect live seat maps, and identify adjacent available seats before buying tickets.
+
+Movie Seat Finder is a free public web application. Showtime and seat availability come from Fandango and can change at any time. Ticket purchases are completed on Fandango.
+
+## Pages
+
+- [Movie Seat Finder](https://movieseatfinder.com/): Search by ZIP code or browser location, movie, theatre, format, date, time, party size, and preferred seat-map region.
+- [FAQ](https://movieseatfinder.com/faq): Answers about search behavior, live data, theatre formats, seat maps, accessibility, privacy, and ticket links.
+
+## MCP
+
+- [MCP endpoint](https://movieseatfinder.com/mcp): Public Streamable HTTP endpoint; no authentication required.
+
+The MCP server exposes a discovery-first workflow:
+
+- `get_location_and_movie_info` finds nearby theatres, movie titles, dates, and formats.
+- `find_movie_seats` searches for matching showtimes and adjacent seats.
+- `show_movie_seat_map` refreshes a selected showtime and returns a visual seat map plus structured seat-group data.
+
+Agents should ask for missing search details when their client supports questions. If a default is used, state the default to the user. Seat availability should be refreshed before presenting a final seat map or ticket link.
+
+## Source
+
+- [GitHub repository](https://github.com/ivan-grebe/movieseatfinder): Source code, setup instructions, tests, and issue tracking.
