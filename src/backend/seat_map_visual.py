@@ -4,6 +4,7 @@ import base64
 import math
 import threading
 from html import escape
+from pathlib import Path
 
 from resvg import render, usvg
 
@@ -12,22 +13,23 @@ CANVAS_WIDTH = 642
 CONTENT_WIDTH = 620
 WRAPPER_PADDING = 10
 ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}
+_FONT_PATH = Path(__file__).with_name("assets") / "inter-variable.ttf"
 _RENDER_STATE = threading.local()
 TITLE_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#f1f5f9;"
-    "font-family:Arial,sans-serif;font-size:11px;font-weight:850"
+    "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:850"
 )
 COUNT_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
-    "font-family:Arial,sans-serif;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums"
+    "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums"
 )
 LEGEND_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
-    "font-family:Arial,sans-serif;font-size:11px;font-weight:400"
+    "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:400"
 )
 SCREEN_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#e8b4bd;"
-    "font-family:Arial,sans-serif;font-size:9px;font-weight:900;letter-spacing:1.44px"
+    "font-family:'Inter Variable',sans-serif;font-size:9px;font-weight:900;letter-spacing:1.44px"
 )
 
 
@@ -35,8 +37,8 @@ def _render_options():
     options = getattr(_RENDER_STATE, "options", None)
     if options is None:
         options = usvg.Options.default()
-        setattr(options, "font_family", "Arial")
-        options.load_system_fonts()
+        setattr(options, "font_family", "Inter Variable")
+        options.load_font_file(str(_FONT_PATH))
         _RENDER_STATE.options = options
     return options
 

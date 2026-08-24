@@ -57,20 +57,28 @@ FRONTEND_DIR = BASE_DIR / "src" / "frontend"
 STATIC_DIR = FRONTEND_DIR / "dist"
 TEMPLATE_DIR = FRONTEND_DIR / "templates"
 BRANDING_DIR = BASE_DIR / "branding"
-INLINE_STYLES = (STATIC_DIR / "styles.bundle.css").read_text(encoding="utf-8")
-INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
+BACKEND_ASSET_DIR = Path(__file__).resolve().parent / "assets"
+FONT_ASSET = "inter-variable.woff2"
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg"}
+VERSIONED_ASSET_SUFFIXES = {".js", ".png", ".svg", ".woff2"}
 # The only browser files the site serves; source modules stay private and the
 # raw index.html template is only reachable through the rendered "/" route.
 PUBLIC_ASSETS = {"app.bundle.js"}
 BRANDING_ASSETS = {"favicon.svg", "og-image.png"}
+BACKEND_ASSETS = {FONT_ASSET}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
 # instead of relying on hand-bumped version strings.
 ASSET_VERSIONS = {
     "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
     "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
+    FONT_ASSET: hashlib.sha256((BACKEND_ASSET_DIR / FONT_ASSET).read_bytes()).hexdigest()[:12],
 }
+INLINE_STYLES = (
+    (STATIC_DIR / "styles.bundle.css")
+    .read_text(encoding="utf-8")
+    .replace("__FONT_VERSION__", ASSET_VERSIONS[FONT_ASSET])
+)
+INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
 # Static tokens are substituted once at import; only the origin-dependent SEO
 # tokens vary per request.
 INDEX_TEMPLATE = (
@@ -1235,11 +1243,14 @@ class PublicAssetFiles(StaticFiles):
     def __init__(self):
         super().__init__(directory=STATIC_DIR)
         self.branding = StaticFiles(directory=BRANDING_DIR)
+        self.backend_assets = StaticFiles(directory=BACKEND_ASSET_DIR)
 
     async def get_response(self, path, scope):
         normalized_path = path.replace("\\", "/")
         if normalized_path in BRANDING_ASSETS:
             return await self.branding.get_response(normalized_path, scope)
+        if normalized_path in BACKEND_ASSETS:
+            return await self.backend_assets.get_response(normalized_path, scope)
         if normalized_path not in PUBLIC_ASSETS:
             raise HTTPException(status_code=404, detail="Not found")
         return await super().get_response(path, scope)
