@@ -359,7 +359,15 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(faq_redirect.headers["location"], "/faq")
         for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css", "/styles.bundle.css"):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
-        for public_path in ("/app.bundle.js", "/favicon.svg", "/og-image.png", "/inter-variable.woff2"):
+        for public_path in (
+            "/app.bundle.js",
+            "/apple-touch-icon-precomposed.png",
+            "/apple-touch-icon.png",
+            "/favicon.ico",
+            "/favicon.svg",
+            "/og-image.png",
+            "/inter-variable.woff2",
+        ):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
@@ -614,6 +622,10 @@ class RouteTests(unittest.TestCase):
     def test_manifest_and_discovery_routes(self):
         self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)
         self.assertIn("Sitemap:", self.client.get("/robots.txt").text)
+        llms_text = self.client.get("/llms.txt")
+        self.assertEqual(llms_text.status_code, 200)
+        self.assertIn("# Movie Seat Finder", llms_text.text)
+        self.assertIn("https://movieseatfinder.com/mcp", llms_text.text)
         sitemap = self.client.get("/sitemap.xml").text
         self.assertIn("<urlset", sitemap)
         self.assertIn("<loc>http://testserver/faq</loc>", sitemap)
