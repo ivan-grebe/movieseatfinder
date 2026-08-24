@@ -67,9 +67,12 @@ PUBLIC_ASSETS = {"app.bundle.js"}
 BRANDING_ASSETS = {
     "apple-touch-icon-precomposed.png",
     "apple-touch-icon.png",
+    "favicon-96x96.png",
     "favicon.ico",
     "favicon.svg",
     "og-image.png",
+    "web-app-manifest-192x192.png",
+    "web-app-manifest-512x512.png",
 }
 BACKEND_ASSETS = {FONT_ASSET}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
@@ -82,8 +85,17 @@ ASSET_VERSIONS = {
     "apple-touch-icon.png": hashlib.sha256(
         (BRANDING_DIR / "apple-touch-icon.png").read_bytes()
     ).hexdigest()[:12],
+    "favicon-96x96.png": hashlib.sha256(
+        (BRANDING_DIR / "favicon-96x96.png").read_bytes()
+    ).hexdigest()[:12],
     "favicon.ico": hashlib.sha256((BRANDING_DIR / "favicon.ico").read_bytes()).hexdigest()[:12],
     "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
+    "web-app-manifest-192x192.png": hashlib.sha256(
+        (BRANDING_DIR / "web-app-manifest-192x192.png").read_bytes()
+    ).hexdigest()[:12],
+    "web-app-manifest-512x512.png": hashlib.sha256(
+        (BRANDING_DIR / "web-app-manifest-512x512.png").read_bytes()
+    ).hexdigest()[:12],
     FONT_ASSET: hashlib.sha256((BACKEND_ASSET_DIR / FONT_ASSET).read_bytes()).hexdigest()[:12],
 }
 INLINE_STYLES = (
@@ -104,6 +116,7 @@ INDEX_TEMPLATE = (
         "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
         ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
     )
+    .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
@@ -116,6 +129,7 @@ FAQ_TEMPLATE = (
         "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
         ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
     )
+    .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
 )
@@ -816,10 +830,21 @@ def webmanifest():
             "theme_color": "#12151c",
             "icons": [
                 {
-                    "src": f"/favicon.svg?v={ASSET_VERSIONS['favicon.svg']}",
-                    "sizes": "any",
-                    "type": "image/svg+xml",
-                }
+                    "src": (
+                        "/web-app-manifest-192x192.png"
+                        f"?v={ASSET_VERSIONS['web-app-manifest-192x192.png']}"
+                    ),
+                    "sizes": "192x192",
+                    "type": "image/png",
+                },
+                {
+                    "src": (
+                        "/web-app-manifest-512x512.png"
+                        f"?v={ASSET_VERSIONS['web-app-manifest-512x512.png']}"
+                    ),
+                    "sizes": "512x512",
+                    "type": "image/png",
+                },
             ],
         }
     )
