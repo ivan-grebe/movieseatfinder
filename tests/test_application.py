@@ -332,6 +332,11 @@ class RouteTests(unittest.TestCase):
             f'/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}',
             response.text,
         )
+        self.assertIn(
+            f'/favicon-96x96.png?v={application.ASSET_VERSIONS["favicon-96x96.png"]}',
+            response.text,
+        )
+        self.assertIn('<meta name="apple-mobile-web-app-title" content="Seat Finder">', response.text)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
@@ -363,10 +368,13 @@ class RouteTests(unittest.TestCase):
             "/app.bundle.js",
             "/apple-touch-icon-precomposed.png",
             "/apple-touch-icon.png",
+            "/favicon-96x96.png",
             "/favicon.ico",
             "/favicon.svg",
             "/og-image.png",
             "/inter-variable.woff2",
+            "/web-app-manifest-192x192.png",
+            "/web-app-manifest-512x512.png",
         ):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
@@ -620,7 +628,12 @@ class RouteTests(unittest.TestCase):
         seat_map.assert_called_once_with("showtime-1")
 
     def test_manifest_and_discovery_routes(self):
-        self.assertEqual(self.client.get("/site.webmanifest").status_code, 200)
+        manifest_response = self.client.get("/site.webmanifest")
+        self.assertEqual(manifest_response.status_code, 200)
+        self.assertEqual(
+            {icon["sizes"] for icon in manifest_response.json()["icons"]},
+            {"192x192", "512x512"},
+        )
         self.assertIn("Sitemap:", self.client.get("/robots.txt").text)
         llms_text = self.client.get("/llms.txt")
         self.assertEqual(llms_text.status_code, 200)
