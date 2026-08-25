@@ -338,12 +338,6 @@ def intent_query_matches(value, query):
     return not query_text or query_text in value_text
 
 
-def format_intent_matches(value, query):
-    canonical_value = canonical_format_label(value)
-    canonical_query = canonical_format_label(query)
-    return normalized_text(canonical_query) == normalized_text(canonical_value)
-
-
 def format_matches(format_name, requested):
     if requested == "any":
         return True
@@ -524,7 +518,7 @@ def display_showtime_time(value):
     return f"{hour}:{minute:02d} {suffix}"
 
 
-GENERIC_FORMAT_NAMES = {"", "format", "premium format", "standard"}
+GENERIC_FORMAT_NAMES = {"format", "premium format", "standard"}
 FORMAT_AMENITY_TERMS = (
     "imax",
     "dolby",
@@ -534,7 +528,6 @@ FORMAT_AMENITY_TERMS = (
     "prime",
     "xl",
     "d box",
-    "dbox",
     "reald",
     "3d",
     "35mm",
@@ -564,9 +557,9 @@ def is_format_amenity(value):
 def showtime_format(format_header, group, showtime):
     """Resolve Fandango's overlapping format fields to one public label."""
     showtime_names = [
-        clean_title(item.get("filterName", ""))
+        name
         for item in showtime.get("filmFormat") or []
-        if clean_title(item.get("filterName", ""))
+        if (name := clean_title(item.get("filterName", "")))
     ]
     amenity_names = [
         part.strip()
@@ -585,19 +578,17 @@ def showtime_format(format_header, group, showtime):
         for value in evidence
         if (label := canonical_format_label(value))
     }
-    evidence_names = set(labels_by_name)
-
-    if "imax 70mm" in evidence_names:
+    if "imax 70mm" in labels_by_name:
         return "IMAX 70mm"
 
-    has_imax = any(name == "imax" or name.startswith("imax ") for name in evidence_names)
-    if "imax with laser" in evidence_names:
+    has_imax = any(name == "imax" or name.startswith("imax ") for name in labels_by_name)
+    if "imax with laser" in labels_by_name:
         return "IMAX with Laser"
     if has_imax:
         return "IMAX"
 
     for preferred in FORMAT_PRIORITY:
-        if preferred in evidence_names:
+        if preferred in labels_by_name:
             return labels_by_name[preferred]
 
     for name in showtime_names:
@@ -995,7 +986,7 @@ def location_movie_info(
             formats = sorted(
                 value
                 for value in movie["formats"]
-                if not format_query or format_intent_matches(value, format_query)
+                if not format_query or format_matches(value, format_query)
             )
             if format_query and not formats:
                 continue
