@@ -58,15 +58,19 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertFalse(application.movie_matches("", "spider man"))
 
     def test_format_matching_distinguishes_imax_variants(self):
-        self.assertTrue(application.format_matches("IMAX", "", "imax"))
-        self.assertFalse(application.format_matches("IMAX 70mm", "", "imax"))
-        self.assertTrue(application.format_matches("IMAX 70mm", "", "imax70"))
+        self.assertTrue(application.format_matches("IMAX", "imax"))
+        self.assertFalse(application.format_matches("IMAX", "IMAX with Laser"))
+        self.assertFalse(application.format_matches("IMAX with Laser", "IMAX"))
+        self.assertFalse(application.format_matches("IMAX 70mm", "IMAX"))
+        self.assertTrue(application.format_matches("IMAX 70mm", "imax70"))
+        self.assertTrue(application.format_matches("IMAX with Laser", "Dolby Cinema,IMAX with Laser"))
 
-    def test_format_matching_accepts_amenity_aliases(self):
-        self.assertTrue(application.format_matches("Standard", "Dolby Cinema", "dolby"))
-        self.assertTrue(application.format_matches("Special Event", "70 mm presentation", "70mm"))
-        self.assertTrue(application.format_matches("IMAX", "", "dolby,imax"))
-        self.assertFalse(application.format_matches("Standard", "", "dolby,imax"))
+    def test_format_matching_collapses_only_equivalent_labels(self):
+        self.assertTrue(application.format_matches("Dolby Cinema", "dolby"))
+        self.assertTrue(application.format_matches("70mm", "70MM Film"))
+        self.assertFalse(application.format_matches("IMAX 70mm", "70mm"))
+        self.assertFalse(application.format_matches("Dolby Atmos", "Dolby Cinema"))
+        self.assertFalse(application.format_matches("Standard", "dolby,imax"))
 
     def test_equivalent_upstream_format_labels_collapse_to_one_public_name(self):
         self.assertEqual(application.canonical_format_label("IMAX 70MM"), "IMAX 70mm")
@@ -74,8 +78,12 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertEqual(application.canonical_format_label("Dolby Cinema @ AMC"), "Dolby Cinema")
         self.assertEqual(application.canonical_format_label("IMAX with Laser"), "IMAX with Laser")
         self.assertEqual(application.canonical_format_label("IMAX"), "IMAX")
+        self.assertEqual(application.canonical_format_label("70MM Film"), "70mm")
+        self.assertEqual(application.canonical_format_label("70mm presentation"), "70mm")
+        self.assertEqual(application.canonical_format_label("35 mm film"), "35mm")
         self.assertTrue(application.format_intent_matches("IMAX 70MM Film", "IMAX 70mm"))
         self.assertFalse(application.format_intent_matches("IMAX", "IMAX 70mm"))
+        self.assertFalse(application.format_intent_matches("IMAX with Laser", "IMAX"))
 
     def test_movie_metadata_is_normalized(self):
         movie = {
@@ -94,7 +102,7 @@ class MovieAndFormatTests(unittest.TestCase):
             },
         )
 
-    def test_showtime_uses_the_specific_format_and_compact_time(self):
+    def test_showtime_resolves_specific_amenity_over_generic_imax_label(self):
         movie = {
             "title": "Test Movie",
             "variants": [{
@@ -112,9 +120,71 @@ class MovieAndFormatTests(unittest.TestCase):
 
         showtime = application.normalize_showtimes([movie])[0]
 
-        self.assertEqual(showtime["format"], "IMAX")
+        self.assertEqual(showtime["format"], "IMAX with Laser")
         self.assertEqual(showtime["displayTime"], "6:00 PM")
         self.assertNotIn("o'clock", showtime["displayTime"])
+
+    def test_showtime_resolves_all_overlapping_format_fields(self):
+        cases = [
+            (
+                "IMAX 70mm wins over generic IMAX and laser",
+                "Premium Format",
+                "IMAX® 70MM Film, Laser Projection",
+                ["IMAX", "IMAX® 70MM Film", "Laser Projection"],
+                ["IMAX", "IMAX 70MM"],
+                "IMAX 70mm",
+            ),
+            (
+                "IMAX plus laser projection is laser IMAX",
+                "Premium Format",
+                "Laser Projection",
+                ["IMAX", "Laser Projection"],
+                ["IMAX"],
+                "IMAX with Laser",
+            ),
+            (
+                "plain IMAX remains distinct",
+                "Premium Format",
+                "Reserved seating",
+                ["IMAX", "Reserved seating"],
+                ["IMAX"],
+                "IMAX",
+            ),
+            (
+                "equivalent film labels collapse",
+                "Premium Format",
+                "70MM Film, Reserved seating",
+                ["70MM Film", "Reserved seating"],
+                ["70MM"],
+                "70mm",
+            ),
+            (
+                "specific premium amenity overrides a standard header",
+                "Standard",
+                "Dolby Cinema, Reserved seating",
+                ["Dolby Atmos", "Dolby Cinema", "Reserved seating"],
+                [],
+                "Dolby Cinema",
+            ),
+        ]
+
+        for description, header, amenity_string, amenities, showtime_formats, expected in cases:
+            with self.subTest(description):
+                group = {
+                    "amenityString": amenity_string,
+                    "amenities": [{"name": name} for name in amenities],
+                }
+                showtime = {"filmFormat": [{"filterName": name} for name in showtime_formats]}
+                self.assertEqual(application.showtime_format(header, group, showtime), expected)
+
+    def test_group_lists_only_each_showtimes_resolved_format(self):
+        group = {
+            "amenityString": "IMAX with Laser, Reserved seating",
+            "amenities": [{"name": "IMAX"}, {"name": "IMAX with Laser"}],
+            "showtimes": [{"filmFormat": [{"filterName": "IMAX"}]}],
+        }
+
+        self.assertEqual(application.group_formats("Premium Format", group), {"IMAX with Laser"})
 
     @patch("backend.application.fandango_theatres_by_date")
     @patch(
@@ -626,6 +696,77 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(matched_map["bestGroup"], ["A1"])
         self.assertEqual(matched_map["layout"]["seats"][0]["id"], "A1")
         seat_map.assert_called_once_with("showtime-1")
+
+    @patch("backend.application.seat_map")
+    @patch("backend.application.fandango_theatres_by_date")
+    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    def test_format_options_and_search_use_the_same_resolved_imax_variant(
+        self, resolve_search_location, fandango_theatres_by_date, seat_map
+    ):
+        fandango_theatres_by_date.return_value = {
+            "2026-07-20": [{
+                "name": "Test Cinema",
+                "address": "1 Main St",
+                "distanceMiles": 1.2,
+                "rawMovies": [{
+                    "title": "Test Movie",
+                    "variants": [{
+                        "filmFormatHeader": "Premium Format",
+                        "amenityGroups": [
+                            {
+                                "amenityString": "IMAX with Laser, Reserved seating",
+                                "amenities": [{"name": "IMAX"}, {"name": "IMAX with Laser"}],
+                                "showtimes": [{
+                                    "type": "available",
+                                    "ticketingDate": "2026-07-20+18:00",
+                                    "showtimeHashCode": "laser-showtime",
+                                    "filmFormat": [{"filterName": "IMAX"}],
+                                }],
+                            },
+                            {
+                                "amenityString": "Reserved seating",
+                                "amenities": [{"name": "IMAX"}],
+                                "showtimes": [{
+                                    "type": "available",
+                                    "ticketingDate": "2026-07-20+20:00",
+                                    "showtimeHashCode": "plain-showtime",
+                                    "filmFormat": [{"filterName": "IMAX"}],
+                                }],
+                            },
+                        ],
+                    }],
+                }],
+            }]
+        }
+        seat_map.return_value = {
+            "seats": [{
+                "id": "A1", "row": 0, "column": 1, "x": 0, "y": 0,
+                "status": "A", "type": "standard",
+            }],
+            "totalAvailableSeatCount": 1,
+            "totalSeatCount": 1,
+        }
+        base_params = {
+            "zip": "00000",
+            "radius": 25,
+            "movie": "Test Movie",
+            "startDate": "2026-07-20",
+            "endDate": "2026-07-20",
+        }
+
+        formats = self.client.get("/api/formats", params=base_params)
+        plain = self.client.get("/api/search", params={**base_params, "format": "IMAX"})
+        laser = self.client.get("/api/search", params={**base_params, "format": "IMAX with Laser"})
+
+        self.assertEqual(formats.json()["formats"], ["IMAX", "IMAX with Laser"])
+        self.assertEqual(
+            [(match["displayTime"], match["format"]) for match in plain.json()["matches"]],
+            [("8:00 PM", "IMAX")],
+        )
+        self.assertEqual(
+            [(match["displayTime"], match["format"]) for match in laser.json()["matches"]],
+            [("6:00 PM", "IMAX with Laser")],
+        )
 
     def test_manifest_and_discovery_routes(self):
         manifest_response = self.client.get("/site.webmanifest")
