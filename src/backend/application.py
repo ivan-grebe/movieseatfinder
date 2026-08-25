@@ -287,10 +287,28 @@ def movie_matches(title, query):
 
 
 FORMAT_LABEL_ALIASES = {
+    "35 mm": "35mm",
+    "35 mm film": "35mm",
+    "35 mm presentation": "35mm",
+    "35mm": "35mm",
+    "35mm film": "35mm",
+    "35mm presentation": "35mm",
+    "70 mm": "70mm",
+    "70 mm film": "70mm",
+    "70 mm presentation": "70mm",
+    "70mm": "70mm",
+    "70mm film": "70mm",
+    "70mm presentation": "70mm",
+    "3d": "3D",
+    "4dx": "4DX",
+    "d box": "D-BOX",
+    "dbox": "D-BOX",
     "dolby": "Dolby Cinema",
+    "dolby atmos": "Dolby Atmos",
     "dolby cinema": "Dolby Cinema",
     "dolby cinema amc": "Dolby Cinema",
     "dolby cinema at amc": "Dolby Cinema",
+    "imax": "IMAX",
     "imax 70": "IMAX 70mm",
     "imax70": "IMAX 70mm",
     "imax 70 mm": "IMAX 70mm",
@@ -299,6 +317,11 @@ FORMAT_LABEL_ALIASES = {
     "imax 70mm film": "IMAX 70mm",
     "imax laser": "IMAX with Laser",
     "imax with laser": "IMAX with Laser",
+    "prime at amc": "PRIME at AMC",
+    "reald 3d": "RealD 3D",
+    "rpx": "RPX",
+    "screenx": "ScreenX",
+    "xl at amc": "XL at AMC",
 }
 
 
@@ -318,37 +341,19 @@ def intent_query_matches(value, query):
 def format_intent_matches(value, query):
     canonical_value = canonical_format_label(value)
     canonical_query = canonical_format_label(query)
-    return normalized_text(canonical_query) in normalized_text(canonical_value)
+    return normalized_text(canonical_query) == normalized_text(canonical_value)
 
 
-def format_matches(format_name, amenity_text, requested):
+def format_matches(format_name, requested):
     if requested == "any":
         return True
-    requested_formats = [normalized_text(value) for value in requested.split(",")]
-    return any(
-        format_matches_one(format_name, amenity_text, requested_format)
-        for requested_format in requested_formats
-        if requested_format
-    )
-
-
-def format_matches_one(format_name, amenity_text, requested):
-    values = [
+    actual = normalized_text(canonical_format_label(format_name))
+    requested_formats = {
         normalized_text(canonical_format_label(value))
-        for value in [format_name, *(amenity_text or "").split(",")]
+        for value in requested.split(",")
         if normalized_text(value)
-    ]
-    value_set = set(values)
-    requested = normalized_text(canonical_format_label(requested))
-    if requested == "imax":
-        # Plain IMAX must not match the premium IMAX variants.
-        return "imax" in value_set and not any(value.startswith("imax ") for value in values)
-    combined = normalized_text(f"{format_name} {amenity_text}")
-    if requested in ("35mm", "35 mm"):
-        return bool(re.search(r"\b35\s*mm\b|\b35mm\b", combined))
-    if requested in ("70mm", "70 mm"):
-        return bool(re.search(r"\b70\s*mm\b|\b70mm\b", combined))
-    return requested in value_set
+    }
+    return actual in requested_formats
 
 
 def fandango_theatres(zip_code, radius, origin, show_date=None):
@@ -453,30 +458,10 @@ def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, t
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-PREMIUM_FORMAT_TERMS = ("imax", "dolby", "4dx", "screenx", "35mm", "70mm")
-
-
-def should_list_amenity_format(name, visible_terms):
-    normalized_name = normalized_text(name)
-    visible = {normalized_text(term) for term in visible_terms if normalized_text(term)}
-    return not (normalized_name == "imax" and any(term.startswith("imax ") for term in visible))
-
-
 def group_formats(format_name, group):
-    """Every format label a single amenity group exposes for its showtimes."""
+    """The resolved format labels exposed by a single amenity group."""
     group_showtimes = group.get("showtimes") or [{}]
-    labels = {showtime_format(format_name, group, showtime) for showtime in group_showtimes}
-    visible = [format_name, *labels]
-    for amenity in clean_title(group.get("amenityString", "")).split(","):
-        amenity = amenity.strip()
-        if any(term in amenity.lower() for term in PREMIUM_FORMAT_TERMS):
-            labels.add(canonical_format_label(amenity))
-            visible.append(amenity)
-    for amenity in group.get("amenities") or []:
-        name = clean_title(amenity.get("name", ""))
-        if any(term in name.lower() for term in PREMIUM_FORMAT_TERMS) and should_list_amenity_format(name, visible):
-            labels.add(canonical_format_label(name))
-    return labels
+    return {showtime_format(format_name, group, showtime) for showtime in group_showtimes}
 
 
 def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query, origin):
@@ -539,33 +524,92 @@ def display_showtime_time(value):
     return f"{hour}:{minute:02d} {suffix}"
 
 
+GENERIC_FORMAT_NAMES = {"", "format", "premium format", "standard"}
+FORMAT_AMENITY_TERMS = (
+    "imax",
+    "dolby",
+    "4dx",
+    "screenx",
+    "rpx",
+    "prime",
+    "xl",
+    "d box",
+    "dbox",
+    "reald",
+    "3d",
+    "35mm",
+    "70mm",
+)
+FORMAT_PRIORITY = (
+    "dolby cinema",
+    "4dx",
+    "screenx",
+    "rpx",
+    "prime at amc",
+    "xl at amc",
+    "d box",
+    "reald 3d",
+    "70mm",
+    "35mm",
+    "3d",
+    "dolby atmos",
+)
+
+
+def is_format_amenity(value):
+    normalized = normalized_text(canonical_format_label(value))
+    return any(re.search(rf"\b{re.escape(term)}\b", normalized) for term in FORMAT_AMENITY_TERMS)
+
+
 def showtime_format(format_header, group, showtime):
-    """Prefer Fandango's showtime-specific format over broad category labels."""
-    for format_item in showtime.get("filmFormat") or []:
-        name = clean_title(format_item.get("filterName", ""))
-        if name:
-            return canonical_format_label(name)
-
-    header = clean_title(format_header)
-    if normalized_text(header) not in {"premium format", "format", ""}:
-        return canonical_format_label(header)
-
-    premium_terms = (
-        "imax",
-        "dolby",
-        "4dx",
-        "screenx",
-        "rpx",
-        "prime",
-        "xl",
-        "dbox",
-        "d-box",
-        "reald",
+    """Resolve Fandango's overlapping format fields to one public label."""
+    showtime_names = [
+        clean_title(item.get("filterName", ""))
+        for item in showtime.get("filmFormat") or []
+        if clean_title(item.get("filterName", ""))
+    ]
+    amenity_names = [
+        part.strip()
+        for part in clean_title(group.get("amenityString", "")).split(",")
+        if part.strip()
+    ]
+    amenity_names.extend(
+        name
+        for name in (clean_title(item.get("name", "")) for item in group.get("amenities") or [])
+        if name
     )
-    for amenity in group.get("amenities") or []:
-        name = clean_title(amenity.get("name", ""))
-        if name and any(term in normalized_text(name) for term in premium_terms):
+    header = clean_title(format_header)
+    evidence = [*showtime_names, header, *amenity_names]
+    labels_by_name = {
+        normalized_text(label): label
+        for value in evidence
+        if (label := canonical_format_label(value))
+    }
+    evidence_names = set(labels_by_name)
+
+    if "imax 70mm" in evidence_names:
+        return "IMAX 70mm"
+
+    has_imax = any(name == "imax" or name.startswith("imax ") for name in evidence_names)
+    has_laser = "imax with laser" in evidence_names or "laser projection" in evidence_names
+    if has_imax and has_laser:
+        return "IMAX with Laser"
+    if has_imax:
+        return "IMAX"
+
+    for preferred in FORMAT_PRIORITY:
+        if preferred in evidence_names:
+            return labels_by_name[preferred]
+
+    for name in showtime_names:
+        label = canonical_format_label(name)
+        if normalized_text(label) not in GENERIC_FORMAT_NAMES:
+            return label
+
+    for name in amenity_names:
+        if is_format_amenity(name):
             return canonical_format_label(name)
+
     return canonical_format_label(header or "Standard")
 
 
@@ -595,13 +639,6 @@ def normalize_showtimes(movies):
                         continue
                     show_date, show_time = ticketing_date.split("+", 1)
                     format_label = showtime_format(format_name, group, showtime)
-                    format_tags = ", ".join(
-                        dict.fromkeys(
-                            [format_label]
-                            + [part.strip() for part in amenity_text.split(",") if part.strip()]
-                            + amenities
-                        )
-                    )
                     normalized.append(
                         {
                             "movieTitle": movie_title,
@@ -610,7 +647,6 @@ def normalize_showtimes(movies):
                             "displayTime": display_showtime_time(show_time),
                             "format": format_label,
                             "amenities": amenity_text,
-                            "formatTags": format_tags,
                             "showtimeHashCode": showtime.get("showtimeHashCode"),
                             "ticketUrl": showtime.get("ticketingJumpPageURL"),
                             **meta,
@@ -1107,7 +1143,7 @@ def collect_candidate_showtimes(
         for showtime in normalize_showtimes(raw_movies):
             if not movie_matches(showtime["movieTitle"], movie_query):
                 continue
-            if not format_matches(showtime["format"], showtime["formatTags"], requested_format):
+            if not format_matches(showtime["format"], requested_format):
                 continue
             if showtime["time"] < start_time or showtime["time"] > end_time:
                 continue
