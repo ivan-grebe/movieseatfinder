@@ -135,12 +135,12 @@ class MovieAndFormatTests(unittest.TestCase):
                 "IMAX 70mm",
             ),
             (
-                "IMAX plus laser projection is laser IMAX",
+                "generic laser projection does not imply branded IMAX with Laser",
                 "Premium Format",
                 "Laser Projection",
                 ["IMAX", "Laser Projection"],
                 ["IMAX"],
-                "IMAX with Laser",
+                "IMAX",
             ),
             (
                 "plain IMAX remains distinct",

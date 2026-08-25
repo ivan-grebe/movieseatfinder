@@ -591,8 +591,7 @@ def showtime_format(format_header, group, showtime):
         return "IMAX 70mm"
 
     has_imax = any(name == "imax" or name.startswith("imax ") for name in evidence_names)
-    has_laser = "imax with laser" in evidence_names or "laser projection" in evidence_names
-    if has_imax and has_laser:
+    if "imax with laser" in evidence_names:
         return "IMAX with Laser"
     if has_imax:
         return "IMAX"
