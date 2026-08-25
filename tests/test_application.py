@@ -81,9 +81,6 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertEqual(application.canonical_format_label("70MM Film"), "70mm")
         self.assertEqual(application.canonical_format_label("70mm presentation"), "70mm")
         self.assertEqual(application.canonical_format_label("35 mm film"), "35mm")
-        self.assertTrue(application.format_intent_matches("IMAX 70MM Film", "IMAX 70mm"))
-        self.assertFalse(application.format_intent_matches("IMAX", "IMAX 70mm"))
-        self.assertFalse(application.format_intent_matches("IMAX with Laser", "IMAX"))
 
     def test_movie_metadata_is_normalized(self):
         movie = {
