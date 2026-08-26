@@ -344,6 +344,8 @@ export function createResultsView({
       }
       item.append(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
       if (match.ticketUrl) {
+        const actions = document.createElement("div");
+        actions.className = "result-actions";
         const link = document.createElement("a");
         link.className = "buy-btn";
         link.href = match.ticketUrl;
@@ -351,7 +353,8 @@ export function createResultsView({
         link.target = "_blank";
         link.rel = "noreferrer";
         link.addEventListener("click", logTicketClick);
-        item.append(link);
+        actions.append(link);
+        item.append(actions);
       }
       results.append(item);
     });
