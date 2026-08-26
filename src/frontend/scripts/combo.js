@@ -8,21 +8,23 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
   let items = [];
   let activeIndex = -1;
 
-  const options = () => Array.from(menu.querySelectorAll(".combo-option"));
+  function options() {
+    return [...menu.querySelectorAll(".combo-option")];
+  }
 
   function setActive(index) {
     const choices = options();
-    choices.forEach(option => {
+    choices.forEach((option) => {
       option.classList.remove("is-active");
       option.setAttribute("aria-selected", "false");
     });
-    if (!choices.length) {
+    if (choices.length === 0) {
       activeIndex = -1;
       input.removeAttribute("aria-activedescendant");
       return;
     }
     // Negative indexes wrap, so ArrowUp from the top lands on the last option
-    // just as ArrowDown from the bottom lands on the first.
+    // Just as ArrowDown from the bottom lands on the first.
     activeIndex = ((index % choices.length) + choices.length) % choices.length;
     const active = choices[activeIndex];
     active.classList.add("is-active");
@@ -40,7 +42,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
 
   function render() {
     menu.replaceChildren();
-    if (!items.length) {
+    if (items.length === 0) {
       closeCombo(input, menu);
       return;
     }
@@ -53,11 +55,11 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       button.setAttribute("role", "option");
       button.setAttribute("aria-selected", "false");
       button.textContent = getLabel(item);
-      button.addEventListener("mousedown", event => {
+      button.addEventListener("mousedown", (event) => {
         event.preventDefault();
         pick(item);
       });
-      menu.appendChild(button);
+      menu.append(button);
     });
     menu.hidden = false;
     input.setAttribute("aria-expanded", "true");
@@ -65,22 +67,30 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
 
   function update() {
     const query = input.value.trim().toLowerCase();
-    items = source().filter(item => getLabel(item).toLowerCase().includes(query));
+    items = source().filter((item) => getLabel(item).toLowerCase().includes(query));
     render();
     activeIndex = -1;
   }
 
   input.addEventListener("focus", update);
   input.addEventListener("input", update);
-  input.addEventListener("keydown", event => {
+  input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (menu.hidden) update();
+      if (menu.hidden) {
+        update();
+      }
       setActive(activeIndex + 1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (menu.hidden) update();
-      setActive(activeIndex === -1 ? -1 : activeIndex - 1);
+      if (menu.hidden) {
+        update();
+      }
+      if (activeIndex === -1) {
+        setActive(-1);
+      } else {
+        setActive(activeIndex - 1);
+      }
     } else if (event.key === "Enter") {
       if (!menu.hidden && activeIndex >= 0) {
         event.preventDefault();
@@ -95,7 +105,9 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
   });
   input.addEventListener("blur", () => {
     setTimeout(() => {
-      if (document.activeElement !== input) closeCombo(input, menu);
+      if (document.activeElement !== input) {
+        closeCombo(input, menu);
+      }
     }, 120);
   });
 

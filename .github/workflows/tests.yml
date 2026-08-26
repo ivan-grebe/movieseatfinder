@@ -28,6 +28,8 @@ jobs:
           npm ci
       - name: Find dead Python code
         run: python -m vulture src/backend/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
+      - name: Lint JavaScript
+        run: npm run lint
       - name: Find dead frontend code
         run: npm run lint:frontend
 
