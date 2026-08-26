@@ -1,6 +1,5 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["src/frontend/dist/**"],
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
   "rules": {
     "eslint/capitalized-comments": "error",
     "eslint/curly": "error",
@@ -32,13 +31,5 @@
     "unicorn/prefer-spread": "error",
     "unicorn/prefer-string-replace-all": "error",
     "unicorn/prefer-top-level-await": "error"
-  },
-  "overrides": [
-    {
-      "files": ["src/frontend/scripts/app.js"],
-      "rules": {
-        "unicorn/prefer-top-level-await": "off"
-      }
-    }
-  ]
+  }
 }
