@@ -5,11 +5,11 @@
   "scripts": {
     "build:frontend": "esbuild src/frontend/scripts/app.js --bundle --format=esm --minify --legal-comments=none --outfile=src/frontend/dist/app.bundle.js && esbuild src/frontend/styles/styles.css --minify --outfile=src/frontend/dist/styles.bundle.css",
     "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- src/frontend/dist/app.bundle.js src/frontend/dist/styles.bundle.css",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "oxlint --deny-warnings",
-    "lint:fix": "oxlint --fix",
-    "lint:frontend": "knip --no-config-hints",
+    "format": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --write .",
+    "format:check": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --check .",
+    "lint": "oxlint --config config/oxlint.json --deny-warnings src/frontend/scripts tests",
+    "lint:fix": "oxlint --config config/oxlint.json --fix src/frontend/scripts tests",
+    "lint:frontend": "knip --config config/knip.json --no-config-hints",
     "test:frontend": "node --test tests/frontend-utils.test.mjs",
     "pretest:mobile": "npm run build:frontend",
     "test:mobile": "playwright test --config=tests/playwright.mobile.config.mjs"
