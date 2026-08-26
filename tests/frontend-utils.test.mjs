@@ -17,15 +17,15 @@ test("ambient targets stay bounded and a useful distance from the current glow p
   assert.ok(Math.hypot(second.x - first.x, second.y - first.y) >= bounds.minDistance);
 });
 
-const response = function response(status, body) {
+function response(status, body) {
   return {
     ok: status >= 200 && status < 300,
     status,
     text: () => body,
   };
-};
+}
 
-const withFetch = async function withFetch(fakeFetch, run) {
+async function withFetch(fakeFetch, run) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fakeFetch;
   try {
@@ -33,7 +33,7 @@ const withFetch = async function withFetch(fakeFetch, run) {
   } finally {
     globalThis.fetch = originalFetch;
   }
-};
+}
 
 test("getJson returns a successful JSON response", async () => {
   await withFetch(

@@ -14,14 +14,16 @@ const GRID_MOVES = {
   ArrowUp: [-1, 0],
 };
 
-const cellKey = (row, col) => `${row}:${col}`;
+function cellKey(row, col) {
+  return `${row}:${col}`;
+}
 
-const cellFromEvent = function cellFromEvent(event) {
+function cellFromEvent(event) {
   const element = document.elementFromPoint(event.clientX, event.clientY);
   return element?.closest?.(".seat-cell") || null;
-};
+}
 
-export const createSeatGrid = function createSeatGrid(
+export function createSeatGrid(
   grid,
   status,
   centerButton,
@@ -49,14 +51,16 @@ export const createSeatGrid = function createSeatGrid(
   // Every browser zeroes for keyboard activations.
   let suppressNextClick = false;
 
-  const mobileInteractionLocked = () => isMobileLayout && !isMobileEditing;
+  function mobileInteractionLocked() {
+    return isMobileLayout && !isMobileEditing;
+  }
 
-  const setAnchor = function setAnchor(row, col) {
+  function setAnchor(row, col) {
     anchor = { col, row };
     keyboardRectBase = null;
-  };
+  }
 
-  const updateStatus = function updateStatus() {
+  function updateStatus() {
     const count = selected.size;
     if (count) {
       let suffix = "s";
@@ -67,9 +71,9 @@ export const createSeatGrid = function createSeatGrid(
     } else {
       setStatus(status, "No area highlighted - matching seats anywhere.");
     }
-  };
+  }
 
-  const setCell = function setCell(row, col, isSelected) {
+  function setCell(row, col, isSelected) {
     const key = cellKey(row, col);
     const cell = cells.get(key);
     if (isSelected) {
@@ -79,17 +83,17 @@ export const createSeatGrid = function createSeatGrid(
     }
     cell.classList.toggle("selected", isSelected);
     cell.setAttribute("aria-pressed", String(isSelected));
-  };
+  }
 
-  const clear = function clear() {
+  function clear() {
     [...selected].forEach((key) => {
       const [row, col] = key.split(":").map(Number);
       setCell(row, col, false);
     });
     updateStatus();
-  };
+  }
 
-  const selectBox = function selectBox(rowStart, rowEnd, colStart, colEnd) {
+  function selectBox(rowStart, rowEnd, colStart, colEnd) {
     clear();
     for (let row = rowStart; row <= rowEnd; row += 1) {
       for (let col = colStart; col <= colEnd; col += 1) {
@@ -97,17 +101,17 @@ export const createSeatGrid = function createSeatGrid(
       }
     }
     updateStatus();
-  };
+  }
 
-  const restoreSelection = function restoreSelection(snapshot) {
+  function restoreSelection(snapshot) {
     for (let row = 0; row < GRID_SIZE; row += 1) {
       for (let col = 0; col < GRID_SIZE; col += 1) {
         setCell(row, col, snapshot.has(cellKey(row, col)));
       }
     }
-  };
+  }
 
-  const setRovingCell = function setRovingCell(row, col) {
+  function setRovingCell(row, col) {
     focus = { col, row };
     cells.forEach((cell) => {
       cell.tabIndex = -1;
@@ -116,9 +120,9 @@ export const createSeatGrid = function createSeatGrid(
       }
     });
     cells.get(cellKey(row, col)).focus();
-  };
+  }
 
-  const syncMobileInteraction = function syncMobileInteraction() {
+  function syncMobileInteraction() {
     const locked = mobileInteractionLocked();
     grid.classList.toggle("is-mobile-locked", locked);
     grid.classList.toggle("is-mobile-editing", isMobileLayout && isMobileEditing);
@@ -147,9 +151,9 @@ export const createSeatGrid = function createSeatGrid(
       }
     }
     help.textContent = helpText;
-  };
+  }
 
-  const beginMobileEditing = function beginMobileEditing() {
+  function beginMobileEditing() {
     if (!isMobileLayout || isMobileEditing) {
       return;
     }
@@ -157,9 +161,9 @@ export const createSeatGrid = function createSeatGrid(
     isMobileEditing = true;
     syncMobileInteraction();
     doneButton.focus();
-  };
+  }
 
-  const finishMobileEditing = function finishMobileEditing(restorePreviousSelection) {
+  function finishMobileEditing(restorePreviousSelection) {
     if (!isMobileEditing) {
       return;
     }
@@ -171,9 +175,9 @@ export const createSeatGrid = function createSeatGrid(
     isMobileEditing = false;
     syncMobileInteraction();
     editButton.focus();
-  };
+  }
 
-  const applyRectangle = function applyRectangle(cell) {
+  function applyRectangle(cell) {
     const current = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
     restoreSelection(selectionBeforeDrag);
     for (
@@ -190,9 +194,9 @@ export const createSeatGrid = function createSeatGrid(
       }
     }
     updateStatus();
-  };
+  }
 
-  const handleCellClick = function handleCellClick(event) {
+  function handleCellClick(event) {
     if (mobileInteractionLocked() || suppressNextClick) {
       return;
     }
@@ -202,9 +206,9 @@ export const createSeatGrid = function createSeatGrid(
     setCell(buttonRow, buttonCol, !selected.has(cellKey(buttonRow, buttonCol)));
     setAnchor(buttonRow, buttonCol);
     updateStatus();
-  };
+  }
 
-  const build = function build() {
+  function build() {
     grid.replaceChildren();
     cells.clear();
     for (let row = 0; row < GRID_SIZE; row += 1) {
@@ -229,9 +233,9 @@ export const createSeatGrid = function createSeatGrid(
     }
     updateStatus();
     syncMobileInteraction();
-  };
+  }
 
-  const selectValues = function selectValues(values) {
+  function selectValues(values) {
     values.forEach((value) => {
       const [row, col] = value.split(":").map(Number);
       if (
@@ -246,7 +250,7 @@ export const createSeatGrid = function createSeatGrid(
       }
     });
     updateStatus();
-  };
+  }
 
   grid.addEventListener("pointerdown", (event) => {
     const cell = event.target.closest(".seat-cell");
@@ -413,4 +417,4 @@ export const createSeatGrid = function createSeatGrid(
     select: selectValues,
     values: () => [...selected],
   };
-};
+}

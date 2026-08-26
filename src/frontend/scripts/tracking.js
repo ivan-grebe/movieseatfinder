@@ -1,6 +1,6 @@
 const TICKET_CLICK_ENDPOINT = "/api/events/ticket-click";
 
-export const logTicketClick = function logTicketClick() {
+export function logTicketClick() {
   try {
     if (navigator.sendBeacon?.(TICKET_CLICK_ENDPOINT)) {
       return;
@@ -11,4 +11,4 @@ export const logTicketClick = function logTicketClick() {
   } catch {
     // Tracking must never interrupt the ticket purchase flow.
   }
-};
+}

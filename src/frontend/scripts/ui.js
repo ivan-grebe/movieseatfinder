@@ -1,6 +1,6 @@
 const STATE_CLASSES = ["is-loading", "is-error", "is-success"];
 
-export const setStatus = function setStatus(element, text, state = "") {
+export function setStatus(element, text, state = "") {
   element.classList.remove(...STATE_CLASSES);
   if (state) {
     element.classList.add(`is-${state}`);
@@ -16,12 +16,12 @@ export const setStatus = function setStatus(element, text, state = "") {
     element.append(spinner);
   }
   element.append(document.createTextNode(text));
-};
+}
 
-export const setSummary = function setSummary(element, text, muted) {
+export function setSummary(element, text, muted) {
   element.classList.toggle("is-muted", muted);
   element.textContent = text;
-};
+}
 
 const SEARCH_LOADING_STAGES = [
   { label: "Loading theatres" },
@@ -29,7 +29,7 @@ const SEARCH_LOADING_STAGES = [
   { delay: 1500, label: "Checking seat maps" },
 ];
 
-const appendAnimatedLabel = function appendAnimatedLabel(element, text) {
+function appendAnimatedLabel(element, text) {
   const label = document.createElement("span");
   label.className = "loading-label";
   label.append(document.createTextNode(text));
@@ -44,22 +44,22 @@ const appendAnimatedLabel = function appendAnimatedLabel(element, text) {
   }
   label.append(dots);
   element.append(label);
-};
+}
 
-export const setAnimatedStatus = function setAnimatedStatus(element, text) {
+export function setAnimatedStatus(element, text) {
   element.textContent = "";
   appendAnimatedLabel(element, text);
-};
+}
 
-export const startLoadingStages = function startLoadingStages(onStage) {
+export function startLoadingStages(onStage) {
   onStage(SEARCH_LOADING_STAGES[0].label);
   const timers = SEARCH_LOADING_STAGES.slice(1).map((stage) =>
     globalThis.setTimeout(() => onStage(stage.label), stage.delay),
   );
   return () => timers.forEach((timer) => globalThis.clearTimeout(timer));
-};
+}
 
-export const setButtonBusy = function setButtonBusy(button, busy, busyLabel) {
+export function setButtonBusy(button, busy, busyLabel) {
   if (busy) {
     button.dataset.label ||= button.textContent;
     button.disabled = true;
@@ -75,4 +75,4 @@ export const setButtonBusy = function setButtonBusy(button, busy, busyLabel) {
   button.disabled = false;
   button.removeAttribute("aria-busy");
   button.textContent = button.dataset.label;
-};
+}

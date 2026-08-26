@@ -1,16 +1,18 @@
-export const closeCombo = function closeCombo(input, menu) {
+export function closeCombo(input, menu) {
   menu.hidden = true;
   input.setAttribute("aria-expanded", "false");
   input.removeAttribute("aria-activedescendant");
-};
+}
 
-export const setupCombo = function setupCombo(input, menu, source, getLabel, onPick) {
+export function setupCombo(input, menu, source, getLabel, onPick) {
   let items = [];
   let activeIndex = -1;
 
-  const options = () => [...menu.querySelectorAll(".combo-option")];
+  function options() {
+    return [...menu.querySelectorAll(".combo-option")];
+  }
 
-  const setActive = function setActive(index) {
+  function setActive(index) {
     const choices = options();
     choices.forEach((option) => {
       option.classList.remove("is-active");
@@ -29,16 +31,16 @@ export const setupCombo = function setupCombo(input, menu, source, getLabel, onP
     active.setAttribute("aria-selected", "true");
     input.setAttribute("aria-activedescendant", active.id);
     active.scrollIntoView({ block: "nearest" });
-  };
+  }
 
-  const pick = function pick(item) {
+  function pick(item) {
     input.value = getLabel(item);
     closeCombo(input, menu);
     activeIndex = -1;
     onPick(item);
-  };
+  }
 
-  const render = function render() {
+  function render() {
     menu.replaceChildren();
     if (items.length === 0) {
       closeCombo(input, menu);
@@ -61,14 +63,14 @@ export const setupCombo = function setupCombo(input, menu, source, getLabel, onP
     });
     menu.hidden = false;
     input.setAttribute("aria-expanded", "true");
-  };
+  }
 
-  const update = function update() {
+  function update() {
     const query = input.value.trim().toLowerCase();
     items = source().filter((item) => getLabel(item).toLowerCase().includes(query));
     render();
     activeIndex = -1;
-  };
+  }
 
   input.addEventListener("focus", update);
   input.addEventListener("input", update);
@@ -110,4 +112,4 @@ export const setupCombo = function setupCombo(input, menu, source, getLabel, onP
   });
 
   return { refresh: update };
-};
+}

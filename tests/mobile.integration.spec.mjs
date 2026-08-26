@@ -10,7 +10,7 @@ const emptySearch = {
   pageSize: 20,
 };
 
-const makeSimpleMatch = function makeSimpleMatch(theatreName, time) {
+function makeSimpleMatch(theatreName, time) {
   return {
     amenities: "Reserved seating",
     date: "2026-08-01",
@@ -40,9 +40,9 @@ const makeSimpleMatch = function makeSimpleMatch(theatreName, time) {
     },
     theatre: { address: "1 Main St", distanceMiles: 1, name: theatreName },
   };
-};
+}
 
-const mockSearchDependencies = async function mockSearchDependencies(
+async function mockSearchDependencies(
   page,
   onSearch,
   formats = ["Standard"],
@@ -66,15 +66,15 @@ const mockSearchDependencies = async function mockSearchDependencies(
     }),
   );
   await page.route("**/api/search*", onSearch);
-};
+}
 
-const selectMovie = async function selectMovie(page, title = "Test Movie") {
+async function selectMovie(page, title = "Test Movie") {
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
   const input = page.locator("#movieInput");
   await input.fill(title);
   await page.getByRole("option", { exact: true, name: title }).click();
   await expect(input).toHaveValue(title);
-};
+}
 
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ height: 700, width: 320 });
