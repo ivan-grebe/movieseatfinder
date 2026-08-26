@@ -117,11 +117,11 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
     glow = (
         f'<path d="{seat_path}" fill="{glow_fill}" stroke="{glow_fill}" stroke-width="{stroke_width * 4:g}" '
         f'filter="url(#seat-glow)"/>'
-        if glow_fill else ""
+        if glow_fill
+        else ""
     )
     return (
-        glow
-        + f'<path d="{seat_path}" fill="{fill}" stroke="{stroke}" '
+        glow + f'<path d="{seat_path}" fill="{fill}" stroke="{stroke}" '
         f'stroke-width="{stroke_width:g}"><title>{_text(description)}</title></path>'
     )
 
@@ -138,10 +138,16 @@ def _legend_svg(accessible_seats_excluded):
     items = [("Available", "#f8fafc", "#cbd5e1")]
     if not accessible_seats_excluded:
         items.append(("Accessible", "#3b82f6", "#93c5fd"))
-    items.extend([
-        ("Unavailable / excluded" if accessible_seats_excluded else "Unavailable", "#475569", "#64748b"),
-        ("Matches", "#ef4444", "#fca5a5"),
-    ])
+    items.extend(
+        [
+            (
+                "Unavailable / excluded" if accessible_seats_excluded else "Unavailable",
+                "#475569",
+                "#64748b",
+            ),
+            ("Matches", "#ef4444", "#fca5a5"),
+        ]
+    )
     text_widths = [len(label) * 6.1 for label, _, _ in items]
     item_widths = [17 + width for width in text_widths]
     gap = 7
@@ -154,11 +160,13 @@ def _legend_svg(accessible_seats_excluded):
     start = WRAPPER_PADDING + 1
     return (
         f'<g id="seat-map-legend" data-start="{start:g}" data-width="{total_width:g}">'
-        f'{"".join(nodes)}</g>'
+        f"{''.join(nodes)}</g>"
     )
 
 
-def render_seat_map_svg(layout, available_count=None, total_count=None, accessible_seats_excluded=True):
+def render_seat_map_svg(
+    layout, available_count=None, total_count=None, accessible_seats_excluded=True
+):
     """Create a dark MCP image using the website seat map's layout."""
     seats = layout.get("seats") or []
     if not seats:
@@ -191,18 +199,22 @@ def render_seat_map_svg(layout, available_count=None, total_count=None, accessib
     canvas_height = math.ceil(legend_y + 12 + WRAPPER_PADDING + 1)
     stroke_width = max(layout_width / CONTENT_WIDTH, 0.01)
     seat_nodes = "".join(
-        _seat_svg(seat, stroke_width, accessible_seats_excluded)
-        for seat in seats[:2500]
+        _seat_svg(seat, stroke_width, accessible_seats_excluded) for seat in seats[:2500]
     )
     background_node = (
         f'<image x="0" y="0" width="{layout_width:g}" height="{layout_height:g}" '
         f'preserveAspectRatio="none" href="{_embedded_svg(background_svg)}"/>'
-        if background_svg else ""
+        if background_svg
+        else ""
     )
-    screen_node = "" if background_svg else (
-        f'<g><rect x="91" y="{screen_y}" width="460" height="18" rx="9" fill="url(#screen)"/>'
-        f'<text x="321" y="{screen_y + 12}" style="{SCREEN_TEXT_STYLE}" '
-        f'text-anchor="middle">SCREEN</text></g>'
+    screen_node = (
+        ""
+        if background_svg
+        else (
+            f'<g><rect x="91" y="{screen_y}" width="460" height="18" rx="9" fill="url(#screen)"/>'
+            f'<text x="321" y="{screen_y + 12}" style="{SCREEN_TEXT_STYLE}" '
+            f'text-anchor="middle">SCREEN</text></g>'
+        )
     )
 
     legend = _legend_svg(accessible_seats_excluded)
