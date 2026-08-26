@@ -1,72 +1,94 @@
 import { expect, test } from "@playwright/test";
 
 const emptySearch = {
+  checkedSeatMaps: 1,
+  checkedShowtimes: 1,
+  hasNextPage: false,
+  hasPreviousPage: false,
   matches: [],
   page: 1,
   pageSize: 20,
-  hasPreviousPage: false,
-  hasNextPage: false,
-  checkedShowtimes: 1,
-  checkedSeatMaps: 1,
 };
 
-function makeSimpleMatch(theatreName, time) {
+const makeSimpleMatch = function makeSimpleMatch(theatreName, time) {
   return {
-    theatre: { name: theatreName, address: "1 Main St", distanceMiles: 1 },
-    movieTitle: "Test Movie",
+    amenities: "Reserved seating",
     date: "2026-08-01",
     displayTime: time,
     format: "Standard",
-    amenities: "Reserved seating",
     genres: [],
+    movieTitle: "Test Movie",
     seatMap: {
       availableSeatCount: 1,
-      totalSeatCount: 1,
       layout: {
-        width: 30,
         height: 30,
-        seats: [{ id: `${theatreName}-${time}`, status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+        seats: [
+          {
+            height: 10,
+            id: `${theatreName}-${time}`,
+            matched: true,
+            status: "A",
+            type: "standard",
+            width: 10,
+            x: 10,
+            y: 10,
+          },
+        ],
+        width: 30,
       },
+      totalSeatCount: 1,
     },
+    theatre: { address: "1 Main St", distanceMiles: 1, name: theatreName },
   };
-}
+};
 
-async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
-  await page.route("**/api/theatres*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ place: "Testville", theatres: [] }),
-  }));
-  await page.route("**/api/movies*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-  }));
-  await page.route("**/api/formats*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ formats }),
-  }));
+const mockSearchDependencies = async function mockSearchDependencies(
+  page,
+  onSearch,
+  formats = ["Standard"],
+) {
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/movies*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/formats*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ formats }),
+      contentType: "application/json",
+    }),
+  );
   await page.route("**/api/search*", onSearch);
-}
+};
 
-async function selectMovie(page, title = "Test Movie") {
+const selectMovie = async function selectMovie(page, title = "Test Movie") {
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
   const input = page.locator("#movieInput");
   await input.fill(title);
-  await page.getByRole("option", { name: title, exact: true }).click();
+  await page.getByRole("option", { exact: true, name: title }).click();
   await expect(input).toHaveValue(title);
-}
+};
 
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 700 });
+  await page.setViewportSize({ height: 700, width: 320 });
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
 
   const layout = await page.evaluate(() => ({
-    viewportWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-    inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
     fontFamily: getComputedStyle(document.body).fontFamily,
-    fontResourceLoaded: performance.getEntriesByType("resource")
-      .some(entry => new URL(entry.name).pathname === "/inter-variable.woff2"),
+    fontResourceLoaded: performance
+      .getEntriesByType("resource")
+      .some((entry) => new URL(entry.name).pathname === "/inter-variable.woff2"),
+    inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
   }));
 
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
@@ -76,10 +98,12 @@ test("mobile form fits a narrow phone without horizontal scrolling", async ({ pa
 });
 
 test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
-  await mockSearchDependencies(page, route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify(emptySearch),
-  }));
+  await mockSearchDependencies(page, (route) =>
+    route.fulfill({
+      body: JSON.stringify(emptySearch),
+      contentType: "application/json",
+    }),
+  );
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
@@ -119,42 +143,46 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await doneButton.click();
   await expect(firstCell).toHaveAttribute("aria-pressed", "true");
 
-  await page.setViewportSize({ width: 900, height: 700 });
+  await page.setViewportSize({ height: 700, width: 900 });
   await expect(editButton).toBeHidden();
   await expect(centerButton).toBeVisible();
   await expect(clearButton).toBeVisible();
 });
 
 test("movie and seat controls stay locked until the location resolves", async ({ page }) => {
-  let releaseTheatres;
-  let markTheatresStarted;
-  const theatresStarted = new Promise(resolve => { markTheatresStarted = resolve; });
-  const theatreGate = new Promise(resolve => { releaseTheatres = resolve; });
-  await page.route("**/api/theatres*", async route => {
+  const { promise: theatresStarted, resolve: markTheatresStarted } = Promise.withResolvers();
+  const { promise: theatreGate, resolve: releaseTheatres } = Promise.withResolvers();
+  await page.route("**/api/theatres*", async (route) => {
     markTheatresStarted();
     await theatreGate;
     await route.fulfill({
-      contentType: "application/json",
       body: JSON.stringify({ place: "Testville", theatres: [] }),
+      contentType: "application/json",
     });
   });
-  await page.route("**/api/movies*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-  }));
+  await page.route("**/api/movies*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+      contentType: "application/json",
+    }),
+  );
   await page.goto("/");
 
   const movieGroup = page.locator("#movieGroup");
   const preferencesGroup = page.locator("#preferencesGroup");
   const searchButton = page.locator("#searchButton");
-  for (const group of [movieGroup, preferencesGroup]) {
-    await expect(group).toHaveAttribute("inert", "");
-    await expect(group).toHaveAttribute("aria-disabled", "true");
-  }
-  expect(await page.locator("#movieInput").evaluate(input => {
-    input.focus();
-    return document.activeElement === input;
-  })).toBe(false);
+  await Promise.all(
+    [movieGroup, preferencesGroup].flatMap((group) => [
+      expect(group).toHaveAttribute("inert", ""),
+      expect(group).toHaveAttribute("aria-disabled", "true"),
+    ]),
+  );
+  expect(
+    await page.locator("#movieInput").evaluate((input) => {
+      input.focus();
+      return document.activeElement === input;
+    }),
+  ).toBe(false);
   await expect(searchButton).toBeDisabled();
   await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
 
@@ -163,23 +191,29 @@ test("movie and seat controls stay locked until the location resolves", async ({
   releaseTheatres();
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
-  for (const group of [movieGroup, preferencesGroup]) {
-    await expect(group).not.toHaveAttribute("inert", "");
-    await expect(group).not.toHaveAttribute("aria-disabled", "true");
-  }
+  await Promise.all(
+    [movieGroup, preferencesGroup].flatMap((group) => [
+      expect(group).not.toHaveAttribute("inert", ""),
+      expect(group).not.toHaveAttribute("aria-disabled", "true"),
+    ]),
+  );
   await expect(searchButton).toBeEnabled();
 });
 
 test("movie options remain selectable beyond the movie card", async ({ page }) => {
   const movies = Array.from({ length: 12 }, (_, index) => ({ title: `Test Movie ${index + 1}` }));
-  await page.route("**/api/theatres*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ place: "Testville", theatres: [] }),
-  }));
-  await page.route("**/api/movies*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ movies }),
-  }));
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/movies*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ movies }),
+      contentType: "application/json",
+    }),
+  );
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
@@ -187,24 +221,28 @@ test("movie options remain selectable beyond the movie card", async ({ page }) =
 
   await page.locator("#movieInput").click();
   await expect(page.locator("#movieMenu")).toBeVisible();
-  await page.getByRole("option", { name: "Test Movie 12", exact: true }).click();
+  await page.getByRole("option", { exact: true, name: "Test Movie 12" }).click();
   await expect(page.locator("#movieInput")).toHaveValue("Test Movie 12");
   await expect(page.locator("#movieMenu")).toBeHidden();
 });
 
-test("an unknown ZIP shows one error at the ZIP field and stops dependent loads", async ({ page }) => {
+test("an unknown ZIP shows one error at the ZIP field and stops dependent loads", async ({
+  page,
+}) => {
   let movieRequestCount = 0;
-  await page.route("**/api/theatres*", route => route.fulfill({
-    status: 400,
-    contentType: "application/json",
-    body: JSON.stringify({
-      error: "We couldn't find that ZIP code. Check it and try again.",
-      code: "location",
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        code: "location",
+        error: "We couldn't find that ZIP code. Check it and try again.",
+      }),
+      contentType: "application/json",
+      status: 400,
     }),
-  }));
-  await page.route("**/api/movies*", route => {
+  );
+  await page.route("**/api/movies*", (route) => {
     movieRequestCount += 1;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ movies: [] }) });
+    return route.fulfill({ body: JSON.stringify({ movies: [] }), contentType: "application/json" });
   });
 
   await page.goto("/");
@@ -217,14 +255,15 @@ test("an unknown ZIP shows one error at the ZIP field and stops dependent loads"
   expect(movieRequestCount).toBe(0);
 });
 
-test("mobile search keeps content stable while loading and then renders its response", async ({ page }) => {
-  let releaseSearch;
-  let markSearchStarted;
-  const searchStarted = new Promise(resolve => { markSearchStarted = resolve; });
-  await mockSearchDependencies(page, async route => {
+test("mobile search keeps content stable while loading and then renders its response", async ({
+  page,
+}) => {
+  const { promise: searchStarted, resolve: markSearchStarted } = Promise.withResolvers();
+  const { promise: searchGate, resolve: releaseSearch } = Promise.withResolvers();
+  await mockSearchDependencies(page, async (route) => {
     markSearchStarted();
-    await new Promise(resolve => { releaseSearch = resolve; });
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+    await searchGate;
+    await route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
   });
 
   await page.goto("/");
@@ -249,10 +288,10 @@ test("mobile search keeps content stable while loading and then renders its resp
 test("movie search accepts a selected suggestion or an exact loaded title", async ({ page }) => {
   let searchUrl = "";
   let searchCount = 0;
-  await mockSearchDependencies(page, route => {
+  await mockSearchDependencies(page, (route) => {
     searchCount += 1;
     searchUrl = route.request().url();
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+    return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
   });
 
   await page.goto("/");
@@ -262,7 +301,7 @@ test("movie search accepts a selected suggestion or an exact loaded title", asyn
   const movieInput = page.locator("#movieInput");
   const searchButton = page.locator("#searchButton");
   await movieInput.fill("Test");
-  const suggestion = page.getByRole("option", { name: "Test Movie", exact: true });
+  const suggestion = page.getByRole("option", { exact: true, name: "Test Movie" });
   await expect(suggestion).toBeVisible();
   await searchButton.click();
 
@@ -277,7 +316,7 @@ test("movie search accepts a selected suggestion or an exact loaded title", asyn
   expect(new URL(searchUrl).searchParams.get("movie")).toBe("Test Movie");
   expect(searchCount).toBe(1);
 
-  await page.locator("#radiusInput").evaluate(input => {
+  await page.locator("#radiusInput").evaluate((input) => {
     input.value = "10";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     document.querySelector("#searchButton").click();
@@ -288,30 +327,36 @@ test("movie search accepts a selected suggestion or an exact loaded title", asyn
   await expect(movieInput).toHaveValue("Test Movie");
 });
 
-test("theatre filter accepts only an empty, selected, or exact loaded theatre", async ({ page }) => {
+test("theatre filter accepts only an empty, selected, or exact loaded theatre", async ({
+  page,
+}) => {
   let searchUrl = "";
-  let movieUrls = [];
-  await page.route("**/api/theatres*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({
-      place: "Testville",
-      theatres: [{ name: "Test Cinema" }, { name: "Test Cinema East" }],
+  const movieUrls = [];
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        place: "Testville",
+        theatres: [{ name: "Test Cinema" }, { name: "Test Cinema East" }],
+      }),
+      contentType: "application/json",
     }),
-  }));
-  await page.route("**/api/movies*", route => {
+  );
+  await page.route("**/api/movies*", (route) => {
     movieUrls.push(route.request().url());
     return route.fulfill({
-      contentType: "application/json",
       body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+      contentType: "application/json",
     });
   });
-  await page.route("**/api/formats*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ formats: ["Standard"] }),
-  }));
-  await page.route("**/api/search*", route => {
+  await page.route("**/api/formats*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ formats: ["Standard"] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/search*", (route) => {
     searchUrl = route.request().url();
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
+    return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
   });
 
   await page.goto("/");
@@ -320,7 +365,7 @@ test("theatre filter accepts only an empty, selected, or exact loaded theatre", 
 
   const theatreInput = page.locator("#theatreInput");
   await theatreInput.fill("Test");
-  await expect(page.getByRole("option", { name: "Test Cinema", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { exact: true, name: "Test Cinema" })).toBeVisible();
   await page.locator("#searchButton").click();
   await expect(theatreInput).not.toHaveJSProperty("validationMessage", "");
   expect(searchUrl).toBe("");
@@ -336,19 +381,23 @@ test("theatre filter accepts only an empty, selected, or exact loaded theatre", 
 
 test("mobile format chips send every selected format to the search", async ({ page }) => {
   let searchUrl = "";
-  await mockSearchDependencies(page, route => {
-    searchUrl = route.request().url();
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(emptySearch) });
-  }, ["IMAX", "Dolby Cinema", "Standard"]);
+  await mockSearchDependencies(
+    page,
+    (route) => {
+      searchUrl = route.request().url();
+      return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
+    },
+    ["IMAX", "Dolby Cinema", "Standard"],
+  );
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
   // Wait for the ZIP-triggered movie refresh to finish before choosing a
-  // movie and its formats, matching the order a user sees in the UI.
+  // Movie and its formats, matching the order a user sees in the UI.
   await selectMovie(page);
 
-  const imax = page.getByRole("button", { name: "IMAX", exact: true });
-  const dolby = page.getByRole("button", { name: "Dolby Cinema", exact: true });
+  const imax = page.getByRole("button", { exact: true, name: "IMAX" });
+  const dolby = page.getByRole("button", { exact: true, name: "Dolby Cinema" });
   await expect(page.locator("#formatStatus")).toBeEmpty();
   await expect(imax).toBeVisible();
   await imax.click();
@@ -369,39 +418,51 @@ test("mobile format chips send every selected format to the search", async ({ pa
 
 test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
   const searchSorts = [];
-  let releaseLatestSearch;
-  let markLatestSearchStarted;
-  const latestSearchStarted = new Promise(resolve => { markLatestSearchStarted = resolve; });
-  const latestSearchGate = new Promise(resolve => { releaseLatestSearch = resolve; });
+  const { promise: latestSearchStarted, resolve: markLatestSearchStarted } =
+    Promise.withResolvers();
+  const { promise: latestSearchGate, resolve: releaseLatestSearch } = Promise.withResolvers();
   const matchingSearch = {
     ...emptySearch,
-    matches: [{
-      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1 },
-      movieTitle: "Test Movie",
-      date: "2026-08-01",
-      displayTime: "7:00 PM",
-      format: "Standard",
-      amenities: "Reserved seating",
-      genres: [],
-      seatMap: {
-        availableSeatCount: 1,
-        totalSeatCount: 1,
-        layout: {
-          width: 30,
-          height: 30,
-          seats: [{ id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true }],
+    matches: [
+      {
+        amenities: "Reserved seating",
+        date: "2026-08-01",
+        displayTime: "7:00 PM",
+        format: "Standard",
+        genres: [],
+        movieTitle: "Test Movie",
+        seatMap: {
+          availableSeatCount: 1,
+          layout: {
+            height: 30,
+            seats: [
+              {
+                height: 10,
+                id: "A1",
+                matched: true,
+                status: "A",
+                type: "standard",
+                width: 10,
+                x: 10,
+                y: 10,
+              },
+            ],
+            width: 30,
+          },
+          totalSeatCount: 1,
         },
+        theatre: { address: "1 Main St", distanceMiles: 1, name: "Test Cinema" },
       },
-    }],
+    ],
   };
-  await mockSearchDependencies(page, async route => {
+  await mockSearchDependencies(page, async (route) => {
     const sort = new URL(route.request().url()).searchParams.get("sort");
     searchSorts.push(sort);
     if (sort === "latest") {
       markLatestSearchStarted();
       await latestSearchGate;
     }
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(matchingSearch) });
+    return route.fulfill({ body: JSON.stringify(matchingSearch), contentType: "application/json" });
   });
 
   await page.goto("/");
@@ -426,38 +487,35 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await sortInput.selectOption("nearest");
   await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
   expect(searchSorts[0]).toBe("earliest");
-
 });
 
 test("pagination keeps current results until the next page loads", async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 700 });
-  let markSecondPageStarted;
-  let releaseSecondPage;
-  const secondPageStarted = new Promise(resolve => { markSecondPageStarted = resolve; });
-  const secondPageGate = new Promise(resolve => { releaseSecondPage = resolve; });
-  await mockSearchDependencies(page, async route => {
+  await page.setViewportSize({ height: 700, width: 320 });
+  const { promise: secondPageStarted, resolve: markSecondPageStarted } = Promise.withResolvers();
+  const { promise: secondPageGate, resolve: releaseSecondPage } = Promise.withResolvers();
+  await mockSearchDependencies(page, async (route) => {
     const requestedPage = Number(new URL(route.request().url()).searchParams.get("page"));
     if (requestedPage === 2) {
       markSecondPageStarted();
       await secondPageGate;
       await route.fulfill({
-        contentType: "application/json",
         body: JSON.stringify({
           ...emptySearch,
-          page: 2,
           hasPreviousPage: true,
           matches: [makeSimpleMatch("Page Two Cinema", "20:00")],
+          page: 2,
         }),
+        contentType: "application/json",
       });
       return;
     }
     await route.fulfill({
-      contentType: "application/json",
       body: JSON.stringify({
         ...emptySearch,
         hasNextPage: true,
         matches: [makeSimpleMatch("Page One Cinema", "19:00")],
       }),
+      contentType: "application/json",
     });
   });
 
@@ -465,7 +523,7 @@ test("pagination keeps current results until the next page loads", async ({ page
   await page.locator("#zipInput").fill("10001");
   await selectMovie(page);
   await page.locator("#searchButton").click();
-  await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "Page One Cinema" })).toBeVisible();
 
   const pagination = page.locator("#pagination");
   const previousPage = page.getByRole("button", { name: "Previous page of results" });
@@ -477,40 +535,42 @@ test("pagination keeps current results until the next page loads", async ({ page
   await expect(pagination).toHaveAttribute("aria-busy", "true");
   await expect(previousPage).toBeDisabled();
   await expect(nextPage).toBeDisabled();
-  await expect(page.getByRole("heading", { name: "Page One Cinema", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "Page One Cinema" })).toBeVisible();
 
   releaseSecondPage();
-  await expect(page.getByRole("heading", { name: "Page Two Cinema", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "Page Two Cinema" })).toBeVisible();
   await expect(pagination).not.toHaveAttribute("aria-busy", "true");
 });
 
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
   let movieRequestCount = 0;
-  let releaseFirstMovieRequest;
-  let markFirstMovieRequestStarted;
   let firstMovieRequestFulfilled = false;
-  const firstMovieRequestStarted = new Promise(resolve => { markFirstMovieRequestStarted = resolve; });
-  const firstMovieRequestGate = new Promise(resolve => { releaseFirstMovieRequest = resolve; });
+  const { promise: firstMovieRequestStarted, resolve: markFirstMovieRequestStarted } =
+    Promise.withResolvers();
+  const { promise: firstMovieRequestGate, resolve: releaseFirstMovieRequest } =
+    Promise.withResolvers();
 
-  await page.route("**/api/theatres*", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ place: "Testville", theatres: [] }),
-  }));
-  await page.route("**/api/movies*", async route => {
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/movies*", async (route) => {
     movieRequestCount += 1;
     if (movieRequestCount === 1) {
       markFirstMovieRequestStarted();
       await firstMovieRequestGate;
       await route.fulfill({
-        contentType: "application/json",
         body: JSON.stringify({ movies: [{ title: "Stale Movie" }] }),
+        contentType: "application/json",
       });
       firstMovieRequestFulfilled = true;
       return;
     }
     await route.fulfill({
-      contentType: "application/json",
       body: JSON.stringify({ movies: [{ title: "Current Movie" }] }),
+      contentType: "application/json",
     });
   });
 
@@ -523,44 +583,94 @@ test("stale movie responses do not replace options for newer criteria", async ({
   releaseFirstMovieRequest();
   await expect.poll(() => firstMovieRequestFulfilled).toBe(true);
   await page.locator("#movieInput").focus();
-  await expect(page.getByRole("option", { name: "Current Movie", exact: true })).toBeVisible();
-  await expect(page.getByRole("option", { name: "Stale Movie", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { exact: true, name: "Current Movie" })).toBeVisible();
+  await expect(page.getByRole("option", { exact: true, name: "Stale Movie" })).toHaveCount(0);
 });
 
-test("mobile results render the native seat map and update accessibility states", async ({ page }) => {
+test("mobile results render the native seat map and update accessibility states", async ({
+  page,
+}) => {
   const matchingSearch = {
     ...emptySearch,
     accessibleSeatsExcluded: true,
-    matches: [{
-      theatre: { name: "Test Cinema", address: "1 Main St", distanceMiles: 1 },
-      movieTitle: "Test Movie",
-      date: "2026-07-22",
-      displayTime: "7:00 PM",
-      format: "IMAX",
-      amenities: "Reserved seating",
-      genres: [],
-      seatMap: {
-        availableSeatCount: 2,
-        totalSeatCount: 2,
-        layout: {
-          width: 100,
-          height: 50,
-          seats: [
-            { id: "A1", status: "A", type: "standard", x: 10, y: 10, width: 10, height: 10, matched: true },
-            { id: "A2", status: "A", type: "wheelchair", x: 30, y: 10, width: 10, height: 10, matched: false },
-            { id: "A3", status: "U", type: "wheelchair", x: 50, y: 10, width: 10, height: 10, matched: false },
-            { id: "A4", status: "A", type: "companion", x: 70, y: 10, width: 10, height: 10, matched: false },
-            { id: "A5", status: "U", type: "companion", x: 90, y: 10, width: 10, height: 10, matched: false },
-          ],
+    matches: [
+      {
+        amenities: "Reserved seating",
+        date: "2026-07-22",
+        displayTime: "7:00 PM",
+        format: "IMAX",
+        genres: [],
+        movieTitle: "Test Movie",
+        seatMap: {
+          availableSeatCount: 2,
+          layout: {
+            height: 50,
+            seats: [
+              {
+                height: 10,
+                id: "A1",
+                matched: true,
+                status: "A",
+                type: "standard",
+                width: 10,
+                x: 10,
+                y: 10,
+              },
+              {
+                height: 10,
+                id: "A2",
+                matched: false,
+                status: "A",
+                type: "wheelchair",
+                width: 10,
+                x: 30,
+                y: 10,
+              },
+              {
+                height: 10,
+                id: "A3",
+                matched: false,
+                status: "U",
+                type: "wheelchair",
+                width: 10,
+                x: 50,
+                y: 10,
+              },
+              {
+                height: 10,
+                id: "A4",
+                matched: false,
+                status: "A",
+                type: "companion",
+                width: 10,
+                x: 70,
+                y: 10,
+              },
+              {
+                height: 10,
+                id: "A5",
+                matched: false,
+                status: "U",
+                type: "companion",
+                width: 10,
+                x: 90,
+                y: 10,
+              },
+            ],
+            width: 100,
+          },
+          totalSeatCount: 2,
         },
+        theatre: { address: "1 Main St", distanceMiles: 1, name: "Test Cinema" },
       },
-    }],
+    ],
   };
-  await mockSearchDependencies(page, route => {
-    const accessibleSeatsExcluded = new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
+  await mockSearchDependencies(page, (route) => {
+    const accessibleSeatsExcluded =
+      new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
     return route.fulfill({
-      contentType: "application/json",
       body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded }),
+      contentType: "application/json",
     });
   });
 
@@ -571,21 +681,27 @@ test("mobile results render the native seat map and update accessibility states"
 
   const matchedSeat = page.locator(".real-seat.matched");
   await expect(matchedSeat).toHaveCount(1);
-  const wheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair - excluded by filter"]');
-  await expect(wheelchairSeat).toHaveClass(/accessible/);
-  const companionSeat = page.locator('.real-seat[title="A4 - available - companion - excluded by filter"]');
-  await expect(companionSeat).toHaveClass(/accessible/);
+  const wheelchairSeat = page.locator(
+    '.real-seat[title="A2 - available - wheelchair - excluded by filter"]',
+  );
+  await expect(wheelchairSeat).toHaveClass(/accessible/u);
+  const companionSeat = page.locator(
+    '.real-seat[title="A4 - available - companion - excluded by filter"]',
+  );
+  await expect(companionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
   await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
 
-  await page.getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true }).click();
+  await page
+    .getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true })
+    .click();
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
   await page.locator("#searchButton").click();
 
   const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
-  await expect(includedWheelchairSeat).toHaveClass(/accessible/);
+  await expect(includedWheelchairSeat).toHaveClass(/accessible/u);
   const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
-  await expect(includedCompanionSeat).toHaveClass(/accessible/);
+  await expect(includedCompanionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
 });
