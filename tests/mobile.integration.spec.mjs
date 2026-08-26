@@ -10,9 +10,9 @@ const emptySearch = {
   pageSize: 20,
 };
 
-function makeSimpleMatch(theatreName, time) {
+function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
   return {
-    amenities: "Reserved seating",
+    amenities,
     date: "2026-08-01",
     displayTime: time,
     format: "Standard",
@@ -39,6 +39,7 @@ function makeSimpleMatch(theatreName, time) {
       totalSeatCount: 1,
     },
     theatre: { address: "1 Main St", distanceMiles: 1, name: theatreName },
+    ticketUrl: "https://tickets.fandango.com/order",
   };
 }
 
@@ -483,6 +484,41 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await sortInput.selectOption("nearest");
   await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
   expect(searchSorts[0]).toBe("earliest");
+});
+
+test("desktop result actions align when amenities wrap", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1200 });
+  const matchingSearch = {
+    ...emptySearch,
+    matches: [
+      makeSimpleMatch("Short Amenities Cinema", "7:00 PM"),
+      makeSimpleMatch(
+        "Long Amenities Cinema",
+        "8:00 PM",
+        "IMAX with Laser, Reserved seating, Closed caption, Accessibility devices available, Luxury Electric Recliners, Laser Projection",
+      ),
+    ],
+  };
+  await mockSearchDependencies(page, (route) =>
+    route.fulfill({ body: JSON.stringify(matchingSearch), contentType: "application/json" }),
+  );
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await selectMovie(page);
+  await page.locator("#searchButton").click();
+
+  const amenities = page.locator(".result-amenities");
+  await expect(amenities).toHaveCount(2);
+  const amenityHeights = await amenities.evaluateAll((nodes) =>
+    nodes.map((node) => node.getBoundingClientRect().height),
+  );
+  expect(amenityHeights[1]).toBeGreaterThan(amenityHeights[0]);
+
+  const actionBottoms = await page
+    .locator(".buy-btn")
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().bottom));
+  expect(Math.abs(actionBottoms[0] - actionBottoms[1])).toBeLessThanOrEqual(1);
 });
 
 test("pagination keeps current results until the next page loads", async ({ page }) => {
