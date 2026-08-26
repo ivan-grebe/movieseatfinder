@@ -17,16 +17,34 @@ def sample_seat_layout():
         "backgroundSvg": "<svg>large payload</svg>",
         "seats": [
             {
-                "id": "H10", "matched": True, "status": "A", "type": "standard",
-                "x": 40, "y": 50, "width": 8, "height": 8,
+                "id": "H10",
+                "matched": True,
+                "status": "A",
+                "type": "standard",
+                "x": 40,
+                "y": 50,
+                "width": 8,
+                "height": 8,
             },
             {
-                "id": "H11", "matched": True, "status": "A", "type": "standard",
-                "x": 50, "y": 50, "width": 8, "height": 8,
+                "id": "H11",
+                "matched": True,
+                "status": "A",
+                "type": "standard",
+                "x": 50,
+                "y": 50,
+                "width": 8,
+                "height": 8,
             },
             {
-                "id": "A1", "matched": False, "status": "S", "type": "standard",
-                "x": 10, "y": 10, "width": 8, "height": 8,
+                "id": "A1",
+                "matched": False,
+                "status": "S",
+                "type": "standard",
+                "x": 10,
+                "y": 10,
+                "width": 8,
+                "height": 8,
             },
         ],
     }
@@ -34,27 +52,29 @@ def sample_seat_layout():
 
 def sample_search_result():
     return {
-        "matches": [{
-            "theatre": {
-                "name": "Test Cinema",
-                "address": "1 Main St",
-                "distanceMiles": 2.5,
-            },
-            "movieTitle": "The Odyssey",
-            "date": "2026-08-04",
-            "displayTime": "7:30 PM",
-            "format": "IMAX",
-            "amenities": "IMAX with Laser",
-            "ticketUrl": "https://tickets.fandango.com/order",
-            "showtimeHashCode": "showtime-123",
-            "seatMap": {
-                "availableSeatCount": 42,
-                "totalSeatCount": 100,
-                "matchingGroups": [["H10", "H11"]],
-                "bestGroup": ["H10", "H11"],
-                "layout": sample_seat_layout(),
-            },
-        }],
+        "matches": [
+            {
+                "theatre": {
+                    "name": "Test Cinema",
+                    "address": "1 Main St",
+                    "distanceMiles": 2.5,
+                },
+                "movieTitle": "The Odyssey",
+                "date": "2026-08-04",
+                "displayTime": "7:30 PM",
+                "format": "IMAX",
+                "amenities": "IMAX with Laser",
+                "ticketUrl": "https://tickets.fandango.com/order",
+                "showtimeHashCode": "showtime-123",
+                "seatMap": {
+                    "availableSeatCount": 42,
+                    "totalSeatCount": 100,
+                    "matchingGroups": [["H10", "H11"]],
+                    "bestGroup": ["H10", "H11"],
+                    "layout": sample_seat_layout(),
+                },
+            }
+        ],
         "checkedShowtimes": 7,
         "checkedSeatMaps": 3,
     }
@@ -97,7 +117,9 @@ class McpToolTests(unittest.TestCase):
             server.resolved_seat_cells(region, ("8:8",))
 
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_find_movie_seats_calls_the_shared_search_and_returns_compact_options(self, find_seat_matches):
+    def test_find_movie_seats_calls_the_shared_search_and_returns_compact_options(
+        self, find_seat_matches
+    ):
         result = server.find_movie_seats(
             movie="The Odyssey",
             start_date=date(2026, 8, 4),
@@ -123,19 +145,22 @@ class McpToolTests(unittest.TestCase):
         )
         self.assertEqual(result["resultCount"], 1)
         seat_map_request = result["options"][0]["seatMapRequest"]
-        self.assertEqual(seat_map_request, {
-            "showtime_hash_code": "showtime-123",
-            "option_number": 1,
-            "movie": "The Odyssey",
-            "theatre": "Test Cinema",
-            "show_date": "2026-08-04",
-            "show_time": "7:30 PM",
-            "movie_format": "IMAX",
-            "seat_region": {"row_min": 6, "row_max": 7, "column_min": 1, "column_max": 2},
-            "seat_cells": [],
-            "adjacent_seats": 2,
-            "exclude_accessible": True,
-        })
+        self.assertEqual(
+            seat_map_request,
+            {
+                "showtime_hash_code": "showtime-123",
+                "option_number": 1,
+                "movie": "The Odyssey",
+                "theatre": "Test Cinema",
+                "show_date": "2026-08-04",
+                "show_time": "7:30 PM",
+                "movie_format": "IMAX",
+                "seat_region": {"row_min": 6, "row_max": 7, "column_min": 1, "column_max": 2},
+                "seat_cells": [],
+                "adjacent_seats": 2,
+                "exclude_accessible": True,
+            },
+        )
 
     def test_find_movie_seats_rejects_a_backwards_time_window_without_searching(self):
         with patch.object(server.application, "find_seat_matches") as find_seat_matches:
@@ -153,7 +178,11 @@ class McpToolTests(unittest.TestCase):
                 )
         find_seat_matches.assert_not_called()
 
-    @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
+    @patch.object(
+        server.application,
+        "showtime_seat_match",
+        return_value=sample_search_result()["matches"][0]["seatMap"],
+    )
     def test_show_movie_seat_map_refreshes_the_selected_showtime(self, showtime_seat_match):
         server.show_movie_seat_map(**sample_seat_map_request())
 
@@ -258,17 +287,21 @@ class McpProtocolTests(unittest.TestCase):
             "zipCode": "10023",
             "startDate": "2026-08-04",
             "endDate": "2026-08-06",
-            "theatres": [{
-                "name": "AMC Lincoln Square 13",
-                "address": "1998 Broadway, New York, NY 10023",
-                "distanceMiles": 0.5,
-            }],
-            "movies": [{
-                "title": "The Odyssey (2026)",
-                "dates": ["2026-08-04", "2026-08-05", "2026-08-06"],
-                "formats": ["IMAX 70mm"],
-                "theatres": ["AMC Lincoln Square 13"],
-            }],
+            "theatres": [
+                {
+                    "name": "AMC Lincoln Square 13",
+                    "address": "1998 Broadway, New York, NY 10023",
+                    "distanceMiles": 0.5,
+                }
+            ],
+            "movies": [
+                {
+                    "title": "The Odyssey (2026)",
+                    "dates": ["2026-08-04", "2026-08-05", "2026-08-06"],
+                    "formats": ["IMAX 70mm"],
+                    "theatres": ["AMC Lincoln Square 13"],
+                }
+            ],
         }
         request = {
             "jsonrpc": "2.0",
@@ -304,7 +337,9 @@ class McpProtocolTests(unittest.TestCase):
         )
 
     @patch.object(server.application, "find_seat_matches", return_value=sample_search_result())
-    def test_client_can_call_the_tool_and_receive_structured_ticket_options(self, find_seat_matches):
+    def test_client_can_call_the_tool_and_receive_structured_ticket_options(
+        self, find_seat_matches
+    ):
         request = {
             "jsonrpc": "2.0",
             "id": 2,
@@ -318,7 +353,10 @@ class McpProtocolTests(unittest.TestCase):
                     "zip_code": "10023",
                     "movie_formats": ["IMAX", "IMAX 70mm"],
                     "seat_region": {
-                        "row_min": 11, "row_max": 12, "column_min": 6, "column_max": 8,
+                        "row_min": 11,
+                        "row_max": 12,
+                        "column_min": 6,
+                        "column_max": 8,
                     },
                     "adjacent_seats": 2,
                 },
@@ -332,14 +370,20 @@ class McpProtocolTests(unittest.TestCase):
         structured = result["structuredContent"]
         self.assertEqual(structured["options"][0]["matchingGroups"], [["H10", "H11"]])
         self.assertEqual(structured["options"][0]["bestGroup"], ["H10", "H11"])
-        self.assertEqual(structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order")
+        self.assertEqual(
+            structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order"
+        )
         self.assertEqual(structured["query"]["radiusMiles"], 25)
         self.assertEqual(structured["query"]["timeRange"], {"start": "00:00", "end": "23:59"})
         self.assertTrue(structured["query"]["excludeAccessible"])
         self.assertEqual(find_seat_matches.call_args.kwargs["radius"], 25)
         self.assertEqual(find_seat_matches.call_args.kwargs["start_time"], "00:00")
 
-    @patch.object(server.application, "showtime_seat_match", return_value=sample_search_result()["matches"][0]["seatMap"])
+    @patch.object(
+        server.application,
+        "showtime_seat_match",
+        return_value=sample_search_result()["matches"][0]["seatMap"],
+    )
     def test_client_receives_an_image_and_structured_seat_map_fallback(self, _showtime_seat_match):
         request = {
             "jsonrpc": "2.0",
@@ -356,7 +400,9 @@ class McpProtocolTests(unittest.TestCase):
         result = response.json()["result"]
         self.assertFalse(result["isError"])
         self.assertEqual([item["type"] for item in result["content"]], ["image", "text"])
-        self.assertEqual(result["content"][0]["annotations"], {"audience": ["user"], "priority": 1.0})
+        self.assertEqual(
+            result["content"][0]["annotations"], {"audience": ["user"], "priority": 1.0}
+        )
         self.assertEqual(result["content"][0]["mimeType"], "image/png")
         self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
         self.assertIn("Display the attached seat-map image", result["content"][1]["text"])

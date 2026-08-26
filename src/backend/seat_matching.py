@@ -63,16 +63,19 @@ def normalized_seat_layout(data, matching_blocks):
     layout = {
         "width": width,
         "height": height,
-        "seats": [{
-            "id": seat.get("id", ""),
-            "type": seat.get("type", "standard"),
-            "status": seat.get("status", ""),
-            "x": seat.get("x", 0) + offset_x,
-            "y": seat.get("y", 0) + offset_y,
-            "width": seat.get("width", 0),
-            "height": seat.get("height", 0),
-            "matched": seat.get("id", "") in matched_ids,
-        } for seat in seats],
+        "seats": [
+            {
+                "id": seat.get("id", ""),
+                "type": seat.get("type", "standard"),
+                "status": seat.get("status", ""),
+                "x": seat.get("x", 0) + offset_x,
+                "y": seat.get("y", 0) + offset_y,
+                "width": seat.get("width", 0),
+                "height": seat.get("height", 0),
+                "matched": seat.get("id", "") in matched_ids,
+            }
+            for seat in seats
+        ],
     }
     if background_svg:
         layout["backgroundSvg"] = background_svg
@@ -82,7 +85,8 @@ def normalized_seat_layout(data, matching_blocks):
 def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     """Return runs of adjacent available seat ids, one list per run."""
     available = [
-        seat for seat in seats
+        seat
+        for seat in seats
         if seat.get("status") == "A"
         and not (exclude_accessible and seat.get("type") in ACCESSIBLE_SEAT_TYPES)
     ]
@@ -132,7 +136,9 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
 
     if selected_cells:
         target_row = sum((row + 0.5) / GRID_SIZE for row, _ in selected_cells) / len(selected_cells)
-        target_x = sum((column + 0.5) / GRID_SIZE for _, column in selected_cells) / len(selected_cells)
+        target_x = sum((column + 0.5) / GRID_SIZE for _, column in selected_cells) / len(
+            selected_cells
+        )
     else:
         target_row = target_x = 0.5
 
@@ -143,8 +149,12 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
             group_seats = [seat_by_id[seat_id] for seat_id in group if seat_id in seat_by_id]
             if len(group_seats) != group_size:
                 continue
-            row_position = sum((seat.get("row", 0) - min_row) / row_span for seat in group_seats) / group_size
-            x_position = sum((seat.get("x", 0) - min_x) / x_span for seat in group_seats) / group_size
+            row_position = (
+                sum((seat.get("row", 0) - min_row) / row_span for seat in group_seats) / group_size
+            )
+            x_position = (
+                sum((seat.get("x", 0) - min_x) / x_span for seat in group_seats) / group_size
+            )
             distance = (row_position - target_row) ** 2 + (x_position - target_x) ** 2
             groups.append((distance, group))
 
@@ -152,7 +162,9 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     return [group for _, group in groups]
 
 
-def showtime_seat_match(showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader):
+def showtime_seat_match(
+    showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader
+):
     data = seat_map_loader(showtime.get("showtimeHashCode"))
     if not data:
         return None
