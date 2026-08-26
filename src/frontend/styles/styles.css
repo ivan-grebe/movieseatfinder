@@ -1480,8 +1480,6 @@ a:focus-visible {
 }
 
 .result {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
   padding: 13px;
   border-radius: 22px;
@@ -1614,6 +1612,7 @@ a:focus-visible {
   margin: 9px 0 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.35;
 }
 
 .real-seat-map {
@@ -1838,12 +1837,6 @@ a:focus-visible {
   color: var(--danger);
 }
 
-.result-actions {
-  display: flex;
-  align-items: flex-start;
-  margin-top: auto;
-}
-
 .buy-btn {
   display: inline-flex;
   align-items: center;
@@ -1937,6 +1930,12 @@ input[type="time"] {
   .loading-dot {
     opacity: 1;
     animation: none;
+  }
+}
+
+@media (min-width: 981px) {
+  .result-amenities {
+    min-height: 2lh;
   }
 }
 
