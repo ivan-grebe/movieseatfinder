@@ -2,16 +2,20 @@ const STATE_CLASSES = ["is-loading", "is-error", "is-success"];
 
 export function setStatus(element, text, state = "") {
   element.classList.remove(...STATE_CLASSES);
-  if (state) element.classList.add(`is-${state}`);
+  if (state) {
+    element.classList.add(`is-${state}`);
+  }
   element.textContent = "";
-  if (!text) return;
+  if (!text) {
+    return;
+  }
 
   if (state === "loading") {
     const spinner = document.createElement("span");
     spinner.className = "spinner";
-    element.appendChild(spinner);
+    element.append(spinner);
   }
-  element.appendChild(document.createTextNode(text));
+  element.append(document.createTextNode(text));
 }
 
 export function setSummary(element, text, muted) {
@@ -21,14 +25,14 @@ export function setSummary(element, text, muted) {
 
 const SEARCH_LOADING_STAGES = [
   { label: "Loading theatres" },
-  { label: "Checking showtimes", delay: 650 },
-  { label: "Checking seat maps", delay: 1500 },
+  { delay: 650, label: "Checking showtimes" },
+  { delay: 1500, label: "Checking seat maps" },
 ];
 
 function appendAnimatedLabel(element, text) {
   const label = document.createElement("span");
   label.className = "loading-label";
-  label.appendChild(document.createTextNode(text));
+  label.append(document.createTextNode(text));
   const dots = document.createElement("span");
   dots.className = "loading-dots";
   dots.setAttribute("aria-hidden", "true");
@@ -36,10 +40,10 @@ function appendAnimatedLabel(element, text) {
     const dot = document.createElement("span");
     dot.className = `loading-dot loading-dot-${index}`;
     dot.textContent = ".";
-    dots.appendChild(dot);
+    dots.append(dot);
   }
-  label.appendChild(dots);
-  element.appendChild(label);
+  label.append(dots);
+  element.append(label);
 }
 
 export function setAnimatedStatus(element, text) {
@@ -49,22 +53,21 @@ export function setAnimatedStatus(element, text) {
 
 export function startLoadingStages(onStage) {
   onStage(SEARCH_LOADING_STAGES[0].label);
-  const timers = SEARCH_LOADING_STAGES.slice(1).map(stage => window.setTimeout(
-    () => onStage(stage.label),
-    stage.delay,
-  ));
-  return () => timers.forEach(timer => window.clearTimeout(timer));
+  const timers = SEARCH_LOADING_STAGES.slice(1).map((stage) =>
+    globalThis.setTimeout(() => onStage(stage.label), stage.delay),
+  );
+  return () => timers.forEach((timer) => globalThis.clearTimeout(timer));
 }
 
 export function setButtonBusy(button, busy, busyLabel) {
   if (busy) {
-    button.dataset.label = button.dataset.label || button.textContent;
+    button.dataset.label ||= button.textContent;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
     button.textContent = "";
     const spinner = document.createElement("span");
     spinner.className = "spinner";
-    button.appendChild(spinner);
+    button.append(spinner);
     appendAnimatedLabel(button, busyLabel);
     return;
   }

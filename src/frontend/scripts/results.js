@@ -1,23 +1,27 @@
-import { formatNiceDate } from "./utils.js";
 import { setAnimatedStatus, setSummary } from "./ui.js";
+import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ICON_FILM = [
-  ["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }],
+  ["rect", { height: "16", rx: "2", width: "18", x: "3", y: "4" }],
   ["path", { d: "M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4" }],
 ];
 const ICON_CALENDAR = [
-  ["rect", { x: "3", y: "4.5", width: "18", height: "16", rx: "2" }],
+  ["rect", { height: "16", rx: "2", width: "18", x: "3", y: "4.5" }],
   ["path", { d: "M3 9h18M8 2.5v4M16 2.5v4" }],
 ];
-const ACCESSIBLE_SEAT_TYPES = ["wheelchair", "companion"];
+const ACCESSIBLE_SEAT_TYPES = new Set(["wheelchair", "companion"]);
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
   item.className = "legend-item";
   const swatch = document.createElement("span");
-  swatch.className = "legend-swatch" + (className ? ` ${className}` : "");
+  let swatchClass = "legend-swatch";
+  if (className) {
+    swatchClass += ` ${className}`;
+  }
+  swatch.className = swatchClass;
   item.append(swatch, document.createTextNode(label));
   return item;
 }
@@ -35,19 +39,21 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const titleCount = document.createElement("span");
   titleCount.textContent = `${seatMap.availableSeatCount} available / ${seatMap.totalSeatCount} total`;
   title.append(titleLabel, titleCount);
-  wrapper.appendChild(title);
+  wrapper.append(title);
 
   if (!hasBackground) {
     const screen = document.createElement("div");
     screen.className = "real-screen";
     screen.title = "Screen";
     screen.textContent = "SCREEN";
-    wrapper.appendChild(screen);
+    wrapper.append(screen);
   }
 
   const stage = document.createElement("div");
   stage.className = "real-seat-map-stage";
-  if (hasBackground) stage.classList.add("has-background");
+  if (hasBackground) {
+    stage.classList.add("has-background");
+  }
   const { width, height } = layout;
   stage.style.aspectRatio = `${width} / ${height}`;
   stage.style.minHeight = "150px";
@@ -55,60 +61,80 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
     const background = document.createElement("img");
     background.className = "real-seat-map-background";
     background.alt = "";
-    background.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(layout.backgroundSvg);
-    stage.appendChild(background);
+    background.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(layout.backgroundSvg)}`;
+    stage.append(background);
   }
 
-  layout.seats.forEach(seat => {
+  layout.seats.forEach((seat) => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    const accessibilityType = ACCESSIBLE_SEAT_TYPES.includes(seat.type) ? seat.type : "";
+    let accessibilityType = "";
+    if (ACCESSIBLE_SEAT_TYPES.has(seat.type)) {
+      accessibilityType = seat.type;
+    }
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
-    node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
-    if (accessibilityType) node.classList.add("accessible");
-    if (seat.matched) node.classList.add("matched");
-    node.title = [
-      seat.id || "Seat",
-      isAvailable ? "available" : "unavailable",
-      accessibilityType,
-      isExcluded ? "excluded by filter" : "",
-    ].filter(Boolean).join(" - ");
+    let availabilityClass = "unavailable";
+    if (isAvailable && !isExcluded) {
+      availabilityClass = "available";
+    }
+    node.className = `real-seat ${availabilityClass}`;
+    if (accessibilityType) {
+      node.classList.add("accessible");
+    }
+    if (seat.matched) {
+      node.classList.add("matched");
+    }
+    let availabilityLabel = "unavailable";
+    if (isAvailable) {
+      availabilityLabel = "available";
+    }
+    let exclusionLabel = "";
+    if (isExcluded) {
+      exclusionLabel = "excluded by filter";
+    }
+    node.title = [seat.id || "Seat", availabilityLabel, accessibilityType, exclusionLabel]
+      .filter(Boolean)
+      .join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
     node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
     node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
     node.style.height = `${(Math.max(Number(seat.height) || 1, 1) / height) * 100}%`;
-    stage.appendChild(node);
+    stage.append(node);
   });
-  wrapper.appendChild(stage);
+  wrapper.append(stage);
 
   const legend = document.createElement("div");
   legend.className = "seat-map-legend";
-  legend.appendChild(createLegendItem("Available", ""));
+  legend.append(createLegendItem("Available", ""));
   if (!accessibleSeatsExcluded) {
-    legend.appendChild(createLegendItem("Accessible", "accessible"));
+    legend.append(createLegendItem("Accessible", "accessible"));
+  }
+  let unavailableLabel = "Unavailable";
+  if (accessibleSeatsExcluded) {
+    unavailableLabel = "Unavailable / excluded";
   }
   legend.append(
-    createLegendItem(accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable", "unavailable"),
+    createLegendItem(unavailableLabel, "unavailable"),
     createLegendItem("Matches", "matched"),
   );
-  wrapper.appendChild(legend);
+  wrapper.append(legend);
   return wrapper;
 }
 
 function createIcon(definition) {
   const svg = document.createElementNS(SVG_NAMESPACE, "svg");
   Object.entries({
-    viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    "stroke-width": "2",
     "stroke-linecap": "round",
     "stroke-linejoin": "round",
+    "stroke-width": "2",
+    viewBox: "0 0 24 24",
   }).forEach(([name, value]) => svg.setAttribute(name, value));
   definition.forEach(([tagName, attributes]) => {
     const child = document.createElementNS(SVG_NAMESPACE, tagName);
     Object.entries(attributes).forEach(([name, value]) => child.setAttribute(name, value));
-    svg.appendChild(child);
+    svg.append(child);
   });
   return svg;
 }
@@ -118,13 +144,27 @@ function makeTag(text, iconDefinition) {
   tag.className = "tag";
   const icon = document.createElement("span");
   icon.className = "tag-icon";
-  icon.appendChild(createIcon(iconDefinition));
-  tag.appendChild(icon);
-  tag.appendChild(document.createTextNode(text));
+  icon.append(createIcon(iconDefinition));
+  tag.append(icon);
+  tag.append(document.createTextNode(text));
   return tag;
 }
 
-export function createResultsView({ results, summary, resultsToolbar, pagination, getPage, onPageChange }) {
+function pluralSuffix(count) {
+  if (count === 1) {
+    return "";
+  }
+  return "s";
+}
+
+export function createResultsView({
+  results,
+  summary,
+  resultsToolbar,
+  pagination,
+  getPage,
+  onPageChange,
+}) {
   let lastPaginationData = null;
 
   function beginReorder() {
@@ -180,7 +220,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
     pagination.setAttribute("aria-busy", "true");
-    pagination.querySelectorAll("button").forEach(button => {
+    pagination.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
     });
     const label = pagination.querySelector(".pagination-label");
@@ -188,8 +228,12 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
   }
 
   function endPageLoading(errorMessage = "") {
-    if (lastPaginationData) renderPagination(lastPaginationData);
-    if (!errorMessage) return;
+    if (lastPaginationData) {
+      renderPagination(lastPaginationData);
+    }
+    if (!errorMessage) {
+      return;
+    }
     pagination.classList.add("has-error");
     const label = pagination.querySelector(".pagination-label");
     label.textContent = errorMessage;
@@ -198,32 +242,43 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
   function render(data, { skipEntrance = false } = {}) {
     const matches = data.matches;
     results.replaceChildren();
-    const showingStart = matches.length ? (data.page - 1) * data.pageSize + 1 : 0;
+    let showingStart = 0;
+    if (matches.length > 0) {
+      showingStart = (data.page - 1) * data.pageSize + 1;
+    }
     const showingEnd = showingStart + matches.length - 1;
-    const pageText = matches.length
-      ? `Showing ${showingStart}-${showingEnd} matching showtime${matches.length === 1 ? "" : "s"}`
-      : "No matching showtimes";
-    const summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${data.checkedSeatMaps === 1 ? "" : "s"} from ${data.checkedShowtimes} candidate showtime${data.checkedShowtimes === 1 ? "" : "s"}.`;
-    setSummary(summary, summaryText, !matches.length);
-    resultsToolbar.hidden = !matches.length;
+    let pageText = "No matching showtimes";
+    if (matches.length > 0) {
+      pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
+    }
+    const summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+    setSummary(summary, summaryText, matches.length === 0);
+    resultsToolbar.hidden = matches.length === 0;
     renderPagination(data);
 
-    if (!matches.length) {
+    if (matches.length === 0) {
       const hint = document.createElement("div");
       hint.className = "empty-state";
       const hintText = document.createElement("p");
       hintText.textContent = "Try widening the time range, seat area, or dates.";
-      hint.appendChild(hintText);
-      results.appendChild(hint);
+      hint.append(hintText);
+      results.append(hint);
       return;
     }
 
     matches.forEach((match, index) => {
       const item = document.createElement("article");
       item.className = "result";
-      if (skipEntrance) item.classList.add("no-enter-animation");
-      item.setAttribute("aria-label", `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`);
-      if (!skipEntrance) item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
+      if (skipEntrance) {
+        item.classList.add("no-enter-animation");
+      }
+      item.setAttribute(
+        "aria-label",
+        `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`,
+      );
+      if (!skipEntrance) {
+        item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
+      }
       const body = document.createElement("div");
       body.className = "result-body";
 
@@ -234,7 +289,7 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
         poster.alt = `${match.movieTitle} poster`;
         poster.loading = "lazy";
         poster.addEventListener("error", () => poster.remove());
-        body.appendChild(poster);
+        body.append(poster);
       }
 
       const details = document.createElement("div");
@@ -248,46 +303,46 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
       distance.className = "result-distance";
       distance.textContent = `${match.theatre.distanceMiles.toFixed(1)} mi`;
       top.append(title, distance);
-      details.appendChild(top);
+      details.append(top);
 
       if (match.theatre.address) {
         const address = document.createElement("p");
         address.className = "result-addr";
         address.textContent = match.theatre.address;
-        details.appendChild(address);
+        details.append(address);
       }
 
       const movie = document.createElement("p");
       movie.className = "result-movie";
       movie.textContent = match.movieTitle;
-      details.appendChild(movie);
+      details.append(movie);
       const submetaParts = [match.rating, match.runtime, match.genres.join(", ")].filter(Boolean);
-      if (submetaParts.length) {
+      if (submetaParts.length > 0) {
         const submeta = document.createElement("p");
         submeta.className = "result-submeta";
         submeta.textContent = submetaParts.join("  ·  ");
-        details.appendChild(submeta);
+        details.append(submeta);
       }
 
       const meta = document.createElement("div");
       meta.className = "result-meta";
-      meta.appendChild(makeTag(match.format, ICON_FILM));
-      meta.appendChild(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
+      meta.append(makeTag(match.format, ICON_FILM));
+      meta.append(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
       const open = document.createElement("span");
       open.className = "result-open";
       open.textContent = `${match.seatMap.availableSeatCount} of ${match.seatMap.totalSeatCount} seats open`;
-      meta.appendChild(open);
-      details.appendChild(meta);
-      body.appendChild(details);
-      item.appendChild(body);
+      meta.append(open);
+      details.append(meta);
+      body.append(details);
+      item.append(body);
 
       if (match.amenities) {
         const amenities = document.createElement("p");
         amenities.className = "result-amenities";
         amenities.textContent = match.amenities;
-        item.appendChild(amenities);
+        item.append(amenities);
       }
-      item.appendChild(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
+      item.append(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
       if (match.ticketUrl) {
         const link = document.createElement("a");
         link.className = "buy-btn";
@@ -296,11 +351,11 @@ export function createResultsView({ results, summary, resultsToolbar, pagination
         link.target = "_blank";
         link.rel = "noreferrer";
         link.addEventListener("click", logTicketClick);
-        item.appendChild(link);
+        item.append(link);
       }
-      results.appendChild(item);
+      results.append(item);
     });
   }
 
-  return { beginReorder, endReorder, endPageLoading, render, setPageLoading };
+  return { beginReorder, endPageLoading, endReorder, render, setPageLoading };
 }

@@ -74,6 +74,8 @@ The MCP endpoint is public and requires no authentication. Requests are accepted
 
 ```bash
 python -m unittest discover -s tests -v
+npm run lint
+npm run lint:frontend
 npm run check:frontend-bundle
 npm run test:frontend
 npm run test:mobile
