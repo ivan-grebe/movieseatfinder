@@ -45,9 +45,7 @@ from .seat_matching import (
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
 SITE_NAME = "Movie Seat Finder"
-SITE_DESCRIPTION = (
-    "Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets."
-)
+SITE_DESCRIPTION = "Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets."
 FAQ_DESCRIPTION = (
     "Answers about finding nearby movie showtimes, comparing theatre formats, checking live seat maps, "
     "and opening ticket links with Movie Seat Finder."
@@ -103,7 +101,9 @@ INLINE_STYLES = (
     .read_text(encoding="utf-8")
     .replace("__FONT_VERSION__", ASSET_VERSIONS[FONT_ASSET])
 )
-INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode("ascii")
+INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode(
+    "ascii"
+)
 # Static tokens are substituted once at import; only the origin-dependent SEO
 # tokens vary per request.
 INDEX_TEMPLATE = (
@@ -374,7 +374,8 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin):
     last_error = None
     with ThreadPoolExecutor(max_workers=min(8, len(dates))) as executor:
         future_map = {
-            executor.submit(fandango_theatres, zip_code, radius, origin, show_date): show_date for show_date in dates
+            executor.submit(fandango_theatres, zip_code, radius, origin, show_date): show_date
+            for show_date in dates
         }
         for future in as_completed(future_map):
             show_date = future_map[future]
@@ -438,7 +439,9 @@ def dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin
             yield theatre
 
 
-def movies_from_dated_theatre_payloads(zip_code, radius, start_date, end_date, theatre_query, origin):
+def movies_from_dated_theatre_payloads(
+    zip_code, radius, start_date, end_date, theatre_query, origin
+):
     seen = set()
     movies = []
     for theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
@@ -458,7 +461,9 @@ def group_formats(format_name, group):
     return {showtime_format(format_name, group, showtime) for showtime in group_showtimes}
 
 
-def formats_from_dated_theatre_payloads(zip_code, radius, movie_query, start_date, end_date, theatre_query, origin):
+def formats_from_dated_theatre_payloads(
+    zip_code, radius, movie_query, start_date, end_date, theatre_query, origin
+):
     formats = set()
     for theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
         for movie in theatre["rawMovies"]:
@@ -614,7 +619,9 @@ def normalize_showtimes(movies):
                 amenity_text = clean_title(group.get("amenityString", ""))
                 amenities = [
                     name
-                    for name in (clean_title(item.get("name", "")) for item in group.get("amenities") or [])
+                    for name in (
+                        clean_title(item.get("name", "")) for item in group.get("amenities") or []
+                    )
                     if name
                 ]
                 if not amenity_text:
@@ -670,7 +677,13 @@ def normalized_origin(value):
         return None
     if parts.scheme not in {"http", "https"} or not parts.hostname:
         return None
-    if parts.username or parts.password or parts.path not in {"", "/"} or parts.query or parts.fragment:
+    if (
+        parts.username
+        or parts.password
+        or parts.path not in {"", "/"}
+        or parts.query
+        or parts.fragment
+    ):
         return None
 
     hostname = parts.hostname.rstrip(".")
@@ -680,7 +693,8 @@ def normalized_origin(value):
     except ValueError:
         labels = hostname.split(".")
         if not labels or any(
-            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in labels
+            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+            for label in labels
         ):
             return None
         rendered_host = hostname.lower()
@@ -745,7 +759,11 @@ async def security_headers(request, call_next):
         "require-trusted-types-for 'script'; trusted-types 'none'"
     )
     suffix = Path(request.url.path).suffix.lower()
-    if response.status_code == 200 and request.query_params.get("v") and suffix in VERSIONED_ASSET_SUFFIXES:
+    if (
+        response.status_code == 200
+        and request.query_params.get("v")
+        and suffix in VERSIONED_ASSET_SUFFIXES
+    ):
         response.headers["Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
         response.headers["CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
         response.headers["Vercel-CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
@@ -914,7 +932,9 @@ def api_search_location(zip_code, lat, lon):
         ) from error
     except UPSTREAM_ERRORS as error:
         if lat is not None:
-            message = "We couldn't determine a ZIP code for your location. Enter a ZIP code instead."
+            message = (
+                "We couldn't determine a ZIP code for your location. Enter a ZIP code instead."
+            )
             status_code = 400
         else:
             message = "ZIP lookup is temporarily unavailable. Try again."
@@ -952,31 +972,41 @@ def location_movie_info(
                     continue
                 theatre_name = theatre_item["name"]
                 theatre_key = normalized_text(theatre_name)
-                theatres.setdefault(theatre_key, {
-                    "name": theatre_name,
-                    "address": theatre_item["address"],
-                    "distanceMiles": theatre_item["distanceMiles"],
-                })
+                theatres.setdefault(
+                    theatre_key,
+                    {
+                        "name": theatre_name,
+                        "address": theatre_item["address"],
+                        "distanceMiles": theatre_item["distanceMiles"],
+                    },
+                )
                 for movie in theatre_item["rawMovies"]:
                     title = clean_title(movie.get("title", ""))
                     movie_key = normalized_text(title)
                     if not title:
                         continue
-                    movie_info = movies.setdefault(movie_key, {
-                        "title": title,
-                        "dates": set(),
-                        "formats": set(),
-                        "formatTheatres": {},
-                        "theatres": set(),
-                    })
+                    movie_info = movies.setdefault(
+                        movie_key,
+                        {
+                            "title": title,
+                            "dates": set(),
+                            "formats": set(),
+                            "formatTheatres": {},
+                            "theatres": set(),
+                        },
+                    )
                     movie_info["dates"].add(show_date)
                     movie_info["theatres"].add(theatre_name)
                     for variant in movie.get("variants") or []:
-                        format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+                        format_name = (
+                            clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+                        )
                         for group in variant.get("amenityGroups") or []:
                             for format_label in group_formats(format_name, group):
                                 movie_info["formats"].add(format_label)
-                                movie_info["formatTheatres"].setdefault(format_label, set()).add(theatre_name)
+                                movie_info["formatTheatres"].setdefault(format_label, set()).add(
+                                    theatre_name
+                                )
 
         filtered_movies = []
         relevant_theatres = set()
@@ -994,12 +1024,14 @@ def location_movie_info(
             if format_query:
                 movie_theatres = set().union(*(movie["formatTheatres"][value] for value in formats))
             relevant_theatres.update(movie_theatres)
-            filtered_movies.append({
-                "title": movie["title"],
-                "dates": sorted(movie["dates"]),
-                "formats": formats,
-                "theatres": sorted(movie_theatres),
-            })
+            filtered_movies.append(
+                {
+                    "title": movie["title"],
+                    "dates": sorted(movie["dates"]),
+                    "formats": formats,
+                    "theatres": sorted(movie_theatres),
+                }
+            )
 
         return {
             "place": place,
@@ -1009,7 +1041,11 @@ def location_movie_info(
             "movieQuery": movie_query,
             "formatQuery": format_query,
             "theatres": sorted(
-                (item for item in theatres.values() if not (movie_query or format_query) or item["name"] in relevant_theatres),
+                (
+                    item
+                    for item in theatres.values()
+                    if not (movie_query or format_query) or item["name"] in relevant_theatres
+                ),
                 key=lambda item: (item["distanceMiles"], item["name"]),
             ),
             "movies": sorted(filtered_movies, key=lambda movie: movie["title"]),
@@ -1067,7 +1103,9 @@ def api_movies(
         end_date = endDate or start_date
         theatre_query = theatre.lower()
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        movies = movies_from_dated_theatre_payloads(search_zip, radius, start_date, end_date, theatre_query, origin)
+        movies = movies_from_dated_theatre_payloads(
+            search_zip, radius, start_date, end_date, theatre_query, origin
+        )
         return {"movies": movies}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1230,7 +1268,9 @@ def find_seat_matches(
         def check_candidate(candidate):
             theatre_item, showtime = candidate
             try:
-                seat_match = showtime_seat_match(showtime, min_adjacent, selected_cells, exclude_accessible, seat_map)
+                seat_match = showtime_seat_match(
+                    showtime, min_adjacent, selected_cells, exclude_accessible, seat_map
+                )
             except (*UPSTREAM_ERRORS, ValueError):
                 return None
             if not seat_match:

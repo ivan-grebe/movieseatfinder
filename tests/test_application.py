@@ -33,9 +33,16 @@ class DateAndValidationTests(unittest.TestCase):
         def ordered_names(sort_order):
             return [
                 item["name"]
-                for item in sorted(showtimes, key=lambda item: application.search_sort_key(
-                    item["distance"], item["date"], item["time"], item["name"], sort_order,
-                ))
+                for item in sorted(
+                    showtimes,
+                    key=lambda item: application.search_sort_key(
+                        item["distance"],
+                        item["date"],
+                        item["time"],
+                        item["name"],
+                        sort_order,
+                    ),
+                )
             ]
 
         self.assertEqual(ordered_names("earliest"), ["Far Early", "Near Early", "Near Late"])
@@ -53,7 +60,9 @@ class DateAndValidationTests(unittest.TestCase):
 
 class MovieAndFormatTests(unittest.TestCase):
     def test_movie_matching_requires_the_selected_title(self):
-        self.assertTrue(application.movie_matches("Spider-Man: Homecoming", "spider man homecoming"))
+        self.assertTrue(
+            application.movie_matches("Spider-Man: Homecoming", "spider man homecoming")
+        )
         self.assertFalse(application.movie_matches("Spider-Man: Homecoming", "spider man"))
         self.assertFalse(application.movie_matches("", "spider man"))
 
@@ -63,7 +72,9 @@ class MovieAndFormatTests(unittest.TestCase):
         self.assertFalse(application.format_matches("IMAX with Laser", "IMAX"))
         self.assertFalse(application.format_matches("IMAX 70mm", "IMAX"))
         self.assertTrue(application.format_matches("IMAX 70mm", "imax70"))
-        self.assertTrue(application.format_matches("IMAX with Laser", "Dolby Cinema,IMAX with Laser"))
+        self.assertTrue(
+            application.format_matches("IMAX with Laser", "Dolby Cinema,IMAX with Laser")
+        )
 
     def test_format_matching_collapses_only_equivalent_labels(self):
         self.assertTrue(application.format_matches("Dolby Cinema", "dolby"))
@@ -102,17 +113,23 @@ class MovieAndFormatTests(unittest.TestCase):
     def test_showtime_resolves_specific_amenity_over_generic_imax_label(self):
         movie = {
             "title": "Test Movie",
-            "variants": [{
-                "filmFormatHeader": "Premium Format",
-                "amenityGroups": [{
-                    "amenities": [{"name": "IMAX with Laser"}],
-                    "showtimes": [{
-                        "type": "available",
-                        "ticketingDate": "2026-07-20+18:00",
-                        "filmFormat": [{"filterName": "IMAX"}],
-                    }],
-                }],
-            }],
+            "variants": [
+                {
+                    "filmFormatHeader": "Premium Format",
+                    "amenityGroups": [
+                        {
+                            "amenities": [{"name": "IMAX with Laser"}],
+                            "showtimes": [
+                                {
+                                    "type": "available",
+                                    "ticketingDate": "2026-07-20+18:00",
+                                    "filmFormat": [{"filterName": "IMAX"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
         }
 
         showtime = application.normalize_showtimes([movie])[0]
@@ -196,19 +213,25 @@ class MovieAndFormatTests(unittest.TestCase):
         movies = [
             {
                 "title": "The Odyssey",
-                "variants": [{
-                    "filmFormatHeader": "Standard",
-                    "amenityGroups": [{"showtimes": [{"filmFormat": []}]}],
-                }],
+                "variants": [
+                    {
+                        "filmFormatHeader": "Standard",
+                        "amenityGroups": [{"showtimes": [{"filmFormat": []}]}],
+                    }
+                ],
             },
             {
                 "title": "The Odyssey (2026)",
-                "variants": [{
-                    "filmFormatHeader": "Premium Format",
-                    "amenityGroups": [{
-                        "showtimes": [{"filmFormat": [{"filterName": "IMAX 70mm"}]}],
-                    }],
-                }],
+                "variants": [
+                    {
+                        "filmFormatHeader": "Premium Format",
+                        "amenityGroups": [
+                            {
+                                "showtimes": [{"filmFormat": [{"filterName": "IMAX 70mm"}]}],
+                            }
+                        ],
+                    }
+                ],
             },
         ]
         theatre = {
@@ -260,9 +283,33 @@ class SeatSelectionTests(unittest.TestCase):
             {"id": "A1", "row": 0, "column": 1, "x": 10, "y": 0, "status": "A", "type": "standard"},
             {"id": "A2", "row": 0, "column": 2, "x": 20, "y": 0, "status": "A", "type": "standard"},
             {"id": "A3", "row": 0, "column": 3, "x": 30, "y": 0, "status": "U", "type": "standard"},
-            {"id": "B1", "row": 1, "column": 1, "x": 10, "y": 10, "status": "A", "type": "wheelchair"},
-            {"id": "B2", "row": 1, "column": 2, "x": 20, "y": 10, "status": "A", "type": "standard"},
-            {"id": "B3", "row": 1, "column": 3, "x": 30, "y": 10, "status": "A", "type": "companion"},
+            {
+                "id": "B1",
+                "row": 1,
+                "column": 1,
+                "x": 10,
+                "y": 10,
+                "status": "A",
+                "type": "wheelchair",
+            },
+            {
+                "id": "B2",
+                "row": 1,
+                "column": 2,
+                "x": 20,
+                "y": 10,
+                "status": "A",
+                "type": "standard",
+            },
+            {
+                "id": "B3",
+                "row": 1,
+                "column": 3,
+                "x": 30,
+                "y": 10,
+                "status": "A",
+                "type": "companion",
+            },
         ]
 
     def test_grid_parser_filters_invalid_cells(self):
@@ -396,14 +443,16 @@ class RouteTests(unittest.TestCase):
         self.assertIn('<link rel="canonical" href="http://example.test/">', response.text)
         self.assertIn('href="/faq"', response.text)
         self.assertIn(
-            f'/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}',
+            f"/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}",
             response.text,
         )
         self.assertIn(
-            f'/favicon-96x96.png?v={application.ASSET_VERSIONS["favicon-96x96.png"]}',
+            f"/favicon-96x96.png?v={application.ASSET_VERSIONS['favicon-96x96.png']}",
             response.text,
         )
-        self.assertIn('<meta name="apple-mobile-web-app-title" content="Seat Finder">', response.text)
+        self.assertIn(
+            '<meta name="apple-mobile-web-app-title" content="Seat Finder">', response.text
+        )
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
@@ -429,7 +478,13 @@ class RouteTests(unittest.TestCase):
         faq_redirect = self.client.get("/faq.html", follow_redirects=False)
         self.assertEqual(faq_redirect.status_code, 308)
         self.assertEqual(faq_redirect.headers["location"], "/faq")
-        for source_path in ("/app.js", "/ui.js", "/results.js", "/styles.css", "/styles.bundle.css"):
+        for source_path in (
+            "/app.js",
+            "/ui.js",
+            "/results.js",
+            "/styles.css",
+            "/styles.bundle.css",
+        ):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
         for public_path in (
             "/app.bundle.js",
@@ -489,28 +544,37 @@ class RouteTests(unittest.TestCase):
         logger_info.assert_called_once_with("event=ticket_click")
 
     def test_homepage_rejects_markup_in_forwarded_host(self):
-        injected_host = 'attacker.example\"><meta name="injected" content="yes'
-        response = self.client.get("/", headers={
-            "x-forwarded-proto": "https",
-            "x-forwarded-host": injected_host,
-        })
+        injected_host = 'attacker.example"><meta name="injected" content="yes'
+        response = self.client.get(
+            "/",
+            headers={
+                "x-forwarded-proto": "https",
+                "x-forwarded-host": injected_host,
+            },
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('<meta name="injected"', response.text)
         self.assertIn('<link rel="canonical" href="http://testserver/">', response.text)
 
     @patch("backend.application.movies_from_dated_theatre_payloads", return_value=[])
-    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
     def test_movie_endpoint_does_not_broaden_empty_filtered_results(
         self, resolve_search_location, movies_from_payloads
     ):
-        response = self.client.get("/api/movies", params={
-            "zip": "00000",
-            "radius": 25,
-            "startDate": "2026-07-22",
-            "endDate": "2026-07-22",
-            "theatre": "Selected Cinema",
-        })
+        response = self.client.get(
+            "/api/movies",
+            params={
+                "zip": "00000",
+                "radius": 25,
+                "startDate": "2026-07-22",
+                "endDate": "2026-07-22",
+                "theatre": "Selected Cinema",
+            },
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"movies": []})
@@ -520,16 +584,22 @@ class RouteTests(unittest.TestCase):
         "backend.application.movies_from_dated_theatre_payloads",
         side_effect=application.requests.RequestException("upstream down"),
     )
-    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
     def test_movie_endpoint_reports_total_upstream_failure(
         self, resolve_search_location, movies_from_payloads
     ):
-        response = self.client.get("/api/movies", params={
-            "zip": "00000",
-            "radius": 25,
-            "startDate": "2026-07-22",
-            "endDate": "2026-07-22",
-        })
+        response = self.client.get(
+            "/api/movies",
+            params={
+                "zip": "00000",
+                "radius": 25,
+                "startDate": "2026-07-22",
+                "endDate": "2026-07-22",
+            },
+        )
 
         self.assertEqual(response.status_code, 502)
         self.assertIn("Could not load real movie data", response.json()["error"])
@@ -541,7 +611,9 @@ class RouteTests(unittest.TestCase):
 
     @patch(
         "backend.application.resolve_search_location",
-        side_effect=application.ZipNotFoundError("We couldn't find that ZIP code. Check it and try again."),
+        side_effect=application.ZipNotFoundError(
+            "We couldn't find that ZIP code. Check it and try again."
+        ),
     )
     def test_unknown_zip_is_identified_as_a_location_field_error(self, resolve_search_location):
         for endpoint in ("/api/theatres", "/api/movies"):
@@ -574,7 +646,9 @@ class RouteTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(
                     response.json(),
-                    {"error": "One of the search values is invalid. Adjust the form and try again."},
+                    {
+                        "error": "One of the search values is invalid. Adjust the form and try again."
+                    },
                 )
 
     @patch("backend.application.LOGGER.info")
@@ -591,8 +665,14 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(logger_info.call_count, 60)
 
     @patch("backend.application.LOGGER.error")
-    @patch("backend.application.fandango_theatres", side_effect=RuntimeError("unexpected upstream shape"))
-    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    @patch(
+        "backend.application.fandango_theatres",
+        side_effect=RuntimeError("unexpected upstream shape"),
+    )
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
     def test_unexpected_api_errors_are_returned_as_json(
         self, resolve_search_location, fandango_theatres, logger_error
     ):
@@ -602,17 +682,29 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.headers["content-type"].split(";")[0], "application/json")
-        self.assertEqual(response.json(), {"error": "We could not complete that search. Please try again."})
+        self.assertEqual(
+            response.json(), {"error": "We could not complete that search. Please try again."}
+        )
         logger_error.assert_called_once()
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.geocode_zip")
-    def test_five_mile_zip_search_excludes_theatres_outside_the_radius(self, geocode_zip, fandango_json):
+    def test_five_mile_zip_search_excludes_theatres_outside_the_radius(
+        self, geocode_zip, fandango_json
+    ):
         geocode_zip.return_value = {"label": "Testville, TS 00000", "lat": 40.0, "lon": -75.0}
         fandango_json.return_value = {
             "theaters": [
-                {"name": "Nearby Cinema", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75.0}},
-                {"name": "Too Far Cinema", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75.0}},
+                {
+                    "name": "Nearby Cinema",
+                    "distance": 0,
+                    "geo": {"latitude": 40.03, "longitude": -75.0},
+                },
+                {
+                    "name": "Too Far Cinema",
+                    "distance": 0,
+                    "geo": {"latitude": 40.10, "longitude": -75.0},
+                },
             ]
         }
 
@@ -623,67 +715,126 @@ class RouteTests(unittest.TestCase):
 
     @patch("backend.application.fandango_json")
     @patch("backend.location.reverse_geocode_zip", return_value="00000")
-    def test_location_search_integration_uses_precise_coordinates_for_radius_filtering(self, reverse_geocode_zip, fandango_json):
+    def test_location_search_integration_uses_precise_coordinates_for_radius_filtering(
+        self, reverse_geocode_zip, fandango_json
+    ):
         fandango_json.return_value = {
             "theaters": [
-                {"name": "Nearby Cinema", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75.0}},
-                {"name": "Too Far Cinema", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75.0}},
+                {
+                    "name": "Nearby Cinema",
+                    "distance": 0,
+                    "geo": {"latitude": 40.03, "longitude": -75.0},
+                },
+                {
+                    "name": "Too Far Cinema",
+                    "distance": 0,
+                    "geo": {"latitude": 40.10, "longitude": -75.0},
+                },
             ]
         }
 
         response = self.client.get("/api/theatres", params={"lat": 40.0, "lon": -75.0, "radius": 5})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([theatre["name"] for theatre in response.json()["theatres"]], ["Nearby Cinema"])
+        self.assertEqual(
+            [theatre["name"] for theatre in response.json()["theatres"]], ["Nearby Cinema"]
+        )
         self.assertEqual(fandango_json.call_args.args[1]["radius"], 25)
 
-    @patch("backend.location.reverse_geocode_zip", side_effect=application.requests.RequestException())
+    @patch(
+        "backend.location.reverse_geocode_zip", side_effect=application.requests.RequestException()
+    )
     def test_location_lookup_failure_guides_the_user_to_manual_zip_entry(self, reverse_geocode_zip):
-        response = self.client.get("/api/theatres", params={"lat": 40.0, "lon": -75.0, "radius": 25})
+        response = self.client.get(
+            "/api/theatres", params={"lat": 40.0, "lon": -75.0, "radius": 25}
+        )
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("Enter a ZIP code instead", response.json()["error"])
 
     @patch("backend.application.seat_map")
     @patch("backend.application.fandango_theatres_by_date")
-    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
     def test_search_loads_seat_maps_through_the_extracted_matching_engine(
         self, resolve_search_location, fandango_theatres_by_date, seat_map
     ):
         fandango_theatres_by_date.return_value = {
-            "2026-07-20": [{
-                "name": "Test Cinema",
-                "address": "1 Main St",
-                "distanceMiles": 1.2,
-                "rawMovies": [{
-                    "title": "Test Movie",
-                    "variants": [{
-                        "filmFormatHeader": "Standard",
-                        "amenityGroups": [{
-                            "showtimes": [{
-                                "type": "available",
-                                "ticketingDate": "2026-07-20+19:00",
-                                "showtimeHashCode": "showtime-1",
-                            }],
-                        }],
-                    }],
-                }],
-            }]
+            "2026-07-20": [
+                {
+                    "name": "Test Cinema",
+                    "address": "1 Main St",
+                    "distanceMiles": 1.2,
+                    "rawMovies": [
+                        {
+                            "title": "Test Movie",
+                            "variants": [
+                                {
+                                    "filmFormatHeader": "Standard",
+                                    "amenityGroups": [
+                                        {
+                                            "showtimes": [
+                                                {
+                                                    "type": "available",
+                                                    "ticketingDate": "2026-07-20+19:00",
+                                                    "showtimeHashCode": "showtime-1",
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
         }
         seat_map.return_value = {
             "seats": [
-                {"id": "A1", "row": 0, "column": 1, "x": 0, "y": 0, "status": "A", "type": "standard"},
-                {"id": "A2", "row": 0, "column": 2, "x": 10, "y": 0, "status": "A", "type": "wheelchair"},
-                {"id": "A3", "row": 0, "column": 3, "x": 20, "y": 0, "status": "A", "type": "companion"},
+                {
+                    "id": "A1",
+                    "row": 0,
+                    "column": 1,
+                    "x": 0,
+                    "y": 0,
+                    "status": "A",
+                    "type": "standard",
+                },
+                {
+                    "id": "A2",
+                    "row": 0,
+                    "column": 2,
+                    "x": 10,
+                    "y": 0,
+                    "status": "A",
+                    "type": "wheelchair",
+                },
+                {
+                    "id": "A3",
+                    "row": 0,
+                    "column": 3,
+                    "x": 20,
+                    "y": 0,
+                    "status": "A",
+                    "type": "companion",
+                },
             ],
             "totalAvailableSeatCount": 3,
             "totalSeatCount": 3,
         }
 
-        response = self.client.get("/api/search", params={
-            "zip": "00000", "radius": 25, "movie": "Test Movie",
-            "startDate": "2026-07-20", "endDate": "2026-07-20",
-        })
+        response = self.client.get(
+            "/api/search",
+            params={
+                "zip": "00000",
+                "radius": 25,
+                "movie": "Test Movie",
+                "startDate": "2026-07-20",
+                "endDate": "2026-07-20",
+            },
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["matches"]), 1)
@@ -696,50 +847,73 @@ class RouteTests(unittest.TestCase):
 
     @patch("backend.application.seat_map")
     @patch("backend.application.fandango_theatres_by_date")
-    @patch("backend.application.resolve_search_location", return_value=("00000", (40.0, -75.0), "Testville"))
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
     def test_format_options_and_search_use_the_same_resolved_imax_variant(
         self, resolve_search_location, fandango_theatres_by_date, seat_map
     ):
         fandango_theatres_by_date.return_value = {
-            "2026-07-20": [{
-                "name": "Test Cinema",
-                "address": "1 Main St",
-                "distanceMiles": 1.2,
-                "rawMovies": [{
-                    "title": "Test Movie",
-                    "variants": [{
-                        "filmFormatHeader": "Premium Format",
-                        "amenityGroups": [
-                            {
-                                "amenityString": "IMAX with Laser, Reserved seating",
-                                "amenities": [{"name": "IMAX"}, {"name": "IMAX with Laser"}],
-                                "showtimes": [{
-                                    "type": "available",
-                                    "ticketingDate": "2026-07-20+18:00",
-                                    "showtimeHashCode": "laser-showtime",
-                                    "filmFormat": [{"filterName": "IMAX"}],
-                                }],
-                            },
-                            {
-                                "amenityString": "Reserved seating",
-                                "amenities": [{"name": "IMAX"}],
-                                "showtimes": [{
-                                    "type": "available",
-                                    "ticketingDate": "2026-07-20+20:00",
-                                    "showtimeHashCode": "plain-showtime",
-                                    "filmFormat": [{"filterName": "IMAX"}],
-                                }],
-                            },
-                        ],
-                    }],
-                }],
-            }]
+            "2026-07-20": [
+                {
+                    "name": "Test Cinema",
+                    "address": "1 Main St",
+                    "distanceMiles": 1.2,
+                    "rawMovies": [
+                        {
+                            "title": "Test Movie",
+                            "variants": [
+                                {
+                                    "filmFormatHeader": "Premium Format",
+                                    "amenityGroups": [
+                                        {
+                                            "amenityString": "IMAX with Laser, Reserved seating",
+                                            "amenities": [
+                                                {"name": "IMAX"},
+                                                {"name": "IMAX with Laser"},
+                                            ],
+                                            "showtimes": [
+                                                {
+                                                    "type": "available",
+                                                    "ticketingDate": "2026-07-20+18:00",
+                                                    "showtimeHashCode": "laser-showtime",
+                                                    "filmFormat": [{"filterName": "IMAX"}],
+                                                }
+                                            ],
+                                        },
+                                        {
+                                            "amenityString": "Reserved seating",
+                                            "amenities": [{"name": "IMAX"}],
+                                            "showtimes": [
+                                                {
+                                                    "type": "available",
+                                                    "ticketingDate": "2026-07-20+20:00",
+                                                    "showtimeHashCode": "plain-showtime",
+                                                    "filmFormat": [{"filterName": "IMAX"}],
+                                                }
+                                            ],
+                                        },
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
         }
         seat_map.return_value = {
-            "seats": [{
-                "id": "A1", "row": 0, "column": 1, "x": 0, "y": 0,
-                "status": "A", "type": "standard",
-            }],
+            "seats": [
+                {
+                    "id": "A1",
+                    "row": 0,
+                    "column": 1,
+                    "x": 0,
+                    "y": 0,
+                    "status": "A",
+                    "type": "standard",
+                }
+            ],
             "totalAvailableSeatCount": 1,
             "totalSeatCount": 1,
         }

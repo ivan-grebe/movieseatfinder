@@ -42,11 +42,7 @@ function makeSimpleMatch(theatreName, time) {
   };
 }
 
-async function mockSearchDependencies(
-  page,
-  onSearch,
-  formats = ["Standard"],
-) {
+async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/theatres*", (route) =>
     route.fulfill({
       body: JSON.stringify({ place: "Testville", theatres: [] }),

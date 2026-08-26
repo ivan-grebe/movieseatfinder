@@ -31,7 +31,7 @@ Requirements: Python 3.12+ and Node.js 22+.
 ```bash
 git clone https://github.com/ivan-grebe/movieseatfinder.git
 cd movieseatfinder
-pip install -e ".[test]"
+pip install -e ".[test,dev]"
 npm ci
 npm run build:frontend
 uvicorn backend.server:app --reload --host 127.0.0.1 --port 4173
@@ -74,11 +74,22 @@ The MCP endpoint is public and requires no authentication. Requests are accepted
 
 ```bash
 python -m unittest discover -s tests -v
+python -m ruff check .
+python -m ruff format --check .
+npm run format:check
 npm run lint
 npm run lint:frontend
 npm run check:frontend-bundle
 npm run test:frontend
 npm run test:mobile
+```
+
+To apply automatic fixes and formatting before opening a pull request:
+
+```bash
+python -m ruff check --fix .
+python -m ruff format .
+npm run format
 ```
 
 GitHub Actions runs these checks on every pull request, each push to `main`, and daily at 09:17 UTC.
