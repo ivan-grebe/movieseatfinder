@@ -837,7 +837,8 @@ def robots(request: Request):
 
 @app.get("/llms.txt", include_in_schema=False)
 def llms_txt():
-    return PlainTextResponse((BASE_DIR / "llms.txt").read_text(encoding="utf-8"))
+    llms_file = FRONTEND_DIR / "content" / "llms.txt"
+    return PlainTextResponse(llms_file.read_text(encoding="utf-8"))
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
