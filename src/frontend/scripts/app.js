@@ -892,4 +892,5 @@ async function initialize() {
 }
 
 initializeAmbientMotion();
+// oxlint-disable-next-line unicorn/prefer-top-level-await -- Initialization should not block module evaluation.
 initialize();
