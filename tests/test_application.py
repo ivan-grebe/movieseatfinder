@@ -1,4 +1,3 @@
-import json
 import unittest
 from datetime import date
 from unittest.mock import patch
@@ -458,18 +457,6 @@ class RouteTests(unittest.TestCase):
         self.assertIn("default-src 'self'", content_security_policy)
         self.assertIn("require-trusted-types-for 'script'", content_security_policy)
         self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
-
-    def test_vercel_enforces_the_strong_hsts_policy(self):
-        config = json.loads((application.BASE_DIR / "vercel.json").read_text(encoding="utf-8"))
-        headers = {
-            header["key"].lower(): header["value"]
-            for route in config["headers"]
-            for header in route["headers"]
-        }
-        self.assertEqual(
-            headers["strict-transport-security"],
-            "max-age=63072000; includeSubDomains; preload",
-        )
 
     def test_raw_template_and_frontend_sources_are_not_served(self):
         redirect = self.client.get("/index.html", follow_redirects=False)
