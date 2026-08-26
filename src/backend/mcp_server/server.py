@@ -35,10 +35,17 @@ FormatName = Annotated[
 class SeatRegion(BaseModel):
     """A rectangular area on the public 1-based auditorium grid."""
 
-    row_min: int = Field(ge=1, le=15, description="First acceptable row; row 1 is nearest the screen")
+    row_min: int = Field(
+        ge=1, le=15, description="First acceptable row; row 1 is nearest the screen"
+    )
     row_max: int = Field(ge=1, le=15, description="Last acceptable row; row 15 is at the back")
-    column_min: int = Field(ge=1, le=15, description="First acceptable column from the displayed left edge")
-    column_max: int = Field(ge=1, le=15, description="Last acceptable column from the displayed left edge")
+    column_min: int = Field(
+        ge=1, le=15, description="First acceptable column from the displayed left edge"
+    )
+    column_max: int = Field(
+        ge=1, le=15, description="Last acceptable column from the displayed left edge"
+    )
+
 
 class SeatMapOutput(BaseModel):
     """Structured fallback returned alongside the seat-map image."""
@@ -110,23 +117,25 @@ def compact_search_results(result, query, seat_map_request):
             "adjacent_seats": seat_map_request["adjacent_seats"],
             "exclude_accessible": seat_map_request["exclude_accessible"],
         }
-        options.append({
-            "option": position,
-            "movie": match["movieTitle"],
-            "theatre": match["theatre"]["name"],
-            "address": match["theatre"]["address"],
-            "distanceMiles": match["theatre"]["distanceMiles"],
-            "date": match["date"],
-            "time": match["displayTime"],
-            "format": match["format"],
-            "amenities": match["amenities"],
-            "availableSeatCount": match["seatMap"]["availableSeatCount"],
-            "matchingSeatCount": len(matching_seats),
-            "matchingGroups": matching_groups,
-            "bestGroup": match["seatMap"]["bestGroup"],
-            "ticketUrl": match["ticketUrl"],
-            "seatMapRequest": showtime_request,
-        })
+        options.append(
+            {
+                "option": position,
+                "movie": match["movieTitle"],
+                "theatre": match["theatre"]["name"],
+                "address": match["theatre"]["address"],
+                "distanceMiles": match["theatre"]["distanceMiles"],
+                "date": match["date"],
+                "time": match["displayTime"],
+                "format": match["format"],
+                "amenities": match["amenities"],
+                "availableSeatCount": match["seatMap"]["availableSeatCount"],
+                "matchingSeatCount": len(matching_seats),
+                "matchingGroups": matching_groups,
+                "bestGroup": match["seatMap"]["bestGroup"],
+                "ticketUrl": match["ticketUrl"],
+                "seatMapRequest": showtime_request,
+            }
+        )
     return {
         "query": query,
         "options": options,
@@ -261,15 +270,23 @@ def get_location_and_movie_info(
     ] = None,
     theatre: Annotated[
         str,
-        Field(max_length=120, description="Optional partial theatre-name filter; normally leave empty"),
+        Field(
+            max_length=120, description="Optional partial theatre-name filter; normally leave empty"
+        ),
     ] = "",
     movie_query: Annotated[
         str,
-        Field(max_length=120, description="Optional partial movie-title hint used to reduce the response"),
+        Field(
+            max_length=120,
+            description="Optional partial movie-title hint used to reduce the response",
+        ),
     ] = "",
     format_query: Annotated[
         str,
-        Field(max_length=120, description="Optional format hint, such as IMAX 70mm, used to reduce the response"),
+        Field(
+            max_length=120,
+            description="Optional format hint, such as IMAX 70mm, used to reduce the response",
+        ),
     ] = "",
 ) -> dict[str, Any]:
     """Discover canonical live values before an agent performs a seat search."""
@@ -305,7 +322,11 @@ def get_location_and_movie_info(
 def find_movie_seats(
     movie: Annotated[
         str,
-        Field(min_length=1, max_length=120, description="Exact title returned by get_location_and_movie_info"),
+        Field(
+            min_length=1,
+            max_length=120,
+            description="Exact title returned by get_location_and_movie_info",
+        ),
     ],
     start_date: Annotated[date, Field(description="First calendar date in YYYY-MM-DD form")],
     zip_code: Annotated[str, Field(pattern=r"^\d{5}$", description="Five-digit US ZIP code")],
@@ -325,7 +346,9 @@ def find_movie_seats(
     ],
     seat_region: Annotated[
         SeatRegion | None,
-        Field(description="Normal rectangular seat preference; use null only when anywhere is acceptable"),
+        Field(
+            description="Normal rectangular seat preference; use null only when anywhere is acceptable"
+        ),
     ],
     radius_miles: Annotated[
         float,
@@ -337,14 +360,18 @@ def find_movie_seats(
     ] = None,
     start_time: Annotated[
         str,
-        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Earliest time, HH:MM; defaults to 00:00"),
-    ]
-    = "00:00",
+        Field(
+            pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+            description="Earliest time, HH:MM; defaults to 00:00",
+        ),
+    ] = "00:00",
     end_time: Annotated[
         str,
-        Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$", description="Latest time, HH:MM; defaults to 23:59"),
-    ]
-    = "23:59",
+        Field(
+            pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+            description="Latest time, HH:MM; defaults to 23:59",
+        ),
+    ] = "23:59",
     theatre: Annotated[
         str,
         Field(max_length=120, description="Optional theatre filter; empty searches all theatres"),
@@ -365,7 +392,9 @@ def find_movie_seats(
     if start_time > end_time:
         raise ValueError("start_time must be earlier than or equal to end_time.")
     selected_cells = resolved_seat_cells(seat_region, seat_cells)
-    serialized_region = seat_region.model_dump() if isinstance(seat_region, SeatRegion) else seat_region
+    serialized_region = (
+        seat_region.model_dump() if isinstance(seat_region, SeatRegion) else seat_region
+    )
     search_end_date = end_date or start_date
     query = {
         "movie": movie,
@@ -435,12 +464,20 @@ def show_movie_seat_map(
     ],
     option_number: Annotated[int, Field(ge=1, le=5, description="Selected option number")],
     movie: Annotated[str, Field(min_length=1, max_length=120, description="Selected movie title")],
-    theatre: Annotated[str, Field(min_length=1, max_length=200, description="Selected theatre name")],
+    theatre: Annotated[
+        str, Field(min_length=1, max_length=200, description="Selected theatre name")
+    ],
     show_date: Annotated[date, Field(description="Selected calendar date in YYYY-MM-DD form")],
-    show_time: Annotated[str, Field(min_length=1, max_length=40, description="Selected display time")],
-    movie_format: Annotated[str, Field(min_length=1, max_length=120, description="Selected format")],
+    show_time: Annotated[
+        str, Field(min_length=1, max_length=40, description="Selected display time")
+    ],
+    movie_format: Annotated[
+        str, Field(min_length=1, max_length=120, description="Selected format")
+    ],
     adjacent_seats: Annotated[int, Field(ge=1, le=10, description="Required adjacent seat count")],
-    exclude_accessible: Annotated[bool, Field(description="Whether accessible seats remain excluded")],
+    exclude_accessible: Annotated[
+        bool, Field(description="Whether accessible seats remain excluded")
+    ],
     seat_region: Annotated[
         SeatRegion | None,
         Field(description="Seat region copied from the selected option"),
@@ -474,12 +511,14 @@ def show_movie_seat_map(
         f"Red = seats matching the request; white = available; gray = unavailable; "
         f"blue = accessible. Best matching group: {recommended_summary}."
     )
-    image = render_svg_png(render_seat_map_svg(
-        seat_map["layout"],
-        available_count=seat_map["availableSeatCount"],
-        total_count=seat_map["totalSeatCount"],
-        accessible_seats_excluded=exclude_accessible,
-    ))
+    image = render_svg_png(
+        render_seat_map_svg(
+            seat_map["layout"],
+            available_count=seat_map["availableSeatCount"],
+            total_count=seat_map["totalSeatCount"],
+            accessible_seats_excluded=exclude_accessible,
+        )
+    )
     output = SeatMapOutput(
         option=option_number,
         movie=movie,
@@ -493,9 +532,15 @@ def show_movie_seat_map(
         totalSeatCount=seat_map["totalSeatCount"],
         seatMapAvailable=True,
     )
-    image_content = Image(data=image, format="png").to_image_content().model_copy(update={
-        "annotations": Annotations(audience=["user"], priority=1.0),
-    })
+    image_content = (
+        Image(data=image, format="png")
+        .to_image_content()
+        .model_copy(
+            update={
+                "annotations": Annotations(audience=["user"], priority=1.0),
+            }
+        )
+    )
     # MCPServer validates structuredContent against SeatMapOutput while preserving image content.
     return CallToolResult(
         content=[image_content, TextContent(text=caption)],

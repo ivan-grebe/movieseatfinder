@@ -21,6 +21,20 @@ dependencies = [
 test = [
     "httpx2>=2.7.0",
 ]
+dev = [
+    "ruff==0.16.4",
+    "vulture==2.16",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.format]
+line-ending = "lf"
 
 [tool.setuptools.packages.find]
 where = ["src"]
