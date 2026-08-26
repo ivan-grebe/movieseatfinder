@@ -486,7 +486,7 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   expect(searchSorts[0]).toBe("earliest");
 });
 
-test("desktop result actions align when amenities wrap", async ({ page }) => {
+test("desktop result amenities reserve matching space when one list wraps", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1200 });
   const matchingSearch = {
     ...emptySearch,
@@ -510,15 +510,24 @@ test("desktop result actions align when amenities wrap", async ({ page }) => {
 
   const amenities = page.locator(".result-amenities");
   await expect(amenities).toHaveCount(2);
-  const amenityHeights = await amenities.evaluateAll((nodes) =>
-    nodes.map((node) => node.getBoundingClientRect().height),
+  const amenityLayouts = await amenities.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const text = document.createRange();
+      text.selectNodeContents(node);
+      const lines = [...text.getClientRects()].filter((line) => line.width > 0);
+      return {
+        height: node.getBoundingClientRect().height,
+        lineCount: lines.length,
+      };
+    }),
   );
-  expect(amenityHeights[1]).toBeGreaterThan(amenityHeights[0]);
+  expect(amenityLayouts.map(({ lineCount }) => lineCount)).toEqual([1, 2]);
+  expect(Math.abs(amenityLayouts[0].height - amenityLayouts[1].height)).toBeLessThanOrEqual(1);
 
-  const actionBottoms = await page
-    .locator(".buy-btn")
-    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().bottom));
-  expect(Math.abs(actionBottoms[0] - actionBottoms[1])).toBeLessThanOrEqual(1);
+  const seatMapTops = await page
+    .locator(".real-seat-map")
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
+  expect(Math.abs(seatMapTops[0] - seatMapTops[1])).toBeLessThanOrEqual(1);
 });
 
 test("pagination keeps current results until the next page loads", async ({ page }) => {
