@@ -25,6 +25,9 @@
   --good: #13956a;
   --danger: #d34d56;
   --seat-taken: #c7ced8;
+  --seat-available: #fff;
+  --seat-available-border: #9fabbb;
+  --seat-unavailable-border: #adb5c0;
   --seat-accessible: #2563c7;
   --seat-accessible-border: #174a97;
   --shadow-border:
@@ -1481,6 +1484,8 @@ a:focus-visible {
 
 .result {
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 780px;
   padding: 13px;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.82);
@@ -1657,16 +1662,11 @@ a:focus-visible {
   background: #f7fbff;
 }
 
-.real-seat-map-background {
-  position: absolute;
-  inset: 0;
+.real-seat-map-canvas {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: fill;
-  pointer-events: none;
-  user-select: none;
-  outline: 1px solid rgba(0, 0, 0, 0.1);
-  outline-offset: -1px;
+  cursor: default;
 }
 
 .real-screen {
@@ -1681,83 +1681,6 @@ a:focus-visible {
   font-weight: 900;
   letter-spacing: 0.16em;
   text-align: center;
-}
-
-.real-seat {
-  position: absolute;
-  overflow: hidden;
-  border: 1px solid #a7b2c1;
-  border-radius: 3px 3px 5px 5px;
-  color: transparent;
-  background: #fff;
-}
-
-.real-seat.available {
-  background: #fff;
-  border-color: #9fabbb;
-}
-.real-seat.unavailable {
-  background: var(--seat-taken);
-  border-color: #adb5c0;
-}
-
-.real-seat.available.accessible {
-  border-color: var(--seat-accessible-border);
-  background: var(--seat-accessible);
-}
-
-.real-seat.available.accessible:not(.matched) {
-  z-index: 1;
-  overflow: visible;
-  isolation: isolate;
-}
-
-.real-seat.available.accessible:not(.matched)::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: -1;
-  border-radius: 4px 4px 6px 6px;
-  background: rgba(37, 99, 199, 0.62);
-  filter: blur(2px);
-  pointer-events: none;
-}
-
-.real-seat.available.matched,
-.real-seat.unavailable.matched {
-  z-index: 1;
-  overflow: visible;
-  isolation: isolate;
-  border-color: var(--accent-deep);
-  background: var(--accent);
-  box-shadow: none;
-}
-
-.real-seat.matched::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: -1;
-  border-radius: 4px 4px 6px 6px;
-  background: rgba(201, 58, 58, 0.62);
-  filter: blur(2px);
-  pointer-events: none;
-}
-
-.real-seat.available.accessible.matched {
-  border-color: transparent;
-  background:
-    linear-gradient(135deg, var(--accent) 0 50%, var(--seat-accessible) 50% 100%) padding-box,
-    linear-gradient(135deg, var(--accent-deep) 0 50%, var(--seat-accessible-border) 50% 100%)
-      border-box;
-}
-
-.real-seat.available.accessible.matched::before {
-  background: linear-gradient(
-    135deg,
-    rgba(201, 58, 58, 0.62) 0 50%,
-    rgba(37, 99, 199, 0.62) 50% 100%
-  );
 }
 
 .seat-map-legend {
@@ -1779,14 +1702,14 @@ a:focus-visible {
 .legend-swatch {
   width: 12px;
   height: 12px;
-  border: 1px solid #9fabbb;
+  border: 1px solid var(--seat-available-border);
   border-radius: 3px 3px 5px 5px;
-  background: #fff;
+  background: var(--seat-available);
 }
 
 .legend-swatch.unavailable {
   background: var(--seat-taken);
-  border-color: #adb5c0;
+  border-color: var(--seat-unavailable-border);
 }
 .legend-swatch.accessible {
   background: var(--seat-accessible);
@@ -2286,6 +2209,9 @@ input[type="time"] {
     --good: #35c491;
     --danger: #f27b83;
     --seat-taken: #3a4250;
+    --seat-available: #d7deea;
+    --seat-available-border: #b7c0cd;
+    --seat-unavailable-border: #4a5464;
   }
 
   body {
@@ -2525,21 +2451,9 @@ input[type="time"] {
     background: linear-gradient(180deg, #1b222d, #141a24);
     border-color: rgba(150, 170, 196, 0.18);
   }
-  .real-seat {
-    background: #cdd6e2;
-    border-color: #aeb8c6;
-  }
-  .real-seat.available {
-    background: #d7deea;
-    border-color: #b7c0cd;
-  }
-  .real-seat.unavailable {
-    background: var(--seat-taken);
-    border-color: #4a5464;
-  }
   .legend-swatch {
-    background: #d7deea;
-    border-color: #b7c0cd;
+    background: var(--seat-available);
+    border-color: var(--seat-available-border);
   }
 
   .github-link {
