@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Find movie showtimes by the seats that are actually available."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "cachetools>=7.1.0",
     "fastapi>=0.117.1",
@@ -28,7 +28,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]

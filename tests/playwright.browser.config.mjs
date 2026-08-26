@@ -10,7 +10,7 @@ if (process.platform === "win32") {
 export default defineConfig({
   fullyParallel: false,
   testDir: ".",
-  testMatch: "mobile.integration.spec.mjs",
+  testMatch: "browser.integration.spec.mjs",
   timeout: 30_000,
   use: {
     baseURL: "http://127.0.0.1:8765",
