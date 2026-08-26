@@ -1,38 +1,38 @@
-const localDateString = function localDateString(date) {
+function localDateString(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-};
+}
 
-export const todayString = function todayString(now = new Date()) {
+export function todayString(now = new Date()) {
   return localDateString(now);
-};
+}
 
-export const addDays = function addDays(dateString, days) {
+export function addDays(dateString, days) {
   const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + days);
   return localDateString(date);
-};
+}
 
-export const formatNiceDate = function formatNiceDate(dateString) {
+export function formatNiceDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(date.getTime())) {
     return dateString;
   }
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short", weekday: "short" });
-};
+}
 
-export const debounce = function debounce(fn, ms) {
+export function debounce(fn, ms) {
   let timer = 0;
   return (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   };
-};
+}
 
-export const getJson = async function getJson(url) {
+export async function getJson(url) {
   const response = await fetch(url).catch(() => {
     throw new Error("Couldn't reach the search service. Check your connection and try again.");
   });
@@ -56,4 +56,4 @@ export const getJson = async function getJson(url) {
     throw error;
   }
   return data;
-};
+}

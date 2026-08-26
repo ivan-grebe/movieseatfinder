@@ -74,7 +74,7 @@ let reorderScrollY = null;
 let locationReady = false;
 
 // Tracks the latest run of an async loader so stale responses can be dropped.
-const createRunGuard = function createRunGuard() {
+function createRunGuard() {
   let current = 0;
   return {
     cancel() {
@@ -85,7 +85,7 @@ const createRunGuard = function createRunGuard() {
       return () => id === current;
     },
   };
-};
+}
 
 const theatreLoad = createRunGuard();
 const movieLoad = createRunGuard();
@@ -114,19 +114,19 @@ const resultsView = createResultsView({
   summary,
 });
 
-const hasValidZip = function hasValidZip() {
+function hasValidZip() {
   return /^\d{5}$/u.test(zipInput.value.trim());
-};
+}
 
-const searchInputsReady = function searchInputsReady() {
+function searchInputsReady() {
   return (
     locationReady &&
     !theatreInput.hasAttribute("aria-busy") &&
     !movieInput.hasAttribute("aria-busy")
   );
-};
+}
 
-const setLocationReady = function setLocationReady(ready) {
+function setLocationReady(ready) {
   locationReady = ready;
   [movieGroup, preferencesGroup].forEach((group) => {
     group.classList.toggle("is-location-locked", !ready);
@@ -140,33 +140,33 @@ const setLocationReady = function setLocationReady(ready) {
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
-};
+}
 
-const setSearchButtonBusy = function setSearchButtonBusy(busy, label) {
+function setSearchButtonBusy(busy, label) {
   setButtonBusy(searchButton, busy, label);
   if (!busy) {
     searchButton.disabled = !searchInputsReady();
   }
-};
+}
 
-const normalizedTitle = function normalizedTitle(value) {
+function normalizedTitle(value) {
   return value
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/gu, " ")
     .trim();
-};
+}
 
-const theatreWithName = function theatreWithName(name) {
+function theatreWithName(name) {
   const normalized = normalizedTitle(name);
   return theatres.find((theatre) => normalizedTitle(theatre.name) === normalized) || null;
-};
+}
 
-const movieWithTitle = function movieWithTitle(title) {
+function movieWithTitle(title) {
   const normalized = normalizedTitle(title);
   return movies.find((movie) => normalizedTitle(movie.title) === normalized) || null;
-};
+}
 
-const setComboLoading = function setComboLoading(input, menu, disabled, busy = disabled) {
+function setComboLoading(input, menu, disabled, busy = disabled) {
   input.disabled = disabled;
   if (busy) {
     input.setAttribute("aria-busy", "true");
@@ -179,43 +179,43 @@ const setComboLoading = function setComboLoading(input, menu, disabled, busy = d
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
-};
+}
 
-const setMovieCountMeta = function setMovieCountMeta() {
+function setMovieCountMeta() {
   setStatus(movieMeta, `${movies.length} showing`);
-};
+}
 
-const resetFormats = function resetFormats() {
+function resetFormats() {
   formatLoad.cancel();
   formatPicker.setOptions([]);
   setStatus(formatMeta, "");
   setStatus(formatStatus, "");
-};
+}
 
-const clearTheatreSelection = function clearTheatreSelection({ rememberName = false } = {}) {
+function clearTheatreSelection({ rememberName = false } = {}) {
   selectedTheatre = null;
   if (!rememberName) {
     selectedTheatreName = "";
   }
-};
+}
 
-const clearMovieSelection = function clearMovieSelection({ rememberTitle = false } = {}) {
+function clearMovieSelection({ rememberTitle = false } = {}) {
   selectedMovie = null;
   if (!rememberTitle) {
     selectedMovieTitle = "";
   }
   resetFormats();
-};
+}
 
-const selectTheatre = function selectTheatre(theatre) {
+function selectTheatre(theatre) {
   selectedTheatre = theatre;
   selectedTheatreName = theatre.name;
   theatreInput.value = theatre.name;
   theatreInput.setCustomValidity("");
   setStatus(theatreStatus, "");
-};
+}
 
-const selectMovie = function selectMovie(movie) {
+function selectMovie(movie) {
   selectedMovie = movie;
   selectedMovieTitle = movie.title;
   movieInput.value = movie.title;
@@ -223,9 +223,9 @@ const selectMovie = function selectMovie(movie) {
   resetFormats();
   setMovieCountMeta();
   setStatus(movieStatus, "");
-};
+}
 
-const resolveTypedTheatre = function resolveTypedTheatre() {
+function resolveTypedTheatre() {
   const typedTheatre = theatreInput.value.trim();
   if (!typedTheatre) {
     clearTheatreSelection();
@@ -242,9 +242,9 @@ const resolveTypedTheatre = function resolveTypedTheatre() {
   theatreInput.setCustomValidity("Select an exact theatre from the list before searching.");
   setStatus(theatreStatus, "Choose one of the nearby theatres shown in the list.", "error");
   return false;
-};
+}
 
-const resolveTypedMovie = function resolveTypedMovie() {
+function resolveTypedMovie() {
   const typedMovie = movieInput.value.trim();
   const exactMovie = movieWithTitle(typedMovie);
   if (exactMovie) {
@@ -255,23 +255,23 @@ const resolveTypedMovie = function resolveTypedMovie() {
   movieInput.setCustomValidity("Select an exact movie from the list before searching.");
   setStatus(movieStatus, "Choose one of the movies shown in the list.", "error");
   return false;
-};
+}
 
-const hasSearchLocation = function hasSearchLocation() {
+function hasSearchLocation() {
   return hasValidZip() || preciseLocation !== null;
-};
+}
 
-const reportRequiredField = function reportRequiredField(input, message) {
+function reportRequiredField(input, message) {
   input.setCustomValidity(message);
   input.reportValidity();
-};
+}
 
-const hasValidRadius = function hasValidRadius() {
+function hasValidRadius() {
   const radius = Number(radiusInput.value);
   return radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100;
-};
+}
 
-const enforceRadius = function enforceRadius(report = false) {
+function enforceRadius(report = false) {
   const valid = hasValidRadius();
   let validityMessage = "Enter a radius between 1 and 100 miles.";
   let statusMessage = "Use a radius from 1 to 100 miles.";
@@ -287,21 +287,21 @@ const enforceRadius = function enforceRadius(report = false) {
     radiusInput.reportValidity();
   }
   return valid;
-};
+}
 
-const hasSearchBasics = function hasSearchBasics() {
+function hasSearchBasics() {
   return hasSearchLocation() && enforceRadius();
-};
+}
 
-const locationParams = function locationParams(params) {
+function locationParams(params) {
   if (preciseLocation) {
     params.set("lat", preciseLocation.latitude);
     params.set("lon", preciseLocation.longitude);
   }
   return params;
-};
+}
 
-const baseParams = function baseParams() {
+function baseParams() {
   return locationParams(
     new URLSearchParams({
       endDate: endDateInput.value,
@@ -311,9 +311,9 @@ const baseParams = function baseParams() {
       zip: zipInput.value.trim(),
     }),
   );
-};
+}
 
-const showLoaderError = function showLoaderError(error, status) {
+function showLoaderError(error, status) {
   if (error.code === "location") {
     setLocationReady(false);
     zipInput.setCustomValidity(error.message);
@@ -322,9 +322,9 @@ const showLoaderError = function showLoaderError(error, status) {
     return;
   }
   setStatus(status, error.message, "error");
-};
+}
 
-const loadTheatres = async function loadTheatres() {
+async function loadTheatres() {
   const isCurrent = theatreLoad.start();
   if (!hasSearchBasics()) {
     theatres = [];
@@ -380,9 +380,9 @@ const loadTheatres = async function loadTheatres() {
     showLoaderError(error, theatreStatus);
     return false;
   }
-};
+}
 
-const loadMovies = async function loadMovies() {
+async function loadMovies() {
   const isCurrent = movieLoad.start();
   if (!hasSearchBasics() || (theatreInput.value.trim() && !selectedTheatre)) {
     movies = [];
@@ -430,9 +430,9 @@ const loadMovies = async function loadMovies() {
     setStatus(movieMeta, "");
     showLoaderError(error, movieStatus);
   }
-};
+}
 
-const loadFormats = async function loadFormats() {
+async function loadFormats() {
   const movieTitle = selectedMovie?.title;
   const isCurrent = formatLoad.start();
   setStatus(formatMeta, "");
@@ -462,9 +462,9 @@ const loadFormats = async function loadFormats() {
     setStatus(formatMeta, "");
     showLoaderError(error, formatStatus);
   }
-};
+}
 
-const finishReorder = function finishReorder({ restoreScroll = true } = {}) {
+function finishReorder({ restoreScroll = true } = {}) {
   if (reorderScrollY === null) {
     return;
   }
@@ -476,9 +476,9 @@ const finishReorder = function finishReorder({ restoreScroll = true } = {}) {
   if (restoreScroll) {
     globalThis.requestAnimationFrame(() => window.scrollTo(window.scrollX, scrollY));
   }
-};
+}
 
-const validateSearchInputs = function validateSearchInputs() {
+function validateSearchInputs() {
   syncEndDateBounds();
   if (!hasSearchLocation()) {
     reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
@@ -499,9 +499,9 @@ const validateSearchInputs = function validateSearchInputs() {
     return false;
   }
   return true;
-};
+}
 
-const fetchSearchResults = function fetchSearchResults() {
+function fetchSearchResults() {
   const params = baseParams();
   params.set("movie", selectedMovie.title);
   params.set("format", formatPicker.value());
@@ -521,9 +521,9 @@ const fetchSearchResults = function fetchSearchResults() {
     params.set("seatGrid", selectedCells.join(","));
   }
   return getJson(`/api/search?${params}`);
-};
+}
 
-const runNewSearch = async function runNewSearch() {
+async function runNewSearch() {
   finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
@@ -557,9 +557,9 @@ const runNewSearch = async function runNewSearch() {
       sortInput.disabled = false;
     }
   }
-};
+}
 
-const runPageChange = async function runPageChange(page) {
+async function runPageChange(page) {
   finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
@@ -593,9 +593,9 @@ const runPageChange = async function runPageChange(page) {
       sortInput.disabled = false;
     }
   }
-};
+}
 
-const runReorder = async function runReorder() {
+async function runReorder() {
   if (!validateSearchInputs()) {
     return;
   }
@@ -622,9 +622,9 @@ const runReorder = async function runReorder() {
       sortStatus.textContent = errorMessage;
     }
   }
-};
+}
 
-const applyQueryParams = function applyQueryParams() {
+function applyQueryParams() {
   const params = new URLSearchParams(globalThis.location.search);
   const inputParams = {
     adjacentSeats: adjacentSeatsInput,
@@ -665,9 +665,9 @@ const applyQueryParams = function applyQueryParams() {
     formatPicker.select(formats);
   }
   return params.has("movie");
-};
+}
 
-const syncEndDateBounds = function syncEndDateBounds() {
+function syncEndDateBounds() {
   const today = todayString();
   startDateInput.min = today;
   if (startDateInput.value && startDateInput.value < today) {
@@ -681,9 +681,9 @@ const syncEndDateBounds = function syncEndDateBounds() {
   if (endDateInput.value && endDateInput.value > endDateInput.max) {
     endDateInput.value = endDateInput.max;
   }
-};
+}
 
-const refreshTheatresAndMovies = async function refreshTheatresAndMovies() {
+async function refreshTheatresAndMovies() {
   if (!hasSearchLocation() || !hasValidRadius()) {
     if (!hasSearchLocation()) {
       setLocationReady(false);
@@ -722,9 +722,9 @@ const refreshTheatresAndMovies = async function refreshTheatresAndMovies() {
   if (selectedMovie) {
     await loadFormats();
   }
-};
+}
 
-const requestLocation = function requestLocation() {
+function requestLocation() {
   if (!navigator.geolocation) {
     setStatus(locationStatus, "Location unavailable — use ZIP.", "error");
     return;
@@ -748,11 +748,11 @@ const requestLocation = function requestLocation() {
     },
     { enableHighAccuracy: true, maximumAge: 300_000, timeout: 10_000 },
   );
-};
+}
 
 const autoRefresh = debounce(refreshTheatresAndMovies, 650);
 
-const queueCriteriaRefresh = function queueCriteriaRefresh() {
+function queueCriteriaRefresh() {
   setStatus(theatreMeta, "");
   setStatus(movieMeta, "");
   clearTheatreSelection({ rememberName: true });
@@ -760,9 +760,9 @@ const queueCriteriaRefresh = function queueCriteriaRefresh() {
   setComboLoading(theatreInput, theatreMenu, true);
   setComboLoading(movieInput, movieMenu, true);
   autoRefresh();
-};
+}
 
-const bindEvents = function bindEvents() {
+function bindEvents() {
   formatGuideButton.addEventListener("click", () => {
     const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
     formatGuideButton.setAttribute("aria-expanded", String(expanded));
@@ -867,9 +867,9 @@ const bindEvents = function bindEvents() {
       loadFormats();
     }
   });
-};
+}
 
-const initialize = async function initialize() {
+async function initialize() {
   const today = todayString();
   startDateInput.value = today;
   endDateInput.value = addDays(today, 7);
@@ -889,7 +889,7 @@ const initialize = async function initialize() {
       runNewSearch();
     }
   }
-};
+}
 
 initializeAmbientMotion();
 initialize();

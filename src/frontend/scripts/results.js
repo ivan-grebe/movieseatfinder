@@ -13,7 +13,7 @@ const ICON_CALENDAR = [
 ];
 const ACCESSIBLE_SEAT_TYPES = new Set(["wheelchair", "companion"]);
 
-const createLegendItem = function createLegendItem(label, className) {
+function createLegendItem(label, className) {
   const item = document.createElement("span");
   item.className = "legend-item";
   const swatch = document.createElement("span");
@@ -24,9 +24,9 @@ const createLegendItem = function createLegendItem(label, className) {
   swatch.className = swatchClass;
   item.append(swatch, document.createTextNode(label));
   return item;
-};
+}
 
-const renderRealSeatMap = function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
+function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const layout = seatMap.layout;
   const hasBackground = Boolean(layout.backgroundSvg);
 
@@ -119,9 +119,9 @@ const renderRealSeatMap = function renderRealSeatMap(seatMap, accessibleSeatsExc
   );
   wrapper.append(legend);
   return wrapper;
-};
+}
 
-const createIcon = function createIcon(definition) {
+function createIcon(definition) {
   const svg = document.createElementNS(SVG_NAMESPACE, "svg");
   Object.entries({
     fill: "none",
@@ -137,9 +137,9 @@ const createIcon = function createIcon(definition) {
     svg.append(child);
   });
   return svg;
-};
+}
 
-const makeTag = function makeTag(text, iconDefinition) {
+function makeTag(text, iconDefinition) {
   const tag = document.createElement("span");
   tag.className = "tag";
   const icon = document.createElement("span");
@@ -148,16 +148,16 @@ const makeTag = function makeTag(text, iconDefinition) {
   tag.append(icon);
   tag.append(document.createTextNode(text));
   return tag;
-};
+}
 
-const pluralSuffix = function pluralSuffix(count) {
+function pluralSuffix(count) {
   if (count === 1) {
     return "";
   }
   return "s";
-};
+}
 
-export const createResultsView = function createResultsView({
+export function createResultsView({
   results,
   summary,
   resultsToolbar,
@@ -167,17 +167,17 @@ export const createResultsView = function createResultsView({
 }) {
   let lastPaginationData = null;
 
-  const beginReorder = function beginReorder() {
+  function beginReorder() {
     results.style.minHeight = `${Math.ceil(results.getBoundingClientRect().height)}px`;
     results.classList.add("is-reordering");
-  };
+  }
 
-  const endReorder = function endReorder() {
+  function endReorder() {
     results.classList.remove("is-reordering");
     results.style.removeProperty("min-height");
-  };
+  }
 
-  const renderPagination = function renderPagination(data) {
+  function renderPagination(data) {
     lastPaginationData = data;
     pagination.classList.remove("is-loading", "has-error");
     pagination.removeAttribute("aria-busy");
@@ -213,9 +213,9 @@ export const createResultsView = function createResultsView({
     next.disabled = !hasNext;
     next.addEventListener("click", () => onPageChange(getPage() + 1));
     pagination.append(previous, label, next);
-  };
+  }
 
-  const setPageLoading = function setPageLoading() {
+  function setPageLoading() {
     pagination.hidden = false;
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
@@ -225,9 +225,9 @@ export const createResultsView = function createResultsView({
     });
     const label = pagination.querySelector(".pagination-label");
     setAnimatedStatus(label, "Loading");
-  };
+  }
 
-  const endPageLoading = function endPageLoading(errorMessage = "") {
+  function endPageLoading(errorMessage = "") {
     if (lastPaginationData) {
       renderPagination(lastPaginationData);
     }
@@ -237,9 +237,9 @@ export const createResultsView = function createResultsView({
     pagination.classList.add("has-error");
     const label = pagination.querySelector(".pagination-label");
     label.textContent = errorMessage;
-  };
+  }
 
-  const render = function render(data, { skipEntrance = false } = {}) {
+  function render(data, { skipEntrance = false } = {}) {
     const matches = data.matches;
     results.replaceChildren();
     let showingStart = 0;
@@ -355,7 +355,7 @@ export const createResultsView = function createResultsView({
       }
       results.append(item);
     });
-  };
+  }
 
   return { beginReorder, endPageLoading, endReorder, render, setPageLoading };
-};
+}

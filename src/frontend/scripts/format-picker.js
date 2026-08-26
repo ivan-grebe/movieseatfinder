@@ -1,13 +1,13 @@
-export const createFormatPicker = function createFormatPicker(container) {
+export function createFormatPicker(container) {
   const selected = new Set(["any"]);
 
-  const syncOption = function syncOption(option) {
+  function syncOption(option) {
     const isSelected = selected.has(option.dataset.format);
     option.classList.toggle("is-selected", isSelected);
     option.setAttribute("aria-pressed", String(isSelected));
-  };
+  }
 
-  const toggle = function toggle(value) {
+  function toggle(value) {
     if (value === "any") {
       selected.clear();
       selected.add("any");
@@ -23,9 +23,9 @@ export const createFormatPicker = function createFormatPicker(container) {
       }
     }
     container.querySelectorAll(".format-option").forEach((option) => syncOption(option));
-  };
+  }
 
-  const renderOption = function renderOption(label, value) {
+  function renderOption(label, value) {
     const option = document.createElement("button");
     option.type = "button";
     option.className = "format-option";
@@ -34,9 +34,9 @@ export const createFormatPicker = function createFormatPicker(container) {
     option.addEventListener("click", () => toggle(value));
     container.append(option);
     syncOption(option);
-  };
+  }
 
-  const setOptions = function setOptions(formats) {
+  function setOptions(formats) {
     const available = [...new Set(formats)];
     const retained = [...selected].filter((format) => available.includes(format));
     selected.clear();
@@ -49,16 +49,16 @@ export const createFormatPicker = function createFormatPicker(container) {
     container.replaceChildren();
     renderOption("Any available format", "any");
     available.forEach((format) => renderOption(format, format));
-  };
+  }
 
-  const select = function select(values) {
+  function select(values) {
     selected.clear();
     values.forEach((format) => selected.add(format));
     if (selected.size === 0) {
       selected.add("any");
     }
     container.querySelectorAll(".format-option").forEach((option) => syncOption(option));
-  };
+  }
 
   return {
     select,
@@ -70,4 +70,4 @@ export const createFormatPicker = function createFormatPicker(container) {
       return [...selected].join(",");
     },
   };
-};
+}

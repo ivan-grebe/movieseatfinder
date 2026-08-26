@@ -4,7 +4,7 @@
   "rules": {
     "eslint/capitalized-comments": "error",
     "eslint/curly": "error",
-    "eslint/func-style": "error",
+    "eslint/func-style": ["error", "declaration"],
     "eslint/init-declarations": "error",
     "eslint/logical-assignment-operators": "error",
     "eslint/no-await-in-loop": "error",

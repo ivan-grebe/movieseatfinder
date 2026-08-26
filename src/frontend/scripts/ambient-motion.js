@@ -13,15 +13,15 @@ const AMBIENT_GLOWS = [
   },
 ];
 
-const randomBetween = function randomBetween([minimum, maximum], random) {
+function randomBetween([minimum, maximum], random) {
   return minimum + (maximum - minimum) * random();
-};
+}
 
-const distanceBetween = function distanceBetween(first, second) {
+function distanceBetween(first, second) {
   return Math.hypot(second.x - first.x, second.y - first.y);
-};
+}
 
-export const pickAmbientTarget = function pickAmbientTarget(current, bounds, random = Math.random) {
+export function pickAmbientTarget(current, bounds, random = Math.random) {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const target = {
       x: randomBetween(bounds.x, random),
@@ -40,15 +40,15 @@ export const pickAmbientTarget = function pickAmbientTarget(current, bounds, ran
     }
   }
   return farthest;
-};
+}
 
-const transformFor = function transformFor({ x, y }) {
+function transformFor({ x, y }) {
   const roundedX = Math.round(x * 100) / 100;
   const roundedY = Math.round(y * 100) / 100;
   return `translate3d(${roundedX}%, ${roundedY}%, 0)`;
-};
+}
 
-export const initializeAmbientMotion = function initializeAmbientMotion({
+export function initializeAmbientMotion({
   root = document,
   motionPreference = globalThis.matchMedia("(prefers-reduced-motion: reduce)"),
   random = Math.random,
@@ -61,7 +61,7 @@ export const initializeAmbientMotion = function initializeAmbientMotion({
     return [{ animation: null, config, current: { ...config.start }, element }];
   });
 
-  const startSegment = function startSegment(state) {
+  function startSegment(state) {
     const target = pickAmbientTarget(state.current, state.config.bounds, random);
     const destination = transformFor(target);
     const animation = state.element.animate(
@@ -85,9 +85,9 @@ export const initializeAmbientMotion = function initializeAmbientMotion({
       animation.cancel();
       startSegment(state);
     };
-  };
+  }
 
-  const syncMotionPreference = function syncMotionPreference() {
+  function syncMotionPreference() {
     states.forEach((state) => {
       if (state.animation) {
         state.animation.onfinish = null;
@@ -105,7 +105,7 @@ export const initializeAmbientMotion = function initializeAmbientMotion({
         startSegment(state);
       }
     });
-  };
+  }
 
   syncMotionPreference();
   motionPreference.addEventListener("change", syncMotionPreference);
@@ -120,4 +120,4 @@ export const initializeAmbientMotion = function initializeAmbientMotion({
       delete state.element.dataset.ambientMotion;
     });
   };
-};
+}
