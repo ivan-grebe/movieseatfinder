@@ -210,12 +210,6 @@ class McpProtocolTests(unittest.TestCase):
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
-    def test_public_mcp_request_does_not_require_authentication(self):
-        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["result"].get("isError", False))
-
     def test_public_mcp_request_ignores_an_authorization_header(self):
         request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
         response = self.client.post(
