@@ -26,7 +26,7 @@ Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adj
 
 ## Run locally
 
-Requirements: Python 3.12+ and Node.js 22+.
+Requirements: Python 3.14+ and Node.js 22+.
 
 ```bash
 git clone https://github.com/ivan-grebe/movieseatfinder.git
@@ -81,7 +81,7 @@ npm run lint
 npm run lint:frontend
 npm run check:frontend-bundle
 npm run test:frontend
-npm run test:mobile
+npm run test:browser
 ```
 
 To apply automatic fixes and formatting before opening a pull request:

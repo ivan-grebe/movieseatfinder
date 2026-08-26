@@ -46,7 +46,7 @@ def _render_options():
 def _number(value, fallback=0.0):
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return fallback
     return parsed if math.isfinite(parsed) else fallback
 

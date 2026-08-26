@@ -11,8 +11,8 @@
     "lint:fix": "oxlint --config config/oxlint.json --fix src/frontend/scripts tests",
     "lint:frontend": "knip --config config/knip.json --no-config-hints",
     "test:frontend": "node --test tests/frontend-utils.test.mjs",
-    "pretest:mobile": "npm run build:frontend",
-    "test:mobile": "playwright test --config=tests/playwright.mobile.config.mjs"
+    "pretest:browser": "npm run build:frontend",
+    "test:browser": "playwright test --config=tests/playwright.browser.config.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

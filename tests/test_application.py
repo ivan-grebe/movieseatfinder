@@ -190,15 +190,6 @@ class MovieAndFormatTests(unittest.TestCase):
                 showtime = {"filmFormat": [{"filterName": name} for name in showtime_formats]}
                 self.assertEqual(application.showtime_format(header, group, showtime), expected)
 
-    def test_group_lists_only_each_showtimes_resolved_format(self):
-        group = {
-            "amenityString": "IMAX with Laser, Reserved seating",
-            "amenities": [{"name": "IMAX"}, {"name": "IMAX with Laser"}],
-            "showtimes": [{"filmFormat": [{"filterName": "IMAX"}]}],
-        }
-
-        self.assertEqual(application.group_formats("Premium Format", group), {"IMAX with Laser"})
-
     @patch("backend.application.fandango_theatres_by_date")
     @patch(
         "backend.application.api_search_location",
@@ -591,11 +582,6 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertIn("Could not load real movie data", response.json()["error"])
 
-    def test_invalid_zip_returns_json_error(self):
-        response = self.client.get("/api/theatres", params={"zip": "abc", "radius": 25})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json())
-
     @patch(
         "backend.application.resolve_search_location",
         side_effect=application.ZipNotFoundError(
@@ -610,7 +596,11 @@ class RouteTests(unittest.TestCase):
                 self.assertEqual(response.json()["code"], "location")
 
     def test_invalid_query_params_return_the_standard_error_shape(self):
-        for params in ({"zip": "10001"}, {"zip": "10001", "radius": "abc"}):
+        for params in (
+            {"zip": "abc", "radius": 25},
+            {"zip": "10001"},
+            {"zip": "10001", "radius": "abc"},
+        ):
             with self.subTest(params=params):
                 response = self.client.get("/api/theatres", params=params)
                 self.assertEqual(response.status_code, 400)

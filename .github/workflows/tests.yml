@@ -15,11 +15,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
-      - uses: actions/setup-node@v4
+          python-version: "3.14"
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install linters
@@ -41,43 +41,35 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+          python-version: "3.14"
       - name: Install project
         run: python -m pip install -e ".[test]"
-      - name: Install frontend build dependencies
-        run: npm ci
-      - name: Verify production frontend bundle
-        run: npm run check:frontend-bundle
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-      - name: Run frontend tests
-        run: npm run test:frontend
 
-  mobile-integration:
+  browser-integration:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
-      - uses: actions/setup-node@v4
+          python-version: "3.14"
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install project
         run: python -m pip install -e "."
       - name: Install browser test dependencies
         run: npm ci && npx playwright install --with-deps chromium
-      - name: Run mobile integration tests
-        run: npm run test:mobile
+      - name: Verify production frontend bundle
+        run: npm run check:frontend-bundle
+      - name: Run frontend tests
+        run: npm run test:frontend
+      - name: Run browser integration tests
+        run: npm run test:browser

@@ -488,7 +488,7 @@ def poster_url(movie):
 def format_runtime(minutes):
     try:
         total = int(minutes)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return ""
     if total <= 0:
         return ""
@@ -516,7 +516,7 @@ def display_showtime_time(value):
     """Turn Fandango's 24-hour ticketing time into a compact display time."""
     try:
         hour, minute = (int(part) for part in value.split(":", 1))
-    except (AttributeError, TypeError, ValueError):
+    except AttributeError, TypeError, ValueError:
         return value
     suffix = "AM" if hour < 12 else "PM"
     hour = hour % 12 or 12
