@@ -1,5 +1,4 @@
 import { setAnimatedStatus, setSummary } from "./ui.js";
-import { createSeatMapCanvas } from "./seat-map-canvas.js";
 import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
 
@@ -12,6 +11,7 @@ const ICON_CALENDAR = [
   ["rect", { height: "16", rx: "2", width: "18", x: "3", y: "4.5" }],
   ["path", { d: "M3 9h18M8 2.5v4M16 2.5v4" }],
 ];
+const ACCESSIBLE_SEAT_TYPES = new Set(["wheelchair", "companion"]);
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
@@ -57,7 +57,50 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const { width, height } = layout;
   stage.style.aspectRatio = `${width} / ${height}`;
   stage.style.minHeight = "150px";
-  stage.append(createSeatMapCanvas(seatMap, accessibleSeatsExcluded));
+  if (hasBackground) {
+    const background = document.createElement("img");
+    background.className = "real-seat-map-background";
+    background.alt = "";
+    background.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(layout.backgroundSvg)}`;
+    stage.append(background);
+  }
+
+  layout.seats.forEach((seat) => {
+    const node = document.createElement("span");
+    const isAvailable = seat.status === "A";
+    let accessibilityType = "";
+    if (ACCESSIBLE_SEAT_TYPES.has(seat.type)) {
+      accessibilityType = seat.type;
+    }
+    const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
+    let availabilityClass = "unavailable";
+    if (isAvailable && !isExcluded) {
+      availabilityClass = "available";
+    }
+    node.className = `real-seat ${availabilityClass}`;
+    if (accessibilityType) {
+      node.classList.add("accessible");
+    }
+    if (seat.matched) {
+      node.classList.add("matched");
+    }
+    let availabilityLabel = "unavailable";
+    if (isAvailable) {
+      availabilityLabel = "available";
+    }
+    let exclusionLabel = "";
+    if (isExcluded) {
+      exclusionLabel = "excluded by filter";
+    }
+    node.title = [seat.id || "Seat", availabilityLabel, accessibilityType, exclusionLabel]
+      .filter(Boolean)
+      .join(" - ");
+    node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
+    node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
+    node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
+    node.style.height = `${(Math.max(Number(seat.height) || 1, 1) / height) * 100}%`;
+    stage.append(node);
+  });
   wrapper.append(stage);
 
   const legend = document.createElement("div");
