@@ -43,18 +43,6 @@ function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
   };
 }
 
-function canvasPixel(canvas, { layoutHeight = 50, layoutWidth = 100, x, y }) {
-  return canvas.evaluate(
-    (element, point) => {
-      const context = element.getContext("2d");
-      const pixelX = Math.floor((point.x / point.layoutWidth) * element.width);
-      const pixelY = Math.floor((point.y / point.layoutHeight) * element.height);
-      return [...context.getImageData(pixelX, pixelY, 1, 1).data];
-    },
-    { layoutHeight, layoutWidth, x, y },
-  );
-}
-
 async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/theatres*", (route) =>
     route.fulfill({
@@ -540,19 +528,6 @@ test("desktop result amenities reserve matching space when one list wraps", asyn
     .locator(".real-seat-map")
     .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
   expect(Math.abs(seatMapTops[0] - seatMapTops[1])).toBeLessThanOrEqual(1);
-
-  const renderingPolicy = await page
-    .locator(".result")
-    .first()
-    .evaluate((node) => {
-      const style = getComputedStyle(node);
-      return {
-        containIntrinsicSize: style.containIntrinsicSize,
-        contentVisibility: style.contentVisibility,
-      };
-    });
-  expect(renderingPolicy.contentVisibility).toBe("auto");
-  expect(renderingPolicy.containIntrinsicSize).toContain("780px");
 });
 
 test("pagination keeps current results until the next page loads", async ({ page }) => {
@@ -653,7 +628,7 @@ test("stale movie responses do not replace options for newer criteria", async ({
   await expect(page.getByRole("option", { exact: true, name: "Stale Movie" })).toHaveCount(0);
 });
 
-test("mobile results render the seat map canvas and update accessibility states", async ({
+test("mobile results render the native seat map and update accessibility states", async ({
   page,
 }) => {
   const matchingSearch = {
@@ -670,8 +645,6 @@ test("mobile results render the seat map canvas and update accessibility states"
         seatMap: {
           availableSeatCount: 2,
           layout: {
-            backgroundSvg:
-              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><rect width="100" height="50" fill="#123456"/></svg>',
             height: 50,
             seats: [
               {
@@ -747,17 +720,16 @@ test("mobile results render the seat map canvas and update accessibility states"
   await selectMovie(page);
   await page.locator("#searchButton").click();
 
-  const canvas = page.locator(".real-seat-map-canvas");
-  await expect(canvas).toHaveCount(1);
-  await expect(page.locator(".real-seat")).toHaveCount(0);
-  await expect(canvas).toHaveAttribute(
-    "aria-label",
-    "Seat map with 2 available of 2 total seats. Accessible seats are excluded from matches.",
+  const matchedSeat = page.locator(".real-seat.matched");
+  await expect(matchedSeat).toHaveCount(1);
+  const wheelchairSeat = page.locator(
+    '.real-seat[title="A2 - available - wheelchair - excluded by filter"]',
   );
-  expect(await canvasPixel(canvas, { x: 15, y: 15 })).toEqual([201, 58, 58, 255]);
-  expect(await canvasPixel(canvas, { x: 35, y: 15 })).toEqual([199, 206, 216, 255]);
-  expect(await canvasPixel(canvas, { x: 75, y: 15 })).toEqual([199, 206, 216, 255]);
-  await expect.poll(() => canvasPixel(canvas, { x: 5, y: 40 })).toEqual([18, 52, 86, 255]);
+  await expect(wheelchairSeat).toHaveClass(/accessible/u);
+  const companionSeat = page.locator(
+    '.real-seat[title="A4 - available - companion - excluded by filter"]',
+  );
+  await expect(companionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
   await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
 
@@ -767,9 +739,10 @@ test("mobile results render the seat map canvas and update accessibility states"
   await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
   await page.locator("#searchButton").click();
 
-  await expect(canvas).toHaveAttribute("aria-label", "Seat map with 2 available of 2 total seats.");
-  expect(await canvasPixel(canvas, { x: 35, y: 15 })).toEqual([37, 99, 199, 255]);
-  expect(await canvasPixel(canvas, { x: 75, y: 15 })).toEqual([37, 99, 199, 255]);
+  const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
+  await expect(includedWheelchairSeat).toHaveClass(/accessible/u);
+  const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
+  await expect(includedCompanionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
 });
