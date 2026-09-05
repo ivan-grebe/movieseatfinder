@@ -47,11 +47,6 @@ function appendAnimatedLabel(element, text) {
   element.append(label);
 }
 
-export function setAnimatedStatus(element, text) {
-  element.textContent = "";
-  appendAnimatedLabel(element, text);
-}
-
 export function startLoadingStages(onStage) {
   onStage(SEARCH_LOADING_STAGES[0].label);
   const timers = SEARCH_LOADING_STAGES.slice(1).map((stage) =>
