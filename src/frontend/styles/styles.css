@@ -12,7 +12,7 @@
   --muted: #667085;
   --line: rgba(91, 117, 151, 0.22);
   --line-strong: rgba(91, 117, 151, 0.38);
-  --panel: rgba(255, 255, 255, 0.76);
+  --panel: #fff;
   --field: rgba(248, 251, 255, 0.9);
   --surface: rgba(255, 255, 255, 0.62);
   --surface-raised: rgba(255, 255, 255, 0.78);
@@ -187,10 +187,8 @@ h1 {
   background: var(--panel);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.76),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
     0 18px 46px rgba(35, 67, 106, 0.1),
     0 1px 2px rgba(24, 41, 65, 0.05);
-  backdrop-filter: blur(20px) saturate(1.12);
 }
 
 .card-body {
@@ -1455,9 +1453,7 @@ a:focus-visible {
   background: var(--panel);
   box-shadow:
     var(--shadow-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
     0 18px 38px rgba(35, 67, 106, 0.09);
-  backdrop-filter: blur(16px);
   animation: enter-up 380ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
@@ -2242,7 +2238,7 @@ input[type="time"] {
     --muted: #9aa7b8;
     --line: rgba(148, 170, 196, 0.18);
     --line-strong: rgba(148, 170, 196, 0.32);
-    --panel: rgba(22, 27, 36, 0.74);
+    --panel: #16181d;
     --field: rgba(30, 37, 48, 0.92);
     --accent: #e2605a;
     --accent-deep: #c1403f;
@@ -2291,21 +2287,16 @@ input[type="time"] {
   .card {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
       0 18px 46px rgba(0, 0, 0, 0.55);
   }
 
   .group {
-    background: rgba(255, 255, 255, 0.035);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    background: transparent;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
   }
   .group:hover {
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.02);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
 
   .location-gated::after {
