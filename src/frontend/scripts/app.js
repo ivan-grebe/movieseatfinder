@@ -1,12 +1,6 @@
 import { addDays, debounce, getJson, todayString } from "./utils.js";
 import { closeCombo, setupCombo } from "./combo.js";
-import {
-  setAnimatedStatus,
-  setButtonBusy,
-  setStatus,
-  setSummary,
-  startLoadingStages,
-} from "./ui.js";
+import { setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js";
 import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
@@ -464,6 +458,16 @@ async function loadFormats() {
   }
 }
 
+function showResultsSpinner(message) {
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const announcement = document.createElement("span");
+  announcement.className = "visually-hidden";
+  announcement.textContent = message;
+  sortStatus.replaceChildren(spinner, announcement);
+}
+
 function finishReorder({ restoreScroll = true } = {}) {
   if (reorderScrollY === null) {
     return;
@@ -534,6 +538,7 @@ async function runNewSearch() {
   // A fresh search can supersede an in-flight page change; clear any
   // Pagination loading state so it cannot outlive that request.
   resultsView.endPageLoading();
+  sortStatus.replaceChildren();
   const stopLoadingStages = startLoadingStages((stage) => {
     if (isCurrent()) {
       setSearchButtonBusy(true, stage);
@@ -569,17 +574,17 @@ async function runPageChange(page) {
   const isCurrent = searchLoad.start();
   sortInput.disabled = true;
   resultsView.setPageLoading();
-  const stopLoadingStages = startLoadingStages((stage) => {
-    if (isCurrent()) {
-      setSearchButtonBusy(true, stage);
-    }
-  });
+  showResultsSpinner("Loading page");
   try {
     const data = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
-    resultsView.render(data);
+    resultsView.render(data, { isUpdate: true });
+    const firstResult = results.firstElementChild;
+    firstResult.tabIndex = -1;
+    firstResult.focus({ preventScroll: true });
+    firstResult.scrollIntoView({ behavior: "instant", block: "start" });
   } catch {
     if (!isCurrent()) {
       return;
@@ -587,9 +592,8 @@ async function runPageChange(page) {
     currentPage = previousPage;
     resultsView.endPageLoading(`Couldn't load page ${page}`);
   } finally {
-    stopLoadingStages();
     if (isCurrent()) {
-      setSearchButtonBusy(false);
+      sortStatus.replaceChildren();
       sortInput.disabled = false;
     }
   }
@@ -603,14 +607,14 @@ async function runReorder() {
   reorderScrollY = window.scrollY;
   resultsView.beginReorder();
   sortInput.disabled = true;
-  setAnimatedStatus(sortStatus, "Reordering");
+  showResultsSpinner("Reordering results");
   let errorMessage = "";
   try {
     const data = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
-    resultsView.render(data, { skipEntrance: true });
+    resultsView.render(data, { isUpdate: true });
   } catch {
     if (!isCurrent()) {
       return;
@@ -737,7 +741,7 @@ function requestLocation() {
       setLocationReady(false);
       zipInput.value = "";
       zipInput.setCustomValidity("");
-      setStatus(locationStatus, "Using location · not saved", "");
+      setStatus(locationStatus, "Using location", "");
       useLocationButton.disabled = false;
       refreshTheatresAndMovies();
     },

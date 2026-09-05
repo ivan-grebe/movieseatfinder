@@ -1,6 +1,7 @@
 const STATE_CLASSES = ["is-loading", "is-error", "is-success"];
 
 export function setStatus(element, text, state = "") {
+  element.title = text;
   element.classList.remove(...STATE_CLASSES);
   if (state) {
     element.classList.add(`is-${state}`);

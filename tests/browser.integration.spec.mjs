@@ -473,6 +473,11 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await page.locator("#resultsToolbar").scrollIntoViewIfNeeded();
   await sortInput.selectOption("latest");
   await latestSearchStarted;
+  const spinner = page.locator("#sortStatus .spinner");
+  await expect(spinner).toBeVisible();
+  const spinnerBox = await spinner.boundingBox();
+  const labelBox = await page.locator(".sort-label").boundingBox();
+  expect(spinnerBox.x + spinnerBox.width).toBeLessThan(labelBox.x);
   await expect(sortInput).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeEnabled();
 
@@ -574,6 +579,9 @@ test("pagination keeps current results until the next page loads", async ({ page
   await secondPageStarted;
 
   await expect(pagination).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#sortStatus .spinner")).toBeVisible();
+  await expect(pagination.locator(".pagination-label")).toContainText("Page 1");
+  await expect(pagination.locator(".spinner")).toBeInViewport();
   await expect(previousPage).toBeDisabled();
   await expect(nextPage).toBeDisabled();
   await expect(page.getByRole("heading", { exact: true, name: "Page One Cinema" })).toBeVisible();
@@ -581,6 +589,12 @@ test("pagination keeps current results until the next page loads", async ({ page
   releaseSecondPage();
   await expect(page.getByRole("heading", { exact: true, name: "Page Two Cinema" })).toBeVisible();
   await expect(pagination).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#results > :first-child")).toBeFocused();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Page Two Cinema" }),
+  ).toBeInViewport();
+  await expect(pagination.locator(".spinner")).toHaveCount(0);
+  await expect(page.locator("#sortStatus")).toBeEmpty();
 });
 
 test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
@@ -745,4 +759,39 @@ test("mobile results render the native seat map and update accessibility states"
   await expect(includedCompanionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+});
+
+[320, 390, 1280].forEach((width) => {
+  test(`location feedback keeps controls in place at ${width}px`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "geolocation", {
+        value: {
+          getCurrentPosition(onSuccess) {
+            globalThis.resolveTestLocation = () =>
+              onSuccess({ coords: { latitude: 40.75, longitude: -73.99 } });
+          },
+        },
+      });
+    });
+    await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+
+    await page.setViewportSize({ height: 900, width });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const anchors = page.locator("#startDateInput, #preferencesGroup, #searchButton");
+    function positions() {
+      return anchors.evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().top + globalThis.scrollY),
+      );
+    }
+    const before = await positions();
+    await page.getByRole("button", { name: "Use my current location" }).click();
+    await expect(page.locator("#locationStatus")).toContainText("Requesting your location");
+    expect(await positions()).toEqual(before);
+    await page.evaluate(() => globalThis.resolveTestLocation());
+    await expect(page.locator("#locationStatus")).toHaveText("Using location");
+    await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+    expect(await positions()).toEqual(before);
+  });
 });
