@@ -105,7 +105,10 @@
           <div class="grid">
             <div class="field-block">
               <label>
-                ZIP code
+                <span class="zip-label-row">
+                  <span>ZIP code</span>
+                  <span id="locationStatus" class="status location-inline-status" aria-live="polite"></span>
+                </span>
                 <span class="zip-row">
                   <input id="zipInput" type="text" inputmode="numeric" maxlength="5" placeholder="Enter ZIP" aria-describedby="locationStatus">
                   <button id="useLocationButton" class="location-btn" type="button" title="Use my current location" aria-label="Use my current location">
@@ -113,11 +116,10 @@
                   </button>
                 </span>
               </label>
-              <div id="locationStatus" class="status field-status" aria-live="polite"></div>
             </div>
             <div class="field-block">
               <label>
-                Radius <span class="field-hint">(miles)</span>
+                Radius <span class="field-hint">miles</span>
                 <input id="radiusInput" type="number" min="1" max="100" value="25" required aria-describedby="radiusStatus">
               </label>
               <div id="radiusStatus" class="status field-status" aria-live="polite"></div>
@@ -127,13 +129,13 @@
               <input id="startDateInput" type="date">
             </label>
             <label class="date-field">
-              End date <span class="field-hint">(within 14 days)</span>
+              End date <span class="field-hint">within 14 days</span>
               <input id="endDateInput" type="date">
             </label>
             <div class="field-block full">
               <label class="combo">
                 <span class="field-label-row">
-                  <span>Theatre <span class="field-hint">(optional · select from list)</span></span>
+                  <span>Theatre <span class="field-hint">optional</span></span>
                   <span id="theatreMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
                 <input id="theatreInput" type="text" autocomplete="off" placeholder="Any theatre in radius" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="theatreMenu" aria-describedby="theatreStatus" disabled>
@@ -153,7 +155,7 @@
             <div class="field-block full">
               <label class="combo">
                 <span class="field-label-row">
-                  <span>Movie <span class="field-hint">(select from list)</span></span>
+                  <span>Movie</span>
                   <span id="movieMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
                 <input id="movieInput" type="text" autocomplete="off" placeholder="Type to filter movies" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="movieMenu" aria-describedby="movieStatus" disabled>
@@ -163,7 +165,7 @@
             </div>
             <div class="format-picker field-block full" role="group" aria-labelledby="formatLabel" aria-describedby="formatStatus">
               <span id="formatLabel" class="format-label field-label-row">
-                <span>Format <span class="field-hint">(choose one or more)</span></span>
+                <span>Format</span>
                 <span id="formatMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
               </span>
               <div id="formatOptions" class="format-options"></div>
@@ -259,6 +261,7 @@
     <section id="results-section" class="results-section">
       <div id="summary" class="summary is-muted" role="status" aria-live="polite"></div>
       <div id="resultsToolbar" class="results-toolbar" hidden>
+        <span id="sortStatus" class="sort-status" role="status" aria-live="polite"></span>
         <label class="sort-label" for="sortInput">Sort by</label>
         <span class="select-wrap sort-select-wrap">
           <select id="sortInput" aria-label="Sort results">
@@ -267,7 +270,6 @@
             <option value="nearest">Nearest theatre</option>
           </select>
         </span>
-        <span id="sortStatus" class="sort-status" role="status" aria-live="polite"></span>
       </div>
       <div id="results">
         <div class="empty-state">

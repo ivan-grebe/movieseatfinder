@@ -1,6 +1,6 @@
-import { setAnimatedStatus, setSummary } from "./ui.js";
 import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
+import { setSummary } from "./ui.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ICON_FILM = [
@@ -220,11 +220,16 @@ export function createResultsView({
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
     pagination.setAttribute("aria-busy", "true");
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    const announcement = document.createElement("span");
+    announcement.className = "visually-hidden";
+    announcement.textContent = "Loading results. ";
+    pagination.querySelector(".pagination-label").prepend(spinner, announcement);
     pagination.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
     });
-    const label = pagination.querySelector(".pagination-label");
-    setAnimatedStatus(label, "Loading");
   }
 
   function endPageLoading(errorMessage = "") {
@@ -239,7 +244,7 @@ export function createResultsView({
     label.textContent = errorMessage;
   }
 
-  function render(data, { skipEntrance = false } = {}) {
+  function render(data, { isUpdate = false } = {}) {
     const matches = data.matches;
     results.replaceChildren();
     let showingStart = 0;
@@ -269,14 +274,14 @@ export function createResultsView({
     matches.forEach((match, index) => {
       const item = document.createElement("article");
       item.className = "result";
-      if (skipEntrance) {
-        item.classList.add("no-enter-animation");
+      if (isUpdate) {
+        item.classList.add("result-update");
       }
       item.setAttribute(
         "aria-label",
         `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`,
       );
-      if (!skipEntrance) {
+      if (!isUpdate) {
         item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
       }
       const body = document.createElement("div");
