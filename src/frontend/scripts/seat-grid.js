@@ -391,7 +391,6 @@ export function createSeatGrid(
   });
 
   centerButton.addEventListener("click", () => {
-    // The middle third of the grid in both directions.
     const start = Math.floor(GRID_SIZE / 3);
     const end = GRID_SIZE - start - 1;
     selectBox(start, end, start, end);

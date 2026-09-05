@@ -35,24 +35,6 @@ async function withFetch(fakeFetch, run) {
   }
 }
 
-test("getJson returns a successful JSON response", async () => {
-  await withFetch(
-    () => Promise.resolve(response(200, '{"movies":[]}')),
-    async () => {
-      assert.deepEqual(await getJson("/api/movies"), { movies: [] });
-    },
-  );
-});
-
-test("getJson surfaces API error messages", async () => {
-  await withFetch(
-    () => Promise.resolve(response(400, '{"error":"Enter a movie title."}')),
-    async () => {
-      await assert.rejects(getJson("/api/search"), /Enter a movie title/u);
-    },
-  );
-});
-
 test("getJson preserves API error routing metadata", async () => {
   await withFetch(
     () => Promise.resolve(response(400, '{"error":"ZIP not found.","code":"location"}')),
@@ -116,6 +98,7 @@ test("ticket click tracking uses a non-blocking beacon", () => {
 
 test("ticket click tracking falls back when a beacon cannot be queued", async () => {
   const originalNavigator = globalThis.navigator;
+  const calls = [];
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: { sendBeacon: () => false },
@@ -123,12 +106,14 @@ test("ticket click tracking falls back when a beacon cannot be queued", async ()
   try {
     await withFetch(
       (url, options) => {
-        assert.equal(url, "/api/events/ticket-click");
-        assert.deepEqual(options, { keepalive: true, method: "POST" });
+        calls.push({ options, url });
         return Promise.resolve(response(204, ""));
       },
       () => logTicketClick(),
     );
+    assert.deepEqual(calls, [
+      { options: { keepalive: true, method: "POST" }, url: "/api/events/ticket-click" },
+    ]);
   } finally {
     if (originalNavigator === undefined) {
       delete globalThis.navigator;

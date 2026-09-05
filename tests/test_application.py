@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from threading import Event
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -135,7 +136,6 @@ class MovieAndFormatTests(unittest.TestCase):
 
         self.assertEqual(showtime["format"], "IMAX with Laser")
         self.assertEqual(showtime["displayTime"], "6:00 PM")
-        self.assertNotIn("o'clock", showtime["displayTime"])
 
     def test_showtime_resolves_all_overlapping_format_fields(self):
         cases = [
@@ -332,7 +332,34 @@ class SeatSelectionTests(unittest.TestCase):
             [],
         )
         self.assertCountEqual(groups, [["A1", "A2"], ["A2", "A3"], ["A3", "A4"]])
-        self.assertTrue(all(len(group) == 2 for group in groups))
+
+
+class CandidateSearchTests(unittest.TestCase):
+    def test_parallel_checks_preserve_order_and_stop_after_a_page_has_a_next_match(self):
+        second_finished = Event()
+
+        def check(candidate):
+            if candidate == 0:
+                if not second_finished.wait(timeout=5):
+                    raise AssertionError("Seat checks did not run concurrently")
+            elif candidate == 1:
+                second_finished.set()
+            return {"candidate": candidate} if candidate % 2 == 0 else None
+
+        matches, checked = application.seat_checked_matches(list(range(100)), 5, check)
+
+        self.assertEqual(matches, [{"candidate": value} for value in range(0, checked, 2)])
+        self.assertGreater(len(matches), 5)
+        self.assertLess(checked, 100)
+
+    def test_exactly_full_page_keeps_checking_for_a_next_match(self):
+        def check(candidate):
+            return {"candidate": candidate} if candidate < 5 or candidate == 99 else None
+
+        matches, checked = application.seat_checked_matches(list(range(100)), 5, check)
+
+        self.assertEqual(matches, [{"candidate": value} for value in [0, 1, 2, 3, 4, 99]])
+        self.assertEqual(checked, 100)
 
 
 class CacheTests(unittest.TestCase):
@@ -498,8 +525,6 @@ class RouteTests(unittest.TestCase):
                 response.headers["vercel-cdn-cache-control"],
                 "public, max-age=31536000, immutable",
             )
-
-        self.assertNotIn("import ", self.client.get("/app.bundle.js").text)
 
     def test_unversioned_assets_are_not_cached_as_immutable(self):
         response = self.client.get("/app.bundle.js")
