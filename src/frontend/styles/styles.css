@@ -1340,7 +1340,7 @@ a:focus-visible {
   padding: 10px 14px;
   border-radius: 14px;
   color: #405069;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--panel);
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.78),
@@ -1428,7 +1428,7 @@ a:focus-visible {
   padding: 28px 16px 36px;
   border-radius: 18px;
   color: #475467;
-  background: var(--surface);
+  background: var(--panel);
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -1448,42 +1448,11 @@ a:focus-visible {
   text-wrap: balance;
 }
 
-.github-link {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  color: #4b1f23;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: none;
-  backdrop-filter: blur(16px);
-  transition-property: transform, color, background-color;
-  transition-duration: 150ms;
-  transition-timing-function: ease-out;
-}
-
-.github-link:hover {
-  color: var(--accent-deep);
-  background: rgba(255, 255, 255, 0.94);
-}
-.github-link:active {
-  transform: scale(0.96);
-}
-.github-link svg {
-  width: 18px;
-  height: 18px;
-}
-
 .result {
   min-width: 0;
   padding: 13px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--panel);
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.78),
@@ -1954,8 +1923,6 @@ input[type="time"] {
 @media (max-width: 700px) {
   main {
     width: min(100% - 24px, 1120px);
-    /* Leave room so the fixed GitHub button never overlaps the last controls. */
-    padding-bottom: 76px;
   }
 
   /* Keep the warm-left / cool-right sweep distinct on narrow screens. */
@@ -2202,10 +2169,6 @@ input[type="time"] {
   .result-poster {
     width: 52px;
     height: 78px;
-  }
-  .github-link {
-    right: 12px;
-    bottom: 12px;
   }
 }
 
@@ -2472,7 +2435,6 @@ input[type="time"] {
   .summary,
   .empty-state {
     color: #c2cddc;
-    background: rgba(255, 255, 255, 0.04);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.05),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2497,13 +2459,15 @@ input[type="time"] {
   }
 
   .result {
-    background: rgba(255, 255, 255, 0.045);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.05),
       0 18px 38px rgba(0, 0, 0, 0.45);
   }
   .result-title {
     color: #eef2f8;
+  }
+  .result-distance {
+    color: var(--accent);
   }
   .result-movie {
     color: #dde5f0;
@@ -2540,16 +2504,6 @@ input[type="time"] {
   .legend-swatch {
     background: #d7deea;
     border-color: #b7c0cd;
-  }
-
-  .github-link {
-    color: #f2caca;
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: none;
-  }
-  .github-link:hover {
-    color: #f2caca;
-    background: rgba(255, 255, 255, 0.12);
   }
 }
 

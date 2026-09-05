@@ -59,8 +59,6 @@ BACKEND_ASSET_DIR = Path(__file__).resolve().parent / "assets"
 FONT_ASSET = "inter-variable.woff2"
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 VERSIONED_ASSET_SUFFIXES = {".ico", ".js", ".png", ".svg", ".woff2"}
-# The only browser files the site serves; source modules stay private and the
-# raw index.html template is only reachable through the rendered "/" route.
 PUBLIC_ASSETS = {"app.bundle.js"}
 BRANDING_ASSETS = {
     "apple-touch-icon-precomposed.png",
@@ -804,7 +802,6 @@ def index(request: Request):
 
 @app.get("/index.html", include_in_schema=False)
 def index_html():
-    # The on-disk file is an unrendered template; never serve it raw.
     return RedirectResponse("/", status_code=308)
 
 
@@ -815,7 +812,6 @@ def faq(request: Request):
 
 @app.get("/faq.html", include_in_schema=False)
 def faq_html():
-    # Keep the extensionless URL canonical and never serve the raw template.
     return RedirectResponse("/faq", status_code=308)
 
 
@@ -870,7 +866,6 @@ def webmanifest():
             "description": SITE_DESCRIPTION,
             "start_url": "/",
             "display": "standalone",
-            # Match the page's own light background and dark chrome tint.
             "background_color": "#fff7f6",
             "theme_color": "#12151c",
             "icons": [
@@ -1166,12 +1161,12 @@ def collect_candidate_showtimes(
     """Gather (theatre, showtime) pairs that pass every non-seat filter."""
     candidates = []
     for theatre in dated_theatres(search_zip, radius, start_date, end_date, theatre_query, origin):
-        raw_movies = theatre["rawMovies"]
-        if not any(movie_matches(movie.get("title", ""), movie_query) for movie in raw_movies):
-            continue
-        for showtime in normalize_showtimes(raw_movies):
-            if not movie_matches(showtime["movieTitle"], movie_query):
-                continue
+        movies = [
+            movie
+            for movie in theatre["rawMovies"]
+            if movie_matches(movie.get("title", ""), movie_query)
+        ]
+        for showtime in normalize_showtimes(movies):
             if not format_matches(showtime["format"], requested_format):
                 continue
             if showtime["time"] < start_time or showtime["time"] > end_time:
@@ -1181,13 +1176,13 @@ def collect_candidate_showtimes(
 
 
 def seat_checked_matches(candidates, page_end, check_candidate):
-    """Seat-check candidates in parallel until one page past page_end is filled.
+    """Seat-check candidates in parallel until a match beyond page_end is found.
 
     Candidates must arrive pre-sorted. Matches keep the candidate order, so
     stopping early is safe: every unchecked candidate sorts after every
     checked one.
     """
-    indexed_matches = []
+    matches = []
     checked = 0
     if not candidates:
         return [], 0
@@ -1197,18 +1192,10 @@ def seat_checked_matches(candidates, page_end, check_candidate):
         for offset in range(0, len(candidates), batch_size):
             batch = candidates[offset : offset + batch_size]
             checked += len(batch)
-            future_map = {
-                executor.submit(check_candidate, candidate): offset + position
-                for position, candidate in enumerate(batch)
-            }
-            for future in as_completed(future_map):
-                result = future.result()
-                if result:
-                    indexed_matches.append((future_map[future], result))
-            if len(indexed_matches) > page_end:
+            matches.extend(result for result in executor.map(check_candidate, batch) if result)
+            if len(matches) > page_end:
                 break
-    indexed_matches.sort(key=lambda pair: pair[0])
-    return [match for _, match in indexed_matches], checked
+    return matches, checked
 
 
 def find_seat_matches(
