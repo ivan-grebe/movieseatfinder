@@ -486,6 +486,16 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8", path)
             self.assertEqual(response.content, b"", path)
 
+    def test_shared_links_render_results_only_before_javascript_loads(self):
+        shared = self.client.get("/", params={"shared": "1", "movie": "Test Movie"})
+        self.assertIn('<body class="shared-search">', shared.text)
+        self.assertIn("Loading shared search…", shared.text)
+        self.assertIn('id="backToSearchButton"', shared.text)
+        normal = self.client.get("/", params={"movie": "Test Movie"})
+        self.assertIn('<body class="">', normal.text)
+        self.assertNotIn("__SHARED_SEARCH_CLASS__", normal.text)
+        self.assertNotIn("__INITIAL_SUMMARY__", normal.text)
+
     def test_public_pages_attribute_external_data_sources(self):
         for path in ("/", "/faq"):
             response = self.client.get(path, headers={"host": "example.test"})
@@ -564,6 +574,21 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.content, b"")
         logger_info.assert_called_once_with("event=ticket_click")
+
+    @patch("backend.application.LOGGER.info")
+    def test_shared_link_visit_is_logged_without_request_data(self, logger_info):
+        response = self.client.post("/api/events/shared-link-visit")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b"")
+        logger_info.assert_called_once_with("event=shared_link_visit")
+
+    @patch("backend.application.LOGGER.info")
+    def test_shared_link_visits_are_rate_limited(self, logger_info):
+        for _ in range(60):
+            self.assertEqual(self.client.post("/api/events/shared-link-visit").status_code, 204)
+        response = self.client.post("/api/events/shared-link-visit")
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(logger_info.call_count, 60)
 
     def test_homepage_ignores_forwarded_host_for_public_metadata(self):
         injected_host = 'attacker.example"><meta name="injected" content="yes'

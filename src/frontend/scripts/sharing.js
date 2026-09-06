@@ -39,7 +39,9 @@ export function createShareButton(searchUrl) {
   const mobile =
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const data = getSearchShareData(searchUrl);
+  const sharedUrl = new URL(searchUrl);
+  sharedUrl.searchParams.set("shared", "1");
+  const data = getSearchShareData(sharedUrl.href);
   const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
   const button = document.createElement("button");
   button.type = "button";
@@ -84,7 +86,7 @@ export function createShareButton(searchUrl) {
       if (nativeShare) {
         await navigator.share(data);
       } else {
-        await navigator.clipboard.writeText(searchUrl);
+        await navigator.clipboard.writeText(data.url);
         showFeedback("Copied!", "Search link copied to clipboard.");
         resetTimer = globalThis.setTimeout(resetFeedback, 2000);
       }

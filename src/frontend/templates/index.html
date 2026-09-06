@@ -80,12 +80,18 @@
     }
   </script>
 </head>
-<body>
+<body class="__SHARED_SEARCH_CLASS__">
   <div class="ambient-glows" aria-hidden="true">
     <span class="ambient-glow ambient-glow-warm"></span>
     <span class="ambient-glow ambient-glow-cool"></span>
   </div>
   <main>
+    <nav class="shared-search-nav" aria-label="Shared search">
+      <button id="backToSearchButton" class="btn-small shared-back" type="button" aria-controls="search">
+        <span aria-hidden="true">←</span> Back
+      </button>
+      <span>Movie Seat Finder</span>
+    </nav>
     <section class="hero">
       <div class="hero-copy">
         <h1>Find the perfect movie seats before you buy.</h1>
@@ -259,7 +265,7 @@
     </section>
 
     <section id="results-section" class="results-section" aria-label="Search results" tabindex="-1">
-      <div id="summary" class="summary is-muted" role="status" aria-live="polite"></div>
+      <div id="summary" class="summary is-muted" role="status" aria-live="polite">__INITIAL_SUMMARY__</div>
       <div id="resultsToolbar" class="results-toolbar" hidden>
         <span id="sortStatus" class="sort-status" role="status" aria-live="polite"></span>
         <label class="sort-label" for="sortInput">Sort by</label>
@@ -272,7 +278,7 @@
         </span>
       </div>
       <div id="results">
-        <div class="empty-state">
+        <div class="empty-state initial-results-placeholder">
           <svg class="empty-art" viewBox="0 0 140 96" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="6" y="14" width="128" height="68" rx="9"/>
             <path d="M99 14v68" stroke-dasharray="3 5"/>

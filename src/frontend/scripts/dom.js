@@ -8,6 +8,7 @@ function byId(id) {
 
 export const elements = {
   adjacentSeatsInput: byId("adjacentSeatsInput"),
+  backToSearchButton: byId("backToSearchButton"),
   cancelSeatGridButton: byId("cancelSeatGridButton"),
   clearGridButton: byId("clearGridButton"),
   doneSeatGridButton: byId("doneSeatGridButton"),

@@ -6,8 +6,10 @@ import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
 import { initializeAmbientMotion } from "./ambient-motion.js";
+import { logSharedLinkVisit } from "./tracking.js";
 
 const {
+  backToSearchButton,
   searchForm,
   zipInput,
   useLocationButton,
@@ -67,6 +69,9 @@ let preciseLocation = null;
 let currentPage = 1;
 let reorderScrollY = null;
 let locationReady = false;
+let sharedSearch =
+  new URLSearchParams(globalThis.location.search).get("shared") === "1" &&
+  !globalThis.history.state?.showControls;
 
 // Tracks the latest run of an async loader so stale responses can be dropped.
 function createRunGuard() {
@@ -551,11 +556,15 @@ async function fetchSearchResults() {
 }
 
 function rememberSearch(searchUrl, replaceHistory = false) {
-  if (globalThis.location.href !== searchUrl) {
+  const url = new URL(searchUrl);
+  if (sharedSearch) {
+    url.searchParams.set("shared", "1");
+  }
+  if (globalThis.location.href !== url.href || globalThis.history.state?.showControls) {
     if (replaceHistory) {
-      globalThis.history.replaceState(null, "", searchUrl);
+      globalThis.history.replaceState(null, "", url.href);
     } else {
-      globalThis.history.pushState(null, "", searchUrl);
+      globalThis.history.pushState(null, "", url.href);
     }
   }
 }
@@ -563,6 +572,11 @@ function rememberSearch(searchUrl, replaceHistory = false) {
 async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
   finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
+    if (sharedSearch) {
+      resultsView.renderError(
+        "This shared search needs an adjustment. Use Back to review the filters.",
+      );
+    }
     return;
   }
   const isCurrent = searchLoad.start();
@@ -575,6 +589,9 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
   const stopLoadingStages = startLoadingStages((stage) => {
     if (isCurrent()) {
       setSearchButtonBusy(true, stage);
+      if (sharedSearch) {
+        setSummary(summary, `${stage}…`, true);
+      }
     }
   });
   try {
@@ -820,6 +837,28 @@ function queueCriteriaRefresh() {
 }
 
 function bindEvents() {
+  backToSearchButton.addEventListener("click", () => {
+    sharedSearch = false;
+    searchLoad.cancel();
+    finishReorder({ restoreScroll: false });
+    resultsView.endPageLoading();
+    sortStatus.replaceChildren();
+    sortInput.disabled = false;
+    if (searchButton.hasAttribute("aria-busy")) {
+      setSearchButtonBusy(false);
+    }
+    if (results.childElementCount === 0) {
+      setSummary(summary, "", true);
+    }
+    document.body.classList.remove("shared-search");
+    const url = new URL(globalThis.location.href);
+    url.searchParams.delete("shared");
+    globalThis.history.replaceState({ showControls: true }, "", url.href);
+    const section = searchForm.closest("section");
+    section.tabIndex = -1;
+    section.focus({ preventScroll: true });
+    globalThis.scrollTo({ behavior: "instant", top: 0 });
+  });
   globalThis.addEventListener("popstate", () => globalThis.location.reload());
   window.addEventListener("pageshow", () => setLocationReady(locationReady));
   formatGuideButton.addEventListener("click", () => {
@@ -940,20 +979,34 @@ async function initialize() {
   bindEvents();
 
   const shouldSearchFromUrl = applyQueryParams();
+  document.body.classList.toggle("shared-search", sharedSearch);
+  if (sharedSearch) {
+    logSharedLinkVisit();
+    results.replaceChildren();
+    setSummary(summary, "Loading shared search…", true);
+  }
   syncEndDateBounds();
   if (hasSearchBasics()) {
     const theatresLoaded = await loadTheatres();
     if (theatresLoaded) {
       await loadMovies();
     }
-    if (theatresLoaded && shouldSearchFromUrl && selectedMovie) {
+    if (theatresLoaded && selectedMovie) {
       await loadFormats();
       const formats = new URLSearchParams(globalThis.location.search).get("format");
       if (formats) {
         formatPicker.select(formats.split(",").filter(Boolean));
       }
-      runNewSearch({ replaceHistory: true, scrollToResults: true });
+      if (shouldSearchFromUrl && !globalThis.history.state?.showControls) {
+        await runNewSearch({ replaceHistory: true, scrollToResults: !sharedSearch });
+        return;
+      }
     }
+  }
+  if (sharedSearch) {
+    resultsView.renderError(
+      "Could not open this shared search. Use Back to review the movie and location.",
+    );
   }
 }
 

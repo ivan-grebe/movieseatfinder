@@ -1,14 +1,20 @@
-const TICKET_CLICK_ENDPOINT = "/api/events/ticket-click";
-
-export function logTicketClick() {
+function logEvent(endpoint) {
   try {
-    if (navigator.sendBeacon?.(TICKET_CLICK_ENDPOINT)) {
+    if (navigator.sendBeacon?.(endpoint)) {
       return;
     }
-    void fetch(TICKET_CLICK_ENDPOINT, { keepalive: true, method: "POST" }).catch(() => {
+    void fetch(endpoint, { keepalive: true, method: "POST" }).catch(() => {
       // Tracking failures are intentionally ignored.
     });
   } catch {
-    // Tracking must never interrupt the ticket purchase flow.
+    // Tracking must never interrupt the user flow.
   }
+}
+
+export function logTicketClick() {
+  logEvent("/api/events/ticket-click");
+}
+
+export function logSharedLinkVisit() {
+  logEvent("/api/events/shared-link-visit");
 }
