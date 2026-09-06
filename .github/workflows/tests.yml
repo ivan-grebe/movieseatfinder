@@ -15,23 +15,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
       - name: Install linters
         run: |
-          python -m pip install -e ".[dev]"
+          python -m pip install uv==0.12.10
+          uv sync --locked --extra dev
           npm ci
       - name: Check Python
         run: |
-          python -m ruff check .
-          python -m ruff format --check .
+          uv run ruff check .
+          uv run ruff format --check .
       - name: Find dead Python code
-        run: python -m vulture src/backend/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
+        run: uv run vulture src/backend/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
       - name: Lint JavaScript
         run: npm run lint
       - name: Check formatting
@@ -43,28 +44,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - name: Install project
-        run: python -m pip install -e ".[test]"
+        run: |
+          python -m pip install uv==0.12.10
+          uv sync --locked --extra test
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: uv run python -m unittest discover -s tests -v
 
   browser-integration:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
       - name: Install project
-        run: python -m pip install -e "."
+        run: |
+          python -m pip install uv==0.12.10
+          uv sync --locked
       - name: Install browser test dependencies
         run: npm ci && npx playwright install --with-deps chromium
       - name: Verify production frontend bundle
@@ -72,4 +77,4 @@ jobs:
       - name: Run frontend tests
         run: npm run test:frontend
       - name: Run browser integration tests
-        run: npm run test:browser
+        run: uv run npm run test:browser
