@@ -457,9 +457,7 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/", headers={"host": "example.test"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
-        self.assertIn(
-            '<link rel="canonical" href="https://movieseatfinder.com/">', response.text
-        )
+        self.assertIn('<link rel="canonical" href="https://movieseatfinder.com/">', response.text)
         self.assertIn('href="/faq"', response.text)
         self.assertIn(
             f"/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}",
@@ -548,9 +546,7 @@ class RouteTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.headers["cache-control"], "public, max-age=0, must-revalidate"
-        )
+        self.assertEqual(response.headers["cache-control"], "public, max-age=0, must-revalidate")
         self.assertEqual(
             response.headers["cdn-cache-control"], "public, max-age=0, must-revalidate"
         )
@@ -592,9 +588,7 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('<meta name="injected"', response.text)
-        self.assertIn(
-            '<link rel="canonical" href="https://movieseatfinder.com/">', response.text
-        )
+        self.assertIn('<link rel="canonical" href="https://movieseatfinder.com/">', response.text)
 
     @patch("backend.application.movies_from_dated_theatre_payloads", return_value=[])
     @patch(
