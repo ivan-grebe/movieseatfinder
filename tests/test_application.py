@@ -480,6 +480,13 @@ class RouteTests(unittest.TestCase):
         self.assertIn("require-trusted-types-for 'script'", content_security_policy)
         self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
 
+    def test_public_pages_support_head_requests(self):
+        for path in ("/", "/faq"):
+            response = self.client.head(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8", path)
+            self.assertEqual(response.content, b"", path)
+
     def test_raw_template_and_frontend_sources_are_not_served(self):
         redirect = self.client.get("/index.html", follow_redirects=False)
         self.assertEqual(redirect.status_code, 308)
