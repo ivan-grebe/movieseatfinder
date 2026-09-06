@@ -767,6 +767,7 @@ function queueCriteriaRefresh() {
 }
 
 function bindEvents() {
+  window.addEventListener("pageshow", () => setLocationReady(locationReady));
   formatGuideButton.addEventListener("click", () => {
     const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
     formatGuideButton.setAttribute("aria-expanded", String(expanded));
@@ -874,6 +875,7 @@ function bindEvents() {
 }
 
 async function initialize() {
+  setLocationReady(false);
   const today = todayString();
   startDateInput.value = today;
   endDateInput.value = addDays(today, 7);
