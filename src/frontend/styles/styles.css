@@ -2113,12 +2113,11 @@ input[type="time"] {
     min-height: 48px;
     border-radius: 12px;
     color: #fff;
-    background: linear-gradient(135deg, #df514d, var(--accent-deep));
-    box-shadow:
-      0 0 0 1px rgba(110, 22, 27, 0.2),
-      0 12px 28px rgba(111, 25, 31, 0.32),
-      inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    box-shadow: 0 0 0 1px rgba(82, 96, 116, 0.08);
+    filter: saturate(0.3);
     font-size: 13px;
+    opacity: 0.56;
     transform: translate(-50%, -50%);
   }
 
@@ -2210,16 +2209,6 @@ input[type="time"] {
   /* Native date controls need more width than two columns provide on small phones. */
   .location-group .grid {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 700px) and (hover: hover) {
-  .btn-small.seat-edit-button:hover {
-    background: linear-gradient(135deg, #eb5e58, #a92d34);
-    box-shadow:
-      0 0 0 1px rgba(110, 22, 27, 0.24),
-      0 14px 30px rgba(111, 25, 31, 0.36),
-      inset 0 1px 0 rgba(255, 255, 255, 0.32);
   }
 }
 
