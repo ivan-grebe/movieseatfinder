@@ -12,11 +12,11 @@
   --muted: #667085;
   --line: rgba(91, 117, 151, 0.22);
   --line-strong: rgba(91, 117, 151, 0.38);
-  --panel: rgba(255, 255, 255, 0.62);
+  --panel: rgba(255, 255, 255, 0.1);
   --field: rgba(248, 251, 255, 0.9);
-  --surface: rgba(255, 255, 255, 0.62);
-  --surface-raised: rgba(255, 255, 255, 0.78);
-  --surface-hover: rgba(255, 255, 255, 0.72);
+  --surface: transparent;
+  --surface-raised: rgba(255, 255, 255, 0.08);
+  --surface-hover: rgba(255, 255, 255, 0.04);
   --surface-highlight: #fff;
   --accent: #c93a3a;
   --accent-deep: #8f1f26;
@@ -81,20 +81,20 @@ body {
 }
 
 .ambient-glow-warm {
-  top: -430px;
+  top: -330px;
   left: 50%;
   width: min(1220px, 112vw);
-  height: 720px;
-  background: radial-gradient(closest-side, rgba(255, 148, 135, 0.44), transparent 72%);
+  height: 820px;
+  background: radial-gradient(closest-side, rgba(255, 148, 135, 0.52), transparent 72%);
   transform: translate3d(-50%, 0, 0);
 }
 
 .ambient-glow-cool {
-  top: -170px;
+  top: -100px;
   right: -110px;
   width: min(760px, 70vw);
-  height: 500px;
-  background: radial-gradient(closest-side, rgba(120, 165, 255, 0.38), transparent 72%);
+  height: 600px;
+  background: radial-gradient(closest-side, rgba(120, 165, 255, 0.46), transparent 72%);
   transform: translate3d(0, 0, 0);
 }
 
@@ -116,7 +116,7 @@ body::after {
   height: 410px;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(900px 200px at 50% 210px, rgba(201, 58, 58, 0.11), transparent 70%);
+  background: radial-gradient(900px 300px at 50% 250px, rgba(201, 58, 58, 0.18), transparent 70%);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -204,6 +204,7 @@ h1 {
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px) saturate(120%);
 }
 
 .card-body {
@@ -221,6 +222,7 @@ h1 {
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px) saturate(115%);
   transition-property: box-shadow, background-color;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
