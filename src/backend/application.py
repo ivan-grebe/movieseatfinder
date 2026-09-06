@@ -796,6 +796,7 @@ async def unexpected_exception_handler(request, exc):
     )
 
 
+@app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
 def index(request: Request):
     return HTMLResponse(render_index(request))
@@ -806,6 +807,7 @@ def index_html():
     return RedirectResponse("/", status_code=308)
 
 
+@app.head("/faq", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
 def faq(request: Request):
     return HTMLResponse(render_faq(request))
