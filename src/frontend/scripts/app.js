@@ -529,25 +529,35 @@ function validateSearchInputs() {
   return true;
 }
 
-async function fetchSearchResults() {
+function searchParams() {
+  if (sharedSearch) {
+    const params = new URLSearchParams(globalThis.location.search);
+    params.delete("shared");
+    return params;
+  }
   const params = baseParams();
   params.set("movie", selectedMovie.title);
   params.set("format", formatPicker.value());
   params.set("startTime", startTimeInput.value);
   params.set("endTime", endTimeInput.value);
   params.set("adjacentSeats", adjacentSeatsInput.value);
-  params.set("page", currentPage);
-  params.set("pageSize", PAGE_SIZE);
   let excludeAccessible = "0";
   if (excludeAccessibleInput.checked) {
     excludeAccessible = "1";
   }
   params.set("excludeAccessible", excludeAccessible);
-  params.set("sort", sortInput.value);
   const selectedCells = seatGrid.values();
   if (selectedCells.length > 0) {
     params.set("seatGrid", selectedCells.join(","));
   }
+  return params;
+}
+
+async function fetchSearchResults() {
+  const params = searchParams();
+  params.set("page", currentPage);
+  params.set("pageSize", PAGE_SIZE);
+  params.set("sort", sortInput.value);
   const data = await getJson(`/api/search?${params}`);
   params.delete("pageSize");
   const url = new URL("/", globalThis.location.origin);
@@ -571,12 +581,7 @@ function rememberSearch(searchUrl, replaceHistory = false) {
 
 async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
   finishReorder({ restoreScroll: false });
-  if (!validateSearchInputs()) {
-    if (sharedSearch) {
-      resultsView.renderError(
-        "This shared search needs an adjustment. Use Back to review the filters.",
-      );
-    }
+  if (!sharedSearch && !validateSearchInputs()) {
     return;
   }
   const isCurrent = searchLoad.start();
@@ -622,7 +627,7 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
 
 async function runPageChange(page) {
   finishReorder({ restoreScroll: false });
-  if (!validateSearchInputs()) {
+  if (!sharedSearch && !validateSearchInputs()) {
     return;
   }
   const previousPage = currentPage;
@@ -657,7 +662,7 @@ async function runPageChange(page) {
 }
 
 async function runReorder() {
-  if (!validateSearchInputs()) {
+  if (!sharedSearch && !validateSearchInputs()) {
     return;
   }
   const isCurrent = searchLoad.start();
@@ -837,7 +842,7 @@ function queueCriteriaRefresh() {
 }
 
 function bindEvents() {
-  backToSearchButton.addEventListener("click", () => {
+  backToSearchButton.addEventListener("click", async () => {
     sharedSearch = false;
     searchLoad.cancel();
     finishReorder({ restoreScroll: false });
@@ -858,6 +863,7 @@ function bindEvents() {
     section.tabIndex = -1;
     section.focus({ preventScroll: true });
     globalThis.scrollTo({ behavior: "instant", top: 0 });
+    await loadSearchOptions();
   });
   globalThis.addEventListener("popstate", () => globalThis.location.reload());
   window.addEventListener("pageshow", () => setLocationReady(locationReady));
@@ -970,6 +976,27 @@ function bindEvents() {
   });
 }
 
+async function loadSearchOptions() {
+  syncEndDateBounds();
+  if (!hasSearchBasics()) {
+    return false;
+  }
+  const theatresLoaded = await loadTheatres();
+  if (!theatresLoaded) {
+    return false;
+  }
+  await loadMovies();
+  if (!selectedMovie) {
+    return false;
+  }
+  await loadFormats();
+  const formats = new URLSearchParams(globalThis.location.search).get("format");
+  if (formats) {
+    formatPicker.select(formats.split(",").filter(Boolean));
+  }
+  return true;
+}
+
 async function initialize() {
   setLocationReady(false);
   const today = todayString();
@@ -984,29 +1011,12 @@ async function initialize() {
     logSharedLinkVisit();
     results.replaceChildren();
     setSummary(summary, "Loading shared search…", true);
+    await runNewSearch({ replaceHistory: true });
+    return;
   }
-  syncEndDateBounds();
-  if (hasSearchBasics()) {
-    const theatresLoaded = await loadTheatres();
-    if (theatresLoaded) {
-      await loadMovies();
-    }
-    if (theatresLoaded && selectedMovie) {
-      await loadFormats();
-      const formats = new URLSearchParams(globalThis.location.search).get("format");
-      if (formats) {
-        formatPicker.select(formats.split(",").filter(Boolean));
-      }
-      if (shouldSearchFromUrl && !globalThis.history.state?.showControls) {
-        await runNewSearch({ replaceHistory: true, scrollToResults: !sharedSearch });
-        return;
-      }
-    }
-  }
-  if (sharedSearch) {
-    resultsView.renderError(
-      "Could not open this shared search. Use Back to review the movie and location.",
-    );
+  const optionsLoaded = await loadSearchOptions();
+  if (optionsLoaded && shouldSearchFromUrl && !globalThis.history.state?.showControls) {
+    await runNewSearch({ replaceHistory: true, scrollToResults: true });
   }
 }
 

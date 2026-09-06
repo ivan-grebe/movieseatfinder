@@ -1,3 +1,4 @@
+import { addDays, todayString } from "../src/frontend/scripts/utils.js";
 import { expect, test } from "@playwright/test";
 
 const emptySearch = {
@@ -488,6 +489,13 @@ for (const width of [390, 1280]) {
     let searches = 0;
     let visits = 0;
     const requests = [];
+    const optionRequests = [];
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname;
+      if (["/api/theatres", "/api/movies", "/api/formats"].includes(path)) {
+        optionRequests.push(path);
+      }
+    });
     await mockSearchDependencies(
       page,
       (route) => {
@@ -506,9 +514,13 @@ for (const width of [390, 1280]) {
     await page.goto("/");
     await expect(page.locator("#search")).toBeVisible();
     expect(visits).toBe(0);
-    await page.goto(
-      "/?shared=1&zip=10001&radius=15&movie=Test+Movie&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startTime=17:00&endTime=23:00",
+    const sharedUrl = new URL(
+      "/?shared=1&zip=10001&radius=15&movie=Test+Movie&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startTime=17:00&endTime=23:00&theatre=",
+      page.url(),
     );
+    sharedUrl.searchParams.set("startDate", todayString());
+    sharedUrl.searchParams.set("endDate", addDays(todayString(), 7));
+    await page.goto(sharedUrl.href);
     await expect(page.locator(".result")).toHaveCount(1);
     await expect(page.locator("#search")).toBeHidden();
     await expect(page.locator(".hero")).toBeHidden();
@@ -522,6 +534,7 @@ for (const width of [390, 1280]) {
     const back = page.getByRole("button", { exact: true, name: "Back" });
     await expect(back).toBeInViewport();
     expect(searches).toBe(1);
+    expect(optionRequests).toEqual([]);
     await expect.poll(() => visits).toBe(1);
     await page.screenshot({
       animations: "disabled",
@@ -540,6 +553,7 @@ for (const width of [390, 1280]) {
     await expect(page.locator("#movieInput")).toHaveValue("Test Movie");
     await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
     await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
+    expect(optionRequests).toEqual(["/api/theatres", "/api/movies", "/api/formats"]);
     await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
     await expect(page.locator("#startTimeInput")).toHaveValue("17:00");
     await expect(page.locator("#endTimeInput")).toHaveValue("23:00");
@@ -559,38 +573,62 @@ for (const width of [390, 1280]) {
   });
 }
 
-test("Back during shared-link initialization prevents the automatic search", async ({
+test("shared sorting and pagination preserve URL filters without loading options", async ({
   page,
-}, testInfo) => {
-  let searches = 0;
-  await mockSearchDependencies(page, (route) => {
-    searches += 1;
-    return route.fulfill({ json: emptySearch });
+}) => {
+  const requests = [];
+  const unexpected = [];
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/events/")) {
+      return route.fulfill({ status: 204 });
+    }
+    if (url.pathname !== "/api/search") {
+      unexpected.push(url.pathname);
+      return route.fulfill({ status: 503 });
+    }
+    requests.push(Object.fromEntries(url.searchParams));
+    const pageNumber = Number(url.searchParams.get("page"));
+    return route.fulfill({
+      json: {
+        ...emptySearch,
+        hasNextPage: pageNumber === 1,
+        hasPreviousPage: pageNumber > 1,
+        matches: [makeSimpleMatch("Shared Cinema", "7 PM")],
+        page: pageNumber,
+      },
+    });
   });
-  const movies = Promise.withResolvers();
-  await page.route("**/api/movies*", async (route) => {
-    await movies.promise;
-    await route.fulfill({ json: { movies: [{ title: "Test Movie" }] } });
+  await page.goto(
+    "/?shared=1&lat=40.75&lon=-73.99&radius=15&movie=Test+Movie&theatre=Shared+Cinema&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startDate=2026-09-06&endDate=2026-09-08&startTime=17:00&endTime=23:00",
+  );
+  await expect(page.locator(".result")).toHaveCount(1);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    adjacentSeats: "3",
+    format: "IMAX,Dolby Cinema",
+    lat: "40.75",
+    lon: "-73.99",
+    seatGrid: "7:7,7:8",
+    startDate: "2026-09-06",
+    theatre: "Shared Cinema",
   });
-  await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
+  expect(requests[0]).not.toHaveProperty("shared");
+  await page.locator("#sortInput").selectOption("latest");
+  await expect(page.locator("#sortInput")).toBeEnabled();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toEqual({ ...requests[0], sort: "latest" });
+  await page.getByRole("button", { exact: true, name: "Next page of results" }).click();
+  await expect(page.locator(".pagination-label")).toHaveText("Page 2");
+  expect(requests).toHaveLength(3);
+  expect(requests[2]).toEqual({ ...requests[0], page: "2", sort: "latest" });
+  expect(unexpected).toEqual([]);
   await expect(page.locator("#search")).toBeHidden();
-  const footerBottom = await page
-    .locator(".site-footer")
-    .evaluate((element) => element.getBoundingClientRect().bottom);
-  expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
-  await page.screenshot({
-    animations: "disabled",
-    path: testInfo.outputPath("shared-loading-footer.png"),
-  });
-  await page.getByRole("button", { exact: true, name: "Back" }).click();
-  movies.resolve();
-  await expect(page.locator("#search")).toBeVisible();
-  await expect(page.locator("#searchButton")).toBeEnabled();
-  expect(searches).toBe(0);
-  await expect(page.locator("#movieInput")).toHaveValue("Test Movie");
 });
 
-test("Back while a shared search is pending ignores its late response", async ({ page }) => {
+test("Back while a shared search is pending ignores its late response", async ({
+  page,
+}, testInfo) => {
   let searches = 0;
   const response = Promise.withResolvers();
   await mockSearchDependencies(page, async (route) => {
@@ -603,6 +641,14 @@ test("Back while a shared search is pending ignores its late response", async ({
   await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
   await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
   await expect.poll(() => searches).toBe(1);
+  const footerBottom = await page
+    .locator(".site-footer")
+    .evaluate((element) => element.getBoundingClientRect().bottom);
+  expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
+  await page.screenshot({
+    animations: "disabled",
+    path: testInfo.outputPath("shared-loading-footer.png"),
+  });
   await page.getByRole("button", { exact: true, name: "Back" }).click();
   await expect(page.locator("#searchButton")).toBeEnabled();
   const completed = page.waitForResponse("**/api/search*");
@@ -615,24 +661,27 @@ test("Back while a shared search is pending ignores its late response", async ({
   expect(searches).toBe(1);
 });
 
-for (const outcome of ["empty", "error", "missing movie"]) {
+for (const outcome of ["empty", "error", "invalid filters"]) {
   test(`shared links keep Back available for ${outcome}`, async ({ page }) => {
     await mockSearchDependencies(page, (route) => {
       if (outcome === "error") {
         return route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
       }
+      if (outcome === "invalid filters") {
+        return route.fulfill({
+          json: { error: "One of the search values is invalid. Adjust the form and try again." },
+          status: 400,
+        });
+      }
       return route.fulfill({ json: emptySearch });
     });
-    if (outcome === "missing movie") {
-      await page.route("**/api/movies*", (route) => route.fulfill({ json: { movies: [] } }));
-    }
     await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
     if (outcome === "empty") {
       await expect(page.getByText("No matching showtimes", { exact: true })).toBeVisible();
     } else if (outcome === "error") {
       await expect(page.locator("#summary")).toHaveText("Search unavailable. Try again.");
     } else {
-      await expect(page.locator("#summary")).toContainText("Could not open this shared search");
+      await expect(page.locator("#summary")).toContainText("One of the search values is invalid");
     }
     await expect(page.locator("#search")).toBeHidden();
     const footerBottom = await page
