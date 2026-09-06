@@ -235,7 +235,7 @@ test("copy search links preserve result filters and restore them on reload and B
 
   // Unsubmitted edits must not change the link attached to the displayed results.
   await page.locator("#adjacentSeatsInput").fill("4");
-  await result.getByRole("button", { name: "Copy search link" }).click();
+  await result.getByRole("button", { name: "Copy link" }).click();
   await expect(result.getByRole("button", { name: "Copied!" })).toBeVisible();
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
   expect(Object.fromEntries(new URL(copied).searchParams)).toEqual(expected);
@@ -291,7 +291,7 @@ test("shared coordinate searches restore the origin and clipboard failures allow
     });
   });
   await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie");
-  const share = page.getByRole("button", { name: "Copy search link" });
+  const share = page.getByRole("button", { name: "Copy link" });
   await share.click();
   await expect(page.getByRole("button", { name: "Copy failed — retry" })).toBeVisible();
   await page.getByRole("button", { name: "Copy failed — retry" }).click();
@@ -302,6 +302,123 @@ test("shared coordinate searches restore the origin and clipboard failures allow
   expect(copied.searchParams.get("lat")).toBe("40.75");
   expect(copied.searchParams.get("lon")).toBe("-73.99");
 });
+
+for (const device of [
+  {
+    name: "iPhone",
+    native: true,
+    platform: "iPhone",
+    supported: true,
+    touch: 5,
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+  },
+  {
+    name: "Android",
+    native: true,
+    platform: "Linux armv8l",
+    supported: true,
+    touch: 5,
+    userAgent: "Mozilla/5.0 (Linux; Android 15)",
+  },
+  {
+    name: "iPad desktop mode",
+    native: true,
+    platform: "MacIntel",
+    supported: true,
+    touch: 5,
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+  },
+  {
+    name: "touchscreen Windows desktop",
+    native: false,
+    platform: "Win32",
+    supported: true,
+    touch: 10,
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+  },
+  {
+    name: "Mac desktop",
+    native: false,
+    platform: "MacIntel",
+    supported: true,
+    touch: 0,
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
+  },
+  {
+    name: "mobile without URL sharing support",
+    native: false,
+    platform: "iPhone",
+    supported: false,
+    touch: 5,
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+  },
+]) {
+  test(`sharing behavior on ${device.name}`, async ({ page }) => {
+    // Desktop cases deliberately keep the narrow viewport to rule out size-based detection.
+    await page.addInitScript((profile) => {
+      Object.defineProperties(navigator, {
+        canShare: { value: () => profile.supported },
+        clipboard: {
+          value: {
+            writeText: (url) => {
+              globalThis.copiedSearchLink = url;
+              return Promise.resolve();
+            },
+          },
+        },
+        maxTouchPoints: { value: profile.touch },
+        platform: { value: profile.platform },
+        share: {
+          value: (data) => {
+            globalThis.shareRequests.push(data);
+            if (globalThis.shareRequests.length === 1) {
+              return Promise.reject(new DOMException("Dismissed", "AbortError"));
+            }
+            if (globalThis.shareRequests.length === 2) {
+              return Promise.reject(new DOMException("Sharing unavailable", "NotAllowedError"));
+            }
+            return Promise.resolve();
+          },
+        },
+        userAgent: { value: profile.userAgent },
+      });
+      globalThis.shareRequests = [];
+      globalThis.copiedSearchLink = null;
+    }, device);
+    await mockSearchDependencies(page, (route) =>
+      route.fulfill({
+        json: {
+          ...emptySearch,
+          matches: [makeSimpleMatch("Share Cinema", "7 PM")],
+        },
+      }),
+    );
+    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
+    const shareButton = page.locator(".share-btn");
+    if (device.native) {
+      await expect(shareButton).toHaveText("Share");
+      await shareButton.click();
+      await expect(shareButton).toBeEnabled();
+      await expect(shareButton).toHaveText("Share");
+      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
+      await shareButton.click();
+      await expect(shareButton).toHaveText("Share failed — retry");
+      await shareButton.click();
+      await expect(shareButton).toBeEnabled();
+      await expect(shareButton).toHaveText("Share");
+      const shares = await page.evaluate(() => globalThis.shareRequests);
+      expect(shares).toHaveLength(3);
+      expect(shares[0]).toEqual({ title: "Movie Seat Finder search", url: page.url() });
+      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
+    } else {
+      await expect(shareButton).toHaveText("Copy link");
+      await shareButton.click();
+      await expect(shareButton).toHaveText("Copied!");
+      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(page.url());
+      expect(await page.evaluate(() => globalThis.shareRequests)).toEqual([]);
+    }
+  });
+}
 
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ height: 700, width: 320 });
