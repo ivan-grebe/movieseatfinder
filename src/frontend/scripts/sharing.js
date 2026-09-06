@@ -8,35 +8,57 @@ export function createShareButton(searchUrl) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "buy-btn share-btn";
-  button.textContent = "Copy link";
+  let defaultLabel = "Copy search link";
   if (nativeShare) {
-    button.textContent = "Share";
+    defaultLabel = "Share";
   }
-  button.setAttribute("aria-live", "polite");
+  const label = document.createElement("span");
+  label.className = "share-label";
+  label.textContent = defaultLabel;
+  label.setAttribute("aria-hidden", "true");
+  const feedback = document.createElement("span");
+  feedback.className = "share-feedback";
+  feedback.setAttribute("role", "status");
+  feedback.setAttribute("aria-live", "polite");
+  feedback.setAttribute("aria-hidden", "true");
+  button.append(label, feedback);
+  button.setAttribute("aria-label", defaultLabel);
+  let resetTimer = 0;
+
+  function resetFeedback() {
+    button.classList.remove("has-feedback");
+    button.setAttribute("aria-label", defaultLabel);
+    feedback.setAttribute("aria-hidden", "true");
+    button.title = "";
+  }
+
+  function showFeedback(text, title) {
+    feedback.textContent = text;
+    feedback.setAttribute("aria-hidden", "false");
+    button.classList.add("has-feedback");
+    button.setAttribute("aria-label", text);
+    button.title = title;
+  }
+
   button.addEventListener("click", async () => {
+    globalThis.clearTimeout(resetTimer);
+    resetFeedback();
     button.disabled = true;
     try {
       if (nativeShare) {
         await navigator.share(data);
-        button.textContent = "Share";
-        button.title = "";
       } else {
         await navigator.clipboard.writeText(searchUrl);
-        button.textContent = "Copied!";
-        button.title = "Search link copied to clipboard.";
+        showFeedback("Copied!", "Search link copied to clipboard.");
+        resetTimer = globalThis.setTimeout(resetFeedback, 2000);
       }
     } catch (error) {
       if (nativeShare) {
-        if (error.name === "AbortError") {
-          button.textContent = "Share";
-          button.title = "";
-        } else {
-          button.textContent = "Share failed — retry";
-          button.title = "Could not open sharing. Click to try again.";
+        if (error.name !== "AbortError") {
+          showFeedback("Share failed — retry", "Could not open sharing. Click to try again.");
         }
       } else {
-        button.textContent = "Copy failed — retry";
-        button.title = "Could not copy the search link. Click to try again.";
+        showFeedback("Copy failed — retry", "Could not copy the search link. Click to try again.");
       }
     } finally {
       button.disabled = false;

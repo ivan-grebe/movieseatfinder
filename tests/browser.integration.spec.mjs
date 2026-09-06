@@ -235,10 +235,17 @@ test("copy search links preserve result filters and restore them on reload and B
 
   // Unsubmitted edits must not change the link attached to the displayed results.
   await page.locator("#adjacentSeatsInput").fill("4");
-  await result.getByRole("button", { name: "Copy link" }).click();
-  await expect(result.getByRole("button", { name: "Copied!" })).toBeVisible();
+  const shareButton = result.locator(".share-btn");
+  const idleWidth = (await shareButton.boundingBox()).width;
+  await shareButton.click();
+  await expect(shareButton).toHaveAccessibleName("Copied!");
+  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
   expect(Object.fromEntries(new URL(copied).searchParams)).toEqual(expected);
+  await expect(shareButton).toHaveAccessibleName("Copy search link");
+  await expect(shareButton.locator(".share-label")).toHaveCSS("opacity", "1");
+  await expect(shareButton.locator(".share-feedback")).toHaveCSS("opacity", "0");
+  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
 
   await page.goto(copied);
   await expect(result).toHaveCount(1);
@@ -291,7 +298,7 @@ test("shared coordinate searches restore the origin and clipboard failures allow
     });
   });
   await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie");
-  const share = page.getByRole("button", { name: "Copy link" });
+  const share = page.getByRole("button", { name: "Copy search link" });
   await share.click();
   await expect(page.getByRole("button", { name: "Copy failed — retry" })).toBeVisible();
   await page.getByRole("button", { name: "Copy failed — retry" }).click();
@@ -396,24 +403,24 @@ for (const device of [
     await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
     const shareButton = page.locator(".share-btn");
     if (device.native) {
-      await expect(shareButton).toHaveText("Share");
+      await expect(shareButton).toHaveAccessibleName("Share");
       await shareButton.click();
       await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveText("Share");
+      await expect(shareButton).toHaveAccessibleName("Share");
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
       await shareButton.click();
-      await expect(shareButton).toHaveText("Share failed — retry");
+      await expect(shareButton).toHaveAccessibleName("Share failed — retry");
       await shareButton.click();
       await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveText("Share");
+      await expect(shareButton).toHaveAccessibleName("Share");
       const shares = await page.evaluate(() => globalThis.shareRequests);
       expect(shares).toHaveLength(3);
       expect(shares[0]).toEqual({ title: "Movie Seat Finder search", url: page.url() });
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
     } else {
-      await expect(shareButton).toHaveText("Copy link");
+      await expect(shareButton).toHaveAccessibleName("Copy search link");
       await shareButton.click();
-      await expect(shareButton).toHaveText("Copied!");
+      await expect(shareButton).toHaveAccessibleName("Copied!");
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(page.url());
       expect(await page.evaluate(() => globalThis.shareRequests)).toEqual([]);
     }
