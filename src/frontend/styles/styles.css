@@ -1325,16 +1325,25 @@ a:focus-visible {
 
 .site-footer {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
   width: min(100% - 48px, 1260px);
   margin: 0 auto;
   padding: 0 0 30px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  text-align: center;
 }
 
-.site-footer a {
+.footer-links {
+  display: flex;
+  justify-content: center;
+}
+
+.footer-links a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1345,13 +1354,33 @@ a:focus-visible {
   transition-timing-function: ease-out;
 }
 
-.site-footer a:hover {
+.footer-links a:hover {
   color: var(--accent-deep);
   background: var(--accent-soft);
 }
 
-.site-footer a:active {
+.footer-links a:active {
   transform: scale(0.96);
+}
+
+.footer-attribution {
+  max-width: 900px;
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.footer-attribution a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.footer-attribution a:hover {
+  color: var(--accent-deep);
+  text-decoration-color: currentColor;
 }
 
 .summary {
@@ -2486,7 +2515,8 @@ input[type="time"] {
     color: #d7dfeb;
   }
   .faq-back-link:hover,
-  .site-footer a:hover {
+  .footer-links a:hover,
+  .footer-attribution a:hover {
     color: #f08a83;
   }
 
