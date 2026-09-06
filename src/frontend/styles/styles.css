@@ -1224,6 +1224,32 @@ a:focus-visible {
   padding-top: 18px;
 }
 
+.shared-search #summary {
+  min-block-size: calc(2lh + 20px);
+}
+
+.shared-loading #resultsToolbar[hidden] {
+  display: grid;
+  visibility: hidden;
+}
+
+.shared-search:not(.shared-loading) :is(#summary, #resultsToolbar, #results) {
+  animation: shared-results-reveal 260ms ease-out both;
+}
+
+.shared-search #results > .result:not(.result-update) {
+  animation: none;
+}
+
+@keyframes shared-results-reveal {
+  from {
+    opacity: 0.01;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .shared-back {
   display: inline-flex;
   align-items: center;
@@ -2001,7 +2027,8 @@ input[type="time"] {
 
   .enter-item,
   .result,
-  .result.result-update {
+  .result.result-update,
+  .shared-search:not(.shared-loading) :is(#summary, #resultsToolbar, #results) {
     opacity: 1;
     transform: none;
     animation: none;
@@ -2328,6 +2355,10 @@ input[type="time"] {
 }
 
 @media (max-width: 520px) {
+  .shared-search #summary {
+    min-block-size: calc(3lh + 20px);
+  }
+
   .preferences-group .grid.thirds {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2357,6 +2388,12 @@ input[type="time"] {
     grid-column: 1 / -1;
     grid-row: 2;
     width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .shared-search #summary {
+    min-block-size: calc(4lh + 20px);
   }
 }
 

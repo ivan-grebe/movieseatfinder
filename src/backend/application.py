@@ -720,7 +720,7 @@ def index(request: Request):
     shared = request.query_params.get("shared") == "1"
     return HTMLResponse(
         INDEX_TEMPLATE.replace(
-            "__SHARED_SEARCH_CLASS__", "shared-search" if shared else ""
+            "__SHARED_SEARCH_CLASS__", "shared-search shared-loading" if shared else ""
         ).replace("__INITIAL_SUMMARY__", "Loading shared search…" if shared else "")
     )
 

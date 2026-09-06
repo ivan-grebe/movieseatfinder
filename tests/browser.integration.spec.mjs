@@ -573,6 +573,72 @@ for (const width of [390, 1280]) {
   });
 }
 
+for (const profile of [
+  { motion: "no-preference", width: 320 },
+  { motion: "no-preference", width: 390 },
+  { motion: "no-preference", width: 1280 },
+  { motion: "reduce", width: 390 },
+]) {
+  test(`shared results keep the header stable at ${profile.width}px with ${profile.motion} motion`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ height: 844, width: profile.width });
+    await page.emulateMedia({ reducedMotion: profile.motion });
+    const response = Promise.withResolvers();
+    await mockSearchDependencies(page, async (route) => {
+      await response.promise;
+      await route.fulfill({
+        json: {
+          ...emptySearch,
+          checkedSeatMaps: 123,
+          checkedShowtimes: 150,
+          matches: Array.from({ length: 9 }, (_, index) =>
+            makeSimpleMatch(`Cinema ${index + 1}`, "7 PM"),
+          ),
+        },
+      });
+    });
+    await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
+    await expect(page.locator("body")).toHaveClass(/shared-loading/u);
+    await page.evaluate(() => document.fonts.ready);
+    await expect(page.locator("#sortInput")).toBeHidden();
+    const before = await page.locator("#results-section").evaluate((section) => ({
+      resultsTop: section.querySelector("#results").offsetTop,
+      summaryHeight: section.querySelector("#summary").offsetHeight,
+      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
+    }));
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("shared-before.png"),
+    });
+    response.resolve();
+    await expect(page.locator(".result")).toHaveCount(9);
+    await expect(page.locator("body")).not.toHaveClass(/shared-loading/u);
+    const after = await page.locator("#results-section").evaluate((section) => ({
+      resultsTop: section.querySelector("#results").offsetTop,
+      summaryHeight: section.querySelector("#summary").offsetHeight,
+      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
+    }));
+    expect(after).toEqual(before);
+    let expectedAnimation = "shared-results-reveal";
+    if (profile.motion === "reduce") {
+      expectedAnimation = "none";
+    }
+    await Promise.all(
+      ["#summary", "#resultsToolbar", "#results"].map((selector) =>
+        expect(page.locator(selector)).toHaveCSS("animation-name", expectedAnimation),
+      ),
+    );
+    await expect(page.locator(".result").first()).toHaveCSS("animation-name", "none");
+    await expect(page.locator("#sortInput")).toBeEnabled();
+    await expect(page.getByRole("button", { exact: true, name: "Back" })).toBeInViewport();
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("shared-after.png"),
+    });
+  });
+}
+
 test("shared sorting and pagination preserve URL filters without loading options", async ({
   page,
 }) => {
