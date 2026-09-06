@@ -142,8 +142,12 @@ def compact_search_results(result, query, seat_map_request):
         "resultCount": len(options),
         "checkedShowtimes": result["checkedShowtimes"],
         "checkedSeatMaps": result["checkedSeatMaps"],
+        "failedSeatMaps": result["failedSeatMaps"],
         "message": (
-            "Present these compact options and offer the seat map or ticket link for a selected option."
+            "Results are incomplete because some seat maps could not be checked. "
+            "Present any confirmed options with this warning and offer to retry before changing constraints."
+            if result["failedSeatMaps"]
+            else "Present these compact options and offer the seat map or ticket link for a selected option."
             if options
             else "No matching live seat maps were found. Ask which explicit constraint the user wants to change."
         ),
@@ -389,8 +393,6 @@ def find_movie_seats(
     ] = (),
 ) -> dict[str, Any]:
     """Find live showtimes with seats matching a conversational preference."""
-    if start_time > end_time:
-        raise ValueError("start_time must be earlier than or equal to end_time.")
     selected_cells = resolved_seat_cells(seat_region, seat_cells)
     serialized_region = (
         seat_region.model_dump() if isinstance(seat_region, SeatRegion) else seat_region

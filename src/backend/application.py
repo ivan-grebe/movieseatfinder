@@ -363,8 +363,6 @@ def fandango_theatres(zip_code, radius, origin, show_date=None):
 def fandango_theatres_by_date(zip_code, radius, dates, origin):
     """Fetch (and cache) theatre+showtime payloads for many dates in parallel."""
     results = {}
-    successful_dates = 0
-    last_error = None
     with ThreadPoolExecutor(max_workers=min(8, len(dates))) as executor:
         future_map = {
             executor.submit(fandango_theatres, zip_code, radius, origin, show_date): show_date
@@ -374,12 +372,10 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin):
             show_date = future_map[future]
             try:
                 results[show_date] = future.result()
-                successful_dates += 1
             except (*UPSTREAM_ERRORS, ValueError) as error:
-                last_error = error
-                results[show_date] = []
-    if successful_dates == 0:
-        raise last_error
+                raise requests.RequestException(
+                    "Could not load showtimes for every selected date. Please try again."
+                ) from error
     return results
 
 
@@ -1142,6 +1138,8 @@ def find_seat_matches(
 ):
     """Run the shared live showtime and seat-map search operation."""
     try:
+        if start_time > end_time:
+            raise ValueError("Latest time must be on or after earliest time.")
         theatre_query = theatre.lower()
         movie_query = movie
         start_date = start_date or date.today()
@@ -1175,13 +1173,19 @@ def find_seat_matches(
             )
         )
 
+        failed_seat_maps = 0
+        failure_lock = threading.Lock()
+
         def check_candidate(candidate):
+            nonlocal failed_seat_maps
             theatre_item, showtime = candidate
             try:
                 seat_match = showtime_seat_match(
                     showtime, min_adjacent, selected_cells, exclude_accessible, seat_map
                 )
             except (*UPSTREAM_ERRORS, ValueError):
+                with failure_lock:
+                    failed_seat_maps += 1
                 return None
             if not seat_match:
                 return None
@@ -1208,6 +1212,11 @@ def find_seat_matches(
             return match
 
         matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
+        if failed_seat_maps and failed_seat_maps == checked_seat_maps:
+            raise HTTPException(
+                status_code=502,
+                detail="Seat availability could not be checked. Please try again.",
+            )
 
         return {
             "matches": matches[page_start:page_end],
@@ -1217,6 +1226,7 @@ def find_seat_matches(
             "hasNextPage": len(matches) > page_end,
             "checkedShowtimes": len(candidates),
             "checkedSeatMaps": checked_seat_maps,
+            "failedSeatMaps": failed_seat_maps,
             "accessibleSeatsExcluded": exclude_accessible,
         }
     except ValueError as error:

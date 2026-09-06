@@ -212,11 +212,11 @@
           <div class="grid thirds">
             <label class="time-field">
               Earliest time
-              <input id="startTimeInput" type="time" value="00:00">
+              <input id="startTimeInput" type="time" value="00:00" required aria-describedby="timeStatus">
             </label>
             <label class="time-field">
               Latest time
-              <input id="endTimeInput" type="time" value="23:59">
+              <input id="endTimeInput" type="time" value="23:59" required aria-describedby="timeStatus">
             </label>
             <label>
               Seats together
@@ -224,6 +224,7 @@
             </label>
           </div>
 
+          <div id="timeStatus" class="status field-status" aria-live="polite"></div>
           <label class="check accessible-check">
             <input id="excludeAccessibleInput" type="checkbox" checked>
             <span class="check-box" aria-hidden="true"></span>

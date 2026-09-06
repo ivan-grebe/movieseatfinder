@@ -33,6 +33,7 @@ const {
   formatGuideContent,
   startTimeInput,
   endTimeInput,
+  timeStatus,
   adjacentSeatsInput,
   excludeAccessibleInput,
   preferencesGroup,
@@ -482,8 +483,26 @@ function finishReorder({ restoreScroll = true } = {}) {
   }
 }
 
+function validateTimeWindow() {
+  const invalid = startTimeInput.value > endTimeInput.value;
+  let message = "";
+  let state = "";
+  if (invalid) {
+    message = "Latest time must be on or after earliest time.";
+    state = "error";
+  }
+  endTimeInput.setCustomValidity(message);
+  endTimeInput.setAttribute("aria-invalid", String(invalid));
+  setStatus(timeStatus, message, state);
+  return !invalid;
+}
+
 function validateSearchInputs() {
   syncEndDateBounds();
+  if (!validateTimeWindow()) {
+    endTimeInput.reportValidity();
+    return false;
+  }
   if (!hasSearchLocation()) {
     reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
     return false;
@@ -554,7 +573,7 @@ async function runNewSearch() {
     if (!isCurrent()) {
       return;
     }
-    setSummary(summary, error.message, true);
+    resultsView.renderError(error.message);
   } finally {
     stopLoadingStages();
     if (isCurrent()) {
@@ -810,6 +829,9 @@ function bindEvents() {
     runReorder();
   });
   useLocationButton.addEventListener("click", requestLocation);
+  [startTimeInput, endTimeInput].forEach((input) =>
+    input.addEventListener("input", validateTimeWindow),
+  );
   zipInput.addEventListener("input", () => {
     setLocationReady(false);
     zipInput.setCustomValidity("");

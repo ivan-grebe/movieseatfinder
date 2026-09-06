@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const emptySearch = {
   checkedSeatMaps: 1,
   checkedShowtimes: 1,
+  failedSeatMaps: 0,
   hasNextPage: false,
   hasPreviousPage: false,
   matches: [],
@@ -72,6 +73,87 @@ async function selectMovie(page, title = "Test Movie") {
   await page.getByRole("option", { exact: true, name: title }).click();
   await expect(input).toHaveValue(title);
 }
+
+test("backwards time windows show an inline error and recover when corrected", async ({ page }) => {
+  let searches = 0;
+  await mockSearchDependencies(page, (route) => {
+    searches += 1;
+    return route.fulfill({ json: emptySearch });
+  });
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await selectMovie(page);
+  await page.locator("#startTimeInput").fill("21:00");
+  await page.locator("#endTimeInput").fill("17:00");
+  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+  await expect(page.locator("#timeStatus")).toHaveText(
+    "Latest time must be on or after earliest time.",
+  );
+  await expect(page.locator("#endTimeInput")).toHaveAttribute("aria-invalid", "true");
+  expect(searches).toBe(0);
+  await page.locator("#startTimeInput").fill("16:00");
+  await expect(page.locator("#timeStatus")).toBeEmpty();
+  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+  await expect(page.locator("#summary")).toContainText("No matching showtimes");
+  expect(searches).toBe(1);
+});
+
+for (const hasMatches of [true, false]) {
+  test(`incomplete seat searches show a retry warning with matches=${hasMatches}`, async ({
+    page,
+  }) => {
+    const matches = [];
+    if (hasMatches) {
+      matches.push(makeSimpleMatch("Confirmed Cinema", "7 PM"));
+    }
+    await mockSearchDependencies(page, (route) =>
+      route.fulfill({
+        json: {
+          ...emptySearch,
+          checkedSeatMaps: 2,
+          failedSeatMaps: 1,
+          matches,
+        },
+      }),
+    );
+    await page.goto("/");
+    await page.locator("#zipInput").fill("10001");
+    await selectMovie(page);
+    await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+    await expect(page.locator("#summary")).toContainText("Results are incomplete");
+    await expect(page.locator("#summary")).toContainText("1 seat map could not be checked");
+    if (hasMatches) {
+      await expect(page.getByRole("heading", { name: "Confirmed Cinema" })).toBeVisible();
+    } else {
+      await expect(page.locator(".empty-state")).toContainText(
+        "Retry before changing your preferences",
+      );
+      await expect(page.locator("#summary")).not.toContainText("No matching showtimes");
+    }
+  });
+}
+
+test("a total availability failure displays an error without widening advice", async ({ page }) => {
+  let searches = 0;
+  await mockSearchDependencies(page, (route) => {
+    searches += 1;
+    if (searches === 1) {
+      return route.fulfill({ json: emptySearch });
+    }
+    return route.fulfill({
+      json: { error: "Seat availability could not be checked. Please try again." },
+      status: 502,
+    });
+  });
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await selectMovie(page);
+  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+  await expect(page.locator(".empty-state")).toContainText("Try widening");
+  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+  await expect(page.locator("#summary")).toContainText("Seat availability could not be checked");
+  await expect(page.locator("#results")).toBeEmpty();
+});
 
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ height: 700, width: 320 });
