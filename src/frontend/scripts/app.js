@@ -616,6 +616,7 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
     if (isCurrent()) {
       setSearchButtonBusy(false);
       sortInput.disabled = false;
+      document.body.classList.remove("shared-loading");
       if (scrollToResults) {
         const section = results.closest("section");
         section.focus({ preventScroll: true });
@@ -855,7 +856,7 @@ function bindEvents() {
     if (results.childElementCount === 0) {
       setSummary(summary, "", true);
     }
-    document.body.classList.remove("shared-search");
+    document.body.classList.remove("shared-search", "shared-loading");
     const url = new URL(globalThis.location.href);
     url.searchParams.delete("shared");
     globalThis.history.replaceState({ showControls: true }, "", url.href);
@@ -1007,6 +1008,7 @@ async function initialize() {
 
   const shouldSearchFromUrl = applyQueryParams();
   document.body.classList.toggle("shared-search", sharedSearch);
+  document.body.classList.toggle("shared-loading", sharedSearch);
   if (sharedSearch) {
     logSharedLinkVisit();
     results.replaceChildren();

@@ -488,7 +488,7 @@ class RouteTests(unittest.TestCase):
 
     def test_shared_links_render_results_only_before_javascript_loads(self):
         shared = self.client.get("/", params={"shared": "1", "movie": "Test Movie"})
-        self.assertIn('<body class="shared-search">', shared.text)
+        self.assertIn('<body class="shared-search shared-loading">', shared.text)
         self.assertIn("Loading shared search…", shared.text)
         self.assertIn('id="backToSearchButton"', shared.text)
         normal = self.client.get("/", params={"movie": "Test Movie"})
