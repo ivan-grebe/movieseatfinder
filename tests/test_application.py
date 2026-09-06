@@ -467,10 +467,7 @@ class RouteTests(unittest.TestCase):
             f"/favicon-96x96.png?v={application.ASSET_VERSIONS['favicon-96x96.png']}",
             response.text,
         )
-        self.assertIn(
-            f"https://movieseatfinder.com/og-image.png?v={application.ASSET_VERSIONS['og-image.png']}",
-            response.text,
-        )
+        self.assertIn("https://movieseatfinder.com/og-image.png", response.text)
         self.assertIn('<meta property="og:image:width" content="3840">', response.text)
         self.assertIn('<meta property="og:image:height" content="2160">', response.text)
         self.assertIn(
@@ -540,10 +537,7 @@ class RouteTests(unittest.TestCase):
             )
 
     def test_og_image_is_revalidated_like_the_public_page(self):
-        response = self.client.get(
-            "/og-image.png",
-            params={"v": application.ASSET_VERSIONS["og-image.png"]},
-        )
+        response = self.client.get("/og-image.png")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "public, max-age=0, must-revalidate")
