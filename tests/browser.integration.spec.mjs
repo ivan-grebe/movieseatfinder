@@ -188,6 +188,7 @@ for (const scenario of [
     expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
     response.resolve();
     await expect(page.locator("#results-section")).toBeFocused();
+    await expect(page.locator("#results-section")).toHaveCSS("outline-style", "none");
     expect(await page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
     if (scenario.outcome === "matches") {
       await expect(page.locator(".result").first()).toBeInViewport();

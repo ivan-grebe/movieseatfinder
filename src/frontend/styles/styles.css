@@ -1191,6 +1191,10 @@ a:focus-visible {
   padding: 42px 0 0;
 }
 
+.results-section:focus {
+  outline: none;
+}
+
 .faq-section {
   width: min(760px, 100%);
   margin: 72px auto 8px;
