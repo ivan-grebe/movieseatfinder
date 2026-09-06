@@ -244,7 +244,7 @@ export function createResultsView({
     label.textContent = errorMessage;
   }
 
-  function render(data, { isUpdate = false } = {}) {
+  function render(data, { isUpdate = false, searchUrl } = {}) {
     const matches = data.matches;
     results.replaceChildren();
     const incomplete = data.failedSeatMaps > 0;
@@ -342,10 +342,6 @@ export function createResultsView({
       meta.className = "result-meta";
       meta.append(makeTag(match.format, ICON_FILM));
       meta.append(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
-      const open = document.createElement("span");
-      open.className = "result-open";
-      open.textContent = `${match.seatMap.availableSeatCount} of ${match.seatMap.totalSeatCount} seats open`;
-      meta.append(open);
       details.append(meta);
       body.append(details);
       item.append(body);
@@ -357,6 +353,8 @@ export function createResultsView({
         item.append(amenities);
       }
       item.append(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
+      const actions = document.createElement("div");
+      actions.className = "result-actions";
       if (match.ticketUrl) {
         const link = document.createElement("a");
         link.className = "buy-btn";
@@ -365,8 +363,25 @@ export function createResultsView({
         link.target = "_blank";
         link.rel = "noreferrer";
         link.addEventListener("click", logTicketClick);
-        item.append(link);
+        actions.append(link);
       }
+      const share = document.createElement("button");
+      share.type = "button";
+      share.className = "buy-btn share-btn";
+      share.textContent = "Copy search link";
+      share.setAttribute("aria-live", "polite");
+      share.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(searchUrl);
+          share.textContent = "Copied!";
+          share.title = "Search link copied to clipboard.";
+        } catch {
+          share.textContent = "Copy failed — retry";
+          share.title = "Could not copy the search link. Click to try again.";
+        }
+      });
+      actions.append(share);
+      item.append(actions);
       results.append(item);
     });
   }

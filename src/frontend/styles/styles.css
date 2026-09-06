@@ -1633,12 +1633,6 @@ a:focus-visible {
   height: 100%;
 }
 
-.result-open {
-  color: var(--good);
-  font-size: 11px;
-  font-weight: 850;
-}
-
 .result-amenities {
   margin: 9px 0 0;
   color: var(--muted);
@@ -1870,11 +1864,18 @@ a:focus-visible {
   color: var(--danger);
 }
 
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 13px;
+}
+
 .buy-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 13px;
   padding: 9px 13px 9px 15px;
   border-radius: 11px;
   color: #fff;
@@ -1895,8 +1896,17 @@ a:focus-visible {
   transform: scale(0.96);
 }
 
+.share-btn {
+  color: #26303c;
+  background: #e5e7eb;
+  box-shadow: var(--shadow-border);
+}
+
+.share-btn:hover {
+  background: #f3f4f6;
+}
+
 .status,
-.result-open,
 .summary,
 input[type="number"],
 input[type="date"],

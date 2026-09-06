@@ -524,7 +524,7 @@ function validateSearchInputs() {
   return true;
 }
 
-function fetchSearchResults() {
+async function fetchSearchResults() {
   const params = baseParams();
   params.set("movie", selectedMovie.title);
   params.set("format", formatPicker.value());
@@ -543,10 +543,24 @@ function fetchSearchResults() {
   if (selectedCells.length > 0) {
     params.set("seatGrid", selectedCells.join(","));
   }
-  return getJson(`/api/search?${params}`);
+  const data = await getJson(`/api/search?${params}`);
+  params.delete("pageSize");
+  const url = new URL("/", globalThis.location.origin);
+  url.search = params.toString();
+  return { data, searchUrl: url.href };
 }
 
-async function runNewSearch() {
+function rememberSearch(searchUrl, replaceHistory = false) {
+  if (globalThis.location.href !== searchUrl) {
+    if (replaceHistory) {
+      globalThis.history.replaceState(null, "", searchUrl);
+    } else {
+      globalThis.history.pushState(null, "", searchUrl);
+    }
+  }
+}
+
+async function runNewSearch({ replaceHistory = false } = {}) {
   finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
@@ -564,11 +578,12 @@ async function runNewSearch() {
     }
   });
   try {
-    const data = await fetchSearchResults();
+    const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
-    resultsView.render(data);
+    rememberSearch(searchUrl, replaceHistory);
+    resultsView.render(data, { searchUrl });
   } catch (error) {
     if (!isCurrent()) {
       return;
@@ -595,11 +610,12 @@ async function runPageChange(page) {
   resultsView.setPageLoading();
   showResultsSpinner("Loading page");
   try {
-    const data = await fetchSearchResults();
+    const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
-    resultsView.render(data, { isUpdate: true });
+    rememberSearch(searchUrl);
+    resultsView.render(data, { isUpdate: true, searchUrl });
     const firstResult = results.firstElementChild;
     firstResult.tabIndex = -1;
     firstResult.focus({ preventScroll: true });
@@ -629,11 +645,12 @@ async function runReorder() {
   showResultsSpinner("Reordering results");
   let errorMessage = "";
   try {
-    const data = await fetchSearchResults();
+    const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
-    resultsView.render(data, { isUpdate: true });
+    rememberSearch(searchUrl);
+    resultsView.render(data, { isUpdate: true, searchUrl });
   } catch {
     if (!isCurrent()) {
       return;
@@ -682,10 +699,22 @@ function applyQueryParams() {
   if (params.has("seatGrid")) {
     seatGrid.select(params.get("seatGrid").split(","));
   }
-  if (params.has("format")) {
-    const formats = params.get("format").split(",").filter(Boolean);
-    formatPicker.setOptions(formats.filter((format) => format !== "any"));
-    formatPicker.select(formats);
+  if (params.has("lat") && params.has("lon")) {
+    const latitude = Number(params.get("lat"));
+    const longitude = Number(params.get("lon"));
+    if (
+      Number.isFinite(latitude) &&
+      Math.abs(latitude) <= 90 &&
+      Number.isFinite(longitude) &&
+      Math.abs(longitude) <= 180
+    ) {
+      preciseLocation = { latitude, longitude };
+      setStatus(locationStatus, "Using shared search location");
+    }
+  }
+  const page = Number(params.get("page"));
+  if (Number.isSafeInteger(page) && page > 0) {
+    currentPage = page;
   }
   return params.has("movie");
 }
@@ -786,6 +815,7 @@ function queueCriteriaRefresh() {
 }
 
 function bindEvents() {
+  globalThis.addEventListener("popstate", () => globalThis.location.reload());
   window.addEventListener("pageshow", () => setLocationReady(locationReady));
   formatGuideButton.addEventListener("click", () => {
     const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
@@ -913,8 +943,11 @@ async function initialize() {
     }
     if (theatresLoaded && shouldSearchFromUrl && selectedMovie) {
       await loadFormats();
-      currentPage = 1;
-      runNewSearch();
+      const formats = new URLSearchParams(globalThis.location.search).get("format");
+      if (formats) {
+        formatPicker.select(formats.split(",").filter(Boolean));
+      }
+      runNewSearch({ replaceHistory: true });
     }
   }
 }

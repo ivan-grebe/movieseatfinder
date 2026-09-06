@@ -157,6 +157,152 @@ test("a total availability failure displays an error without widening advice", a
   await expect(page.locator("#results")).toBeEmpty();
 });
 
+test("copy search links preserve result filters and restore them on reload and Back", async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: (text) => {
+          globalThis.copiedSearchLink = text;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  const requests = [];
+  await mockSearchDependencies(
+    page,
+    (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requests.push(Object.fromEntries(params));
+      return route.fulfill({
+        json: {
+          ...emptySearch,
+          matches: [
+            makeSimpleMatch("Shared Cinema", "7 PM", "Reserved seating, Recliners, Closed caption"),
+          ],
+          page: Number(params.get("page")),
+        },
+      });
+    },
+    ["IMAX", "Dolby Cinema"],
+  );
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      json: {
+        place: "Testville",
+        theatres: [{ name: "Shared Cinema" }],
+      },
+    }),
+  );
+  const today = new Date();
+  const date = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+  const params = new URLSearchParams({
+    adjacentSeats: "3",
+    endDate: date,
+    endTime: "23:00",
+    excludeAccessible: "0",
+    format: "IMAX,Dolby Cinema",
+    movie: "Test Movie",
+    page: "2",
+    radius: "15",
+    seatGrid: "7:7,7:8",
+    sort: "nearest",
+    startDate: date,
+    startTime: "17:00",
+    theatre: "Shared Cinema",
+    zip: "10001",
+  });
+  await page.goto("/");
+  const initialHistoryLength = await page.evaluate(() => globalThis.history.length);
+  await page.goto(`/?${params}`);
+  const result = page.locator(".result");
+  await expect(result).toHaveCount(1);
+  expect(await page.evaluate(() => globalThis.history.length)).toBe(initialHistoryLength + 1);
+  await expect(result.locator(".result-open")).toHaveCount(0);
+  await expect(result.locator(".real-seat-map-title")).toContainText("1 available / 1 total");
+  await expect(result.locator(".result-amenities")).toHaveText(
+    "Reserved seating, Recliners, Closed caption",
+  );
+  await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
+  const expected = Object.fromEntries(params);
+  expect(requests.at(-1)).toMatchObject(expected);
+
+  // Unsubmitted edits must not change the link attached to the displayed results.
+  await page.locator("#adjacentSeatsInput").fill("4");
+  await result.getByRole("button", { name: "Copy search link" }).click();
+  await expect(result.getByRole("button", { name: "Copied!" })).toBeVisible();
+  const copied = await page.evaluate(() => globalThis.copiedSearchLink);
+  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual(expected);
+
+  await page.goto(copied);
+  await expect(result).toHaveCount(1);
+  await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
+  await expect(page.locator("#sortInput")).toHaveValue("nearest");
+  await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
+  expect(requests.at(-1)).toMatchObject(expected);
+  await page.locator("#sortInput").selectOption("latest");
+  await expect(page).toHaveURL(/sort=latest/u);
+  await page.goBack();
+  await expect(page.locator("#sortInput")).toHaveValue("nearest");
+  await expect(result).toHaveCount(1);
+  expect(requests.at(-1)).toMatchObject(expected);
+  const buttons = await result.locator(".result-actions").evaluate((element) => {
+    const [tickets, share] = element.children;
+    return {
+      shareTop: share.getBoundingClientRect().top,
+      ticketsTop: tickets.getBoundingClientRect().top,
+    };
+  });
+  expect(buttons.shareTop).toBe(buttons.ticketsTop);
+  await result.screenshot({ path: testInfo.outputPath("share-light.png") });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await result.screenshot({ path: testInfo.outputPath("share-dark.png") });
+});
+
+test("shared coordinate searches restore the origin and clipboard failures allow retry", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let attempts = 0;
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: (text) => {
+          attempts += 1;
+          if (attempts === 1) {
+            return Promise.reject(new Error("Clipboard unavailable"));
+          }
+          globalThis.copiedSearchLink = text;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  let search = null;
+  await mockSearchDependencies(page, (route) => {
+    search = new URL(route.request().url()).searchParams;
+    return route.fulfill({
+      json: { ...emptySearch, matches: [makeSimpleMatch("Nearby Cinema", "7 PM")] },
+    });
+  });
+  await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie");
+  const share = page.getByRole("button", { name: "Copy search link" });
+  await share.click();
+  await expect(page.getByRole("button", { name: "Copy failed — retry" })).toBeVisible();
+  await page.getByRole("button", { name: "Copy failed — retry" }).click();
+  await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
+  expect(search.get("lat")).toBe("40.75");
+  expect(search.get("lon")).toBe("-73.99");
+  const copied = new URL(await page.evaluate(() => globalThis.copiedSearchLink));
+  expect(copied.searchParams.get("lat")).toBe("40.75");
+  expect(copied.searchParams.get("lon")).toBe("-73.99");
+});
+
 test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
   await page.setViewportSize({ height: 700, width: 320 });
   await page.goto("/");
