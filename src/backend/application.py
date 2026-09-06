@@ -86,6 +86,7 @@ ASSET_VERSIONS = {
     ).hexdigest()[:12],
     "favicon.ico": hashlib.sha256((BRANDING_DIR / "favicon.ico").read_bytes()).hexdigest()[:12],
     "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
+    "og-image.png": hashlib.sha256((BRANDING_DIR / "og-image.png").read_bytes()).hexdigest()[:12],
     "web-app-manifest-192x192.png": hashlib.sha256(
         (BRANDING_DIR / "web-app-manifest-192x192.png").read_bytes()
     ).hexdigest()[:12],
@@ -725,7 +726,7 @@ def seo_context(request, path="/"):
         "__FAQ_DESCRIPTION__": FAQ_DESCRIPTION,
         "__SITE_URL__": origin,
         "__CANONICAL_URL__": f"{origin}{path}",
-        "__OG_IMAGE_URL__": f"{origin}/og-image.png",
+        "__OG_IMAGE_URL__": f"{origin}/og-image.png?v={ASSET_VERSIONS['og-image.png']}",
     }
 
 
