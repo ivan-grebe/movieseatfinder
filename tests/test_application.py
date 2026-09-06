@@ -486,6 +486,16 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8", path)
             self.assertEqual(response.content, b"", path)
 
+    def test_public_pages_attribute_external_data_sources(self):
+        for path in ("/", "/faq"):
+            response = self.client.get(path, headers={"host": "example.test"})
+            self.assertIn('href="https://www.fandango.com/"', response.text, path)
+            self.assertIn('href="https://www.openstreetmap.org/copyright"', response.text, path)
+            self.assertIn("© OpenStreetMap contributors", response.text, path)
+            self.assertIn(
+                "is not affiliated with, endorsed by, or operated by Fandango", response.text, path
+            )
+
     def test_raw_template_and_frontend_sources_are_not_served(self):
         redirect = self.client.get("/index.html", follow_redirects=False)
         self.assertEqual(redirect.status_code, 308)
