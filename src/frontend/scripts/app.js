@@ -560,7 +560,7 @@ function rememberSearch(searchUrl, replaceHistory = false) {
   }
 }
 
-async function runNewSearch({ replaceHistory = false } = {}) {
+async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
   finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
@@ -594,6 +594,11 @@ async function runNewSearch({ replaceHistory = false } = {}) {
     if (isCurrent()) {
       setSearchButtonBusy(false);
       sortInput.disabled = false;
+      if (scrollToResults) {
+        const section = results.closest("section");
+        section.focus({ preventScroll: true });
+        section.scrollIntoView({ behavior: "instant", block: "start" });
+      }
     }
   }
 }
@@ -947,7 +952,7 @@ async function initialize() {
       if (formats) {
         formatPicker.select(formats.split(",").filter(Boolean));
       }
-      runNewSearch({ replaceHistory: true });
+      runNewSearch({ replaceHistory: true, scrollToResults: true });
     }
   }
 }
