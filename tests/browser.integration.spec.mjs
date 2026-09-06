@@ -157,6 +157,50 @@ test("a total availability failure displays an error without widening advice", a
   await expect(page.locator("#results")).toBeEmpty();
 });
 
+for (const scenario of [
+  { outcome: "matches", width: 390 },
+  { outcome: "matches", width: 1280 },
+  { outcome: "empty", width: 390 },
+  { outcome: "error", width: 390 },
+]) {
+  test(`shared searches reveal ${scenario.outcome} after loading at ${scenario.width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ height: 844, width: scenario.width });
+    const response = Promise.withResolvers();
+    await mockSearchDependencies(page, async (route) => {
+      await response.promise;
+      if (scenario.outcome === "error") {
+        await route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
+        return;
+      }
+      const matches = [];
+      if (scenario.outcome === "matches") {
+        matches.push(makeSimpleMatch("Shared Cinema", "7 PM"));
+      }
+      await route.fulfill({ json: { ...emptySearch, matches } });
+    });
+    await page.goto("/");
+    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
+    await expect(page.locator("#results-section")).not.toBeFocused();
+    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
+    await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
+    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
+    response.resolve();
+    await expect(page.locator("#results-section")).toBeFocused();
+    expect(await page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
+    if (scenario.outcome === "matches") {
+      await expect(page.locator(".result").first()).toBeInViewport();
+    } else if (scenario.outcome === "empty") {
+      await expect(page.getByText("No matching showtimes", { exact: true })).toBeInViewport();
+    } else {
+      await expect(
+        page.getByText("Search unavailable. Try again.", { exact: true }),
+      ).toBeInViewport();
+    }
+  });
+}
+
 test("copy search links preserve result filters and restore them on reload and Back", async ({
   page,
 }, testInfo) => {
