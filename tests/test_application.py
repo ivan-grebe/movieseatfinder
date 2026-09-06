@@ -407,7 +407,7 @@ class CacheTests(unittest.TestCase):
         side_effect=application.requests.RequestException("upstream down"),
     )
     def test_all_date_failures_are_propagated(self, fandango_theatres):
-        with self.assertRaisesRegex(application.requests.RequestException, "upstream down"):
+        with self.assertRaisesRegex(application.requests.RequestException, "every selected date"):
             application.fandango_theatres_by_date(
                 "10001", 25, ["2026-07-22", "2026-07-23"], (40.75, -73.99)
             )

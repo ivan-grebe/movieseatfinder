@@ -252,11 +252,18 @@ export function createResultsView({
       showingStart = (data.page - 1) * data.pageSize + 1;
     }
     const showingEnd = showingStart + matches.length - 1;
+    const incomplete = data.failedSeatMaps > 0;
     let pageText = "No matching showtimes";
+    if (incomplete) {
+      pageText = "No matches confirmed in an incomplete search";
+    }
     if (matches.length > 0) {
       pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
     }
-    const summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+    let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+    if (incomplete) {
+      summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
+    }
     setSummary(summary, summaryText, matches.length === 0);
     resultsToolbar.hidden = matches.length === 0;
     renderPagination(data);
@@ -266,6 +273,10 @@ export function createResultsView({
       hint.className = "empty-state";
       const hintText = document.createElement("p");
       hintText.textContent = "Try widening the time range, seat area, or dates.";
+      if (incomplete) {
+        hintText.textContent =
+          "Some seat availability could not be checked. Retry before changing your preferences.";
+      }
       hint.append(hintText);
       results.append(hint);
       return;
@@ -362,5 +373,13 @@ export function createResultsView({
     });
   }
 
-  return { beginReorder, endPageLoading, endReorder, render, setPageLoading };
+  function renderError(message) {
+    results.replaceChildren();
+    pagination.replaceChildren();
+    lastPaginationData = null;
+    resultsToolbar.hidden = true;
+    setSummary(summary, message, true);
+  }
+
+  return { beginReorder, endPageLoading, endReorder, render, renderError, setPageLoading };
 }

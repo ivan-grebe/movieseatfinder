@@ -48,6 +48,7 @@ export const elements = {
   theatreMenu: byId("theatreMenu"),
   theatreMeta: byId("theatreMeta"),
   theatreStatus: byId("theatreStatus"),
+  timeStatus: byId("timeStatus"),
   useLocationButton: byId("useLocationButton"),
   zipInput: byId("zipInput"),
 };

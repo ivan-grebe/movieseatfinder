@@ -77,6 +77,7 @@ def sample_search_result():
         ],
         "checkedShowtimes": 7,
         "checkedSeatMaps": 3,
+        "failedSeatMaps": 0,
     }
 
 
@@ -163,8 +164,8 @@ class McpToolTests(unittest.TestCase):
         )
 
     def test_find_movie_seats_rejects_a_backwards_time_window_without_searching(self):
-        with patch.object(server.application, "find_seat_matches") as find_seat_matches:
-            with self.assertRaisesRegex(ValueError, "start_time"):
+        with patch.object(server.application, "api_search_location") as resolve_location:
+            with self.assertRaisesRegex(ValueError, "Latest time"):
                 server.find_movie_seats(
                     movie="The Odyssey",
                     start_date=date(2026, 8, 4),
@@ -176,7 +177,28 @@ class McpToolTests(unittest.TestCase):
                     start_time="20:00",
                     end_time="18:00",
                 )
-        find_seat_matches.assert_not_called()
+        resolve_location.assert_not_called()
+
+    def test_compact_results_preserve_incomplete_search_warning(self):
+        for has_matches in (True, False):
+            with self.subTest(has_matches=has_matches):
+                result = sample_search_result()
+                result["failedSeatMaps"] = 2
+                if not has_matches:
+                    result["matches"] = []
+                compact = server.compact_search_results(
+                    result,
+                    {},
+                    {
+                        "seat_region": None,
+                        "seat_cells": [],
+                        "adjacent_seats": 2,
+                        "exclude_accessible": True,
+                    },
+                )
+                self.assertEqual(compact["failedSeatMaps"], 2)
+                self.assertIn("incomplete", compact["message"])
+                self.assertIn("retry", compact["message"])
 
     @patch.object(
         server.application,

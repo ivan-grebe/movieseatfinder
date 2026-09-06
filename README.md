@@ -22,7 +22,7 @@ Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adj
 - Find adjacent seats in a custom auditorium region.
 - Preview normalized seat maps and exclude accessible seats when needed.
 - Use guarded API routes with validation, rate limiting, and safe ticket URLs.
-- Connect messaging assistants through an authenticated MCP movie-seat search tool.
+- Connect messaging assistants through a public MCP movie-seat search tool with no authentication required.
 
 ## Run locally
 
