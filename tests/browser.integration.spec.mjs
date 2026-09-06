@@ -306,9 +306,10 @@ test("copy search links preserve result filters and restore them on reload and B
   expect(requests.at(-1)).toMatchObject(expected);
   const buttons = await result.locator(".result-actions").evaluate((element) => {
     const [tickets, share] = element.children;
+    // Compare layout positions without hover or entrance transforms.
     return {
-      shareTop: share.getBoundingClientRect().top,
-      ticketsTop: tickets.getBoundingClientRect().top,
+      shareTop: share.offsetTop,
+      ticketsTop: tickets.offsetTop,
     };
   });
   expect(buttons.shareTop).toBe(buttons.ticketsTop);
