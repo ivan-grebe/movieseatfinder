@@ -1497,7 +1497,6 @@ a:focus-visible {
 .empty-state p {
   max-width: 38ch;
   margin: 0;
-  font-size: 13px;
   text-wrap: balance;
 }
 

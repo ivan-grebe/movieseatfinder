@@ -94,7 +94,7 @@ test("backwards time windows show an inline error and recover when corrected", a
   await page.locator("#startTimeInput").fill("16:00");
   await expect(page.locator("#timeStatus")).toBeEmpty();
   await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-  await expect(page.locator("#summary")).toContainText("No matching showtimes");
+  await expect(page.locator(".empty-state")).toContainText("No matching showtimes");
   expect(searches).toBe(1);
 });
 
@@ -120,15 +120,17 @@ for (const hasMatches of [true, false]) {
     await page.locator("#zipInput").fill("10001");
     await selectMovie(page);
     await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-    await expect(page.locator("#summary")).toContainText("Results are incomplete");
-    await expect(page.locator("#summary")).toContainText("1 seat map could not be checked");
     if (hasMatches) {
+      await expect(page.locator("#summary")).toContainText("Results are incomplete");
+      await expect(page.locator("#summary")).toContainText("1 seat map could not be checked");
       await expect(page.getByRole("heading", { name: "Confirmed Cinema" })).toBeVisible();
     } else {
+      await expect(page.locator(".empty-state strong")).toHaveText("Search incomplete");
       await expect(page.locator(".empty-state")).toContainText(
         "Retry before changing your preferences",
       );
-      await expect(page.locator("#summary")).not.toContainText("No matching showtimes");
+      await expect(page.locator("#summary")).toBeEmpty();
+      await expect(page.locator("#summary")).toBeHidden();
     }
   });
 }
@@ -360,7 +362,15 @@ test("mobile search keeps content stable while loading and then renders its resp
   await expect(emptyState).toBeVisible();
 
   releaseSearch();
-  await expect(page.locator("#summary")).toContainText("No matching showtimes");
+  await expect(emptyState.locator("strong")).toHaveText("No matching showtimes");
+  await expect(emptyState.locator("p")).toHaveText(
+    "Try widening the time range, seat area, or dates.",
+  );
+  await expect(emptyState).toHaveAttribute("role", "status");
+  await expect(page.locator("#summary")).toBeEmpty();
+  await expect(page.locator("#summary")).toBeHidden();
+  await expect(page.locator("#resultsToolbar")).toBeHidden();
+  await expect(page.locator("#results").locator(":scope > *")).toHaveCount(1);
   await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
 });
 
