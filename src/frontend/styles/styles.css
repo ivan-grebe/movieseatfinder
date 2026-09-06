@@ -1897,13 +1897,31 @@ a:focus-visible {
 }
 
 .share-btn {
-  color: #26303c;
-  background: #e5e7eb;
-  box-shadow: var(--shadow-border);
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+  background: rgba(127, 127, 127, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.16);
+  transition-property: transform, background, box-shadow;
 }
 
 .share-btn:hover {
-  background: #f3f4f6;
+  background: rgba(127, 127, 127, 0.2);
+}
+
+.share-label,
+.share-feedback {
+  grid-area: 1 / 1;
+  transition: opacity 180ms ease;
+}
+
+.share-feedback,
+.share-btn.has-feedback .share-label {
+  opacity: 0;
+}
+
+.share-btn.has-feedback .share-feedback {
+  opacity: 1;
 }
 
 .status,
@@ -1953,6 +1971,8 @@ input[type="time"] {
   .btn-primary,
   .btn-small,
   .buy-btn,
+  .share-label,
+  .share-feedback,
   .github-link,
   .combo-option {
     transition-duration: 0ms;
