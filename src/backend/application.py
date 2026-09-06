@@ -82,7 +82,6 @@ ASSET_VERSIONS = {
     ).hexdigest()[:12],
     "favicon.ico": hashlib.sha256((BRANDING_DIR / "favicon.ico").read_bytes()).hexdigest()[:12],
     "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
-    "og-image.png": hashlib.sha256((BRANDING_DIR / "og-image.png").read_bytes()).hexdigest()[:12],
     "web-app-manifest-192x192.png": hashlib.sha256(
         (BRANDING_DIR / "web-app-manifest-192x192.png").read_bytes()
     ).hexdigest()[:12],
@@ -113,7 +112,6 @@ INDEX_TEMPLATE = (
     .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
-    .replace("__OG_IMAGE_VERSION__", ASSET_VERSIONS["og-image.png"])
 )
 FAQ_TEMPLATE = (
     (TEMPLATE_DIR / "faq.html")
@@ -127,7 +125,6 @@ FAQ_TEMPLATE = (
     .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
-    .replace("__OG_IMAGE_VERSION__", ASSET_VERSIONS["og-image.png"])
 )
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
