@@ -1,8 +1,6 @@
 import base64
 import hashlib
-import ipaddress
 import logging
-import os
 import re
 import sys
 import threading
@@ -46,10 +44,7 @@ FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
 SITE_NAME = "Movie Seat Finder"
 SITE_DESCRIPTION = "Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets."
-FAQ_DESCRIPTION = (
-    "Answers about finding nearby movie showtimes, comparing theatre formats, checking live seat maps, "
-    "and opening ticket links with Movie Seat Finder."
-)
+PUBLIC_SITE_URL = "https://movieseatfinder.com"
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "src" / "frontend"
 STATIC_DIR = FRONTEND_DIR / "dist"
@@ -58,6 +53,7 @@ BRANDING_DIR = BASE_DIR / "branding"
 BACKEND_ASSET_DIR = Path(__file__).resolve().parent / "assets"
 FONT_ASSET = "inter-variable.woff2"
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+OG_IMAGE_CACHE_CONTROL = "public, max-age=0, must-revalidate"
 VERSIONED_ASSET_SUFFIXES = {".ico", ".js", ".png", ".svg", ".woff2"}
 PUBLIC_ASSETS = {"app.bundle.js"}
 BRANDING_ASSETS = {
@@ -103,8 +99,7 @@ INLINE_STYLES = (
 INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode(
     "ascii"
 )
-# Static tokens are substituted once at import; only the origin-dependent SEO
-# tokens vary per request.
+# Static tokens are substituted once at import.
 INDEX_TEMPLATE = (
     (TEMPLATE_DIR / "index.html")
     .read_text(encoding="utf-8")
@@ -118,6 +113,7 @@ INDEX_TEMPLATE = (
     .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
+    .replace("__OG_IMAGE_VERSION__", ASSET_VERSIONS["og-image.png"])
 )
 FAQ_TEMPLATE = (
     (TEMPLATE_DIR / "faq.html")
@@ -131,6 +127,7 @@ FAQ_TEMPLATE = (
     .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
     .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
     .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
+    .replace("__OG_IMAGE_VERSION__", ASSET_VERSIONS["og-image.png"])
 )
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
@@ -668,82 +665,6 @@ def seat_map(showtime_hash):
 app = FastAPI(title="Movie Seat Finder")
 
 
-def normalized_origin(value):
-    try:
-        parts = urlsplit((value or "").strip())
-        port = parts.port
-    except ValueError:
-        return None
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
-        return None
-    if (
-        parts.username
-        or parts.password
-        or parts.path not in {"", "/"}
-        or parts.query
-        or parts.fragment
-    ):
-        return None
-
-    hostname = parts.hostname.rstrip(".")
-    try:
-        ipaddress.ip_address(hostname)
-        rendered_host = f"[{hostname}]" if ":" in hostname else hostname
-    except ValueError:
-        labels = hostname.split(".")
-        if not labels or any(
-            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
-            for label in labels
-        ):
-            return None
-        rendered_host = hostname.lower()
-    if port is not None:
-        rendered_host = f"{rendered_host}:{port}"
-    return f"{parts.scheme}://{rendered_host}"
-
-
-def site_origin(request):
-    configured_url = os.environ.get("SITE_URL", "").strip().rstrip("/")
-    configured_origin = normalized_origin(configured_url)
-    if configured_origin:
-        return configured_origin
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    forwarded_host = request.headers.get("x-forwarded-host")
-    if forwarded_proto and forwarded_host:
-        forwarded_origin = normalized_origin(
-            f"{forwarded_proto.split(',')[0].strip()}://{forwarded_host.split(',')[0].strip()}"
-        )
-        if forwarded_origin:
-            return forwarded_origin
-    return normalized_origin(str(request.base_url)) or "http://localhost"
-
-
-def seo_context(request, path="/"):
-    origin = site_origin(request)
-    return {
-        "__SITE_NAME__": SITE_NAME,
-        "__SITE_DESCRIPTION__": SITE_DESCRIPTION,
-        "__FAQ_DESCRIPTION__": FAQ_DESCRIPTION,
-        "__SITE_URL__": origin,
-        "__CANONICAL_URL__": f"{origin}{path}",
-        "__OG_IMAGE_URL__": f"{origin}/og-image.png?v={ASSET_VERSIONS['og-image.png']}",
-    }
-
-
-def render_index(request):
-    markup = INDEX_TEMPLATE
-    for token, value in seo_context(request).items():
-        markup = markup.replace(token, value)
-    return markup
-
-
-def render_faq(request):
-    markup = FAQ_TEMPLATE
-    for token, value in seo_context(request, "/faq").items():
-        markup = markup.replace(token, value)
-    return markup
-
-
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
@@ -757,8 +678,16 @@ async def security_headers(request, call_next):
         "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
         "require-trusted-types-for 'script'; trusted-types 'none'"
     )
-    suffix = Path(request.url.path).suffix.lower()
-    if (
+    path = request.url.path
+    suffix = Path(path).suffix.lower()
+    if response.status_code == 200 and path == "/og-image.png":
+        response.headers["Cache-Control"] = OG_IMAGE_CACHE_CONTROL
+        response.headers["CDN-Cache-Control"] = OG_IMAGE_CACHE_CONTROL
+        response.headers["Vercel-CDN-Cache-Control"] = OG_IMAGE_CACHE_CONTROL
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        if "last-modified" in response.headers:
+            del response.headers["last-modified"]
+    elif (
         response.status_code == 200
         and request.query_params.get("v")
         and suffix in VERSIONED_ASSET_SUFFIXES
@@ -798,8 +727,8 @@ async def unexpected_exception_handler(request, exc):
 
 @app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
-def index(request: Request):
-    return HTMLResponse(render_index(request))
+def index():
+    return HTMLResponse(INDEX_TEMPLATE)
 
 
 @app.get("/index.html", include_in_schema=False)
@@ -809,8 +738,8 @@ def index_html():
 
 @app.head("/faq", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
-def faq(request: Request):
-    return HTMLResponse(render_faq(request))
+def faq():
+    return HTMLResponse(FAQ_TEMPLATE)
 
 
 @app.get("/faq.html", include_in_schema=False)
@@ -819,15 +748,14 @@ def faq_html():
 
 
 @app.get("/robots.txt", include_in_schema=False)
-def robots(request: Request):
-    origin = site_origin(request)
+def robots():
     return PlainTextResponse(
         "\n".join(
             [
                 "User-agent: *",
                 "Allow: /",
                 "",
-                f"Sitemap: {origin}/sitemap.xml",
+                f"Sitemap: {PUBLIC_SITE_URL}/sitemap.xml",
             ]
         )
         + "\n"
@@ -841,17 +769,16 @@ def llms_txt():
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
-def sitemap(request: Request):
-    origin = site_origin(request)
+def sitemap():
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>{origin}/</loc>
+    <loc>{PUBLIC_SITE_URL}/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>{origin}/faq</loc>
+    <loc>{PUBLIC_SITE_URL}/faq</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

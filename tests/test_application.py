@@ -457,7 +457,9 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/", headers={"host": "example.test"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder", response.text)
-        self.assertIn('<link rel="canonical" href="http://example.test/">', response.text)
+        self.assertIn(
+            '<link rel="canonical" href="https://movieseatfinder.com/">', response.text
+        )
         self.assertIn('href="/faq"', response.text)
         self.assertIn(
             f"/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}",
@@ -468,9 +470,11 @@ class RouteTests(unittest.TestCase):
             response.text,
         )
         self.assertIn(
-            f"http://example.test/og-image.png?v={application.ASSET_VERSIONS['og-image.png']}",
+            f"https://movieseatfinder.com/og-image.png?v={application.ASSET_VERSIONS['og-image.png']}",
             response.text,
         )
+        self.assertIn('<meta property="og:image:width" content="3840">', response.text)
+        self.assertIn('<meta property="og:image:height" content="2160">', response.text)
         self.assertIn(
             '<meta name="apple-mobile-web-app-title" content="Seat Finder">', response.text
         )
@@ -517,7 +521,7 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
-        for asset in ("app.bundle.js", application.FONT_ASSET, "og-image.png"):
+        for asset in ("app.bundle.js", application.FONT_ASSET):
             response = self.client.get(
                 f"/{asset}",
                 params={"v": application.ASSET_VERSIONS[asset]},
@@ -536,6 +540,25 @@ class RouteTests(unittest.TestCase):
                 response.headers["vercel-cdn-cache-control"],
                 "public, max-age=31536000, immutable",
             )
+
+    def test_og_image_is_revalidated_like_the_public_page(self):
+        response = self.client.get(
+            "/og-image.png",
+            params={"v": application.ASSET_VERSIONS["og-image.png"]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["cache-control"], "public, max-age=0, must-revalidate"
+        )
+        self.assertEqual(
+            response.headers["cdn-cache-control"], "public, max-age=0, must-revalidate"
+        )
+        self.assertEqual(
+            response.headers["vercel-cdn-cache-control"], "public, max-age=0, must-revalidate"
+        )
+        self.assertEqual(response.headers["access-control-allow-origin"], "*")
+        self.assertNotIn("last-modified", response.headers)
 
     def test_unversioned_assets_are_not_cached_as_immutable(self):
         response = self.client.get("/app.bundle.js")
@@ -557,7 +580,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.content, b"")
         logger_info.assert_called_once_with("event=ticket_click")
 
-    def test_homepage_rejects_markup_in_forwarded_host(self):
+    def test_homepage_ignores_forwarded_host_for_public_metadata(self):
         injected_host = 'attacker.example"><meta name="injected" content="yes'
         response = self.client.get(
             "/",
@@ -569,7 +592,9 @@ class RouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('<meta name="injected"', response.text)
-        self.assertIn('<link rel="canonical" href="http://testserver/">', response.text)
+        self.assertIn(
+            '<link rel="canonical" href="https://movieseatfinder.com/">', response.text
+        )
 
     @patch("backend.application.movies_from_dated_theatre_payloads", return_value=[])
     @patch(
@@ -966,14 +991,14 @@ class RouteTests(unittest.TestCase):
         self.assertIn("https://movieseatfinder.com/mcp", llms_text.text)
         sitemap = self.client.get("/sitemap.xml").text
         self.assertIn("<urlset", sitemap)
-        self.assertIn("<loc>http://testserver/faq</loc>", sitemap)
+        self.assertIn("<loc>https://movieseatfinder.com/faq</loc>", sitemap)
         self.assertNotIn("<lastmod>", sitemap)
 
     def test_faq_page_is_rendered_with_its_own_search_metadata(self):
         response = self.client.get("/faq", headers={"host": "example.test"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("Movie Seat Finder FAQ", response.text)
-        self.assertIn('rel="canonical" href="http://example.test/faq"', response.text)
+        self.assertIn('rel="canonical" href="https://movieseatfinder.com/faq"', response.text)
         self.assertIn('"@type": "FAQPage"', response.text)
         self.assertNotIn("__FAQ_DESCRIPTION__", response.text)
         self.assertNotIn("__CANONICAL_URL__", response.text)
