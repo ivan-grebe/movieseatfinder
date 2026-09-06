@@ -415,7 +415,11 @@ for (const device of [
       await expect(shareButton).toHaveAccessibleName("Share");
       const shares = await page.evaluate(() => globalThis.shareRequests);
       expect(shares).toHaveLength(3);
-      expect(shares[0]).toEqual({ title: "Movie Seat Finder search", url: page.url() });
+      expect(shares[0]).toEqual({
+        text: expect.stringContaining("Find showtimes for Test Movie\n2 seats together · "),
+        title: "Test Movie — Movie Seat Finder",
+        url: page.url(),
+      });
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
     } else {
       await expect(shareButton).toHaveAccessibleName("Copy search link");
