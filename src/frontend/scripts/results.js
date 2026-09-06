@@ -1,3 +1,4 @@
+import { createShareButton } from "./sharing.js";
 import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
 import { setSummary } from "./ui.js";
@@ -365,22 +366,7 @@ export function createResultsView({
         link.addEventListener("click", logTicketClick);
         actions.append(link);
       }
-      const share = document.createElement("button");
-      share.type = "button";
-      share.className = "buy-btn share-btn";
-      share.textContent = "Copy search link";
-      share.setAttribute("aria-live", "polite");
-      share.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(searchUrl);
-          share.textContent = "Copied!";
-          share.title = "Search link copied to clipboard.";
-        } catch {
-          share.textContent = "Copy failed — retry";
-          share.title = "Could not copy the search link. Click to try again.";
-        }
-      });
-      actions.append(share);
+      actions.append(createShareButton(searchUrl));
       item.append(actions);
       results.append(item);
     });
