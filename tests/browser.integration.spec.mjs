@@ -512,6 +512,13 @@ for (const width of [390, 1280]) {
     await expect(page.locator(".result")).toHaveCount(1);
     await expect(page.locator("#search")).toBeHidden();
     await expect(page.locator(".hero")).toBeHidden();
+    const footerTop = await page
+      .locator(".site-footer")
+      .evaluate((element) => element.getBoundingClientRect().top);
+    const resultsBottom = await page
+      .locator("#results-section")
+      .evaluate((element) => element.getBoundingClientRect().bottom);
+    expect(footerTop).toBeGreaterThanOrEqual(resultsBottom);
     const back = page.getByRole("button", { exact: true, name: "Back" });
     await expect(back).toBeInViewport();
     expect(searches).toBe(1);
@@ -552,7 +559,9 @@ for (const width of [390, 1280]) {
   });
 }
 
-test("Back during shared-link initialization prevents the automatic search", async ({ page }) => {
+test("Back during shared-link initialization prevents the automatic search", async ({
+  page,
+}, testInfo) => {
   let searches = 0;
   await mockSearchDependencies(page, (route) => {
     searches += 1;
@@ -565,6 +574,14 @@ test("Back during shared-link initialization prevents the automatic search", asy
   });
   await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
   await expect(page.locator("#search")).toBeHidden();
+  const footerBottom = await page
+    .locator(".site-footer")
+    .evaluate((element) => element.getBoundingClientRect().bottom);
+  expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
+  await page.screenshot({
+    animations: "disabled",
+    path: testInfo.outputPath("shared-loading-footer.png"),
+  });
   await page.getByRole("button", { exact: true, name: "Back" }).click();
   movies.resolve();
   await expect(page.locator("#search")).toBeVisible();
@@ -618,6 +635,10 @@ for (const outcome of ["empty", "error", "missing movie"]) {
       await expect(page.locator("#summary")).toContainText("Could not open this shared search");
     }
     await expect(page.locator("#search")).toBeHidden();
+    const footerBottom = await page
+      .locator(".site-footer")
+      .evaluate((element) => element.getBoundingClientRect().bottom);
+    expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
     await page.getByRole("button", { exact: true, name: "Back" }).click();
     await expect(page.locator("#search")).toBeVisible();
   });

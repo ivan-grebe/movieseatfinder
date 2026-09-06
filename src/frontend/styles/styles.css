@@ -49,10 +49,12 @@ html {
 }
 
 body {
+  display: flex;
+  flex-direction: column;
   position: relative;
   isolation: isolate;
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
@@ -153,6 +155,7 @@ label,
 }
 
 main {
+  flex: 1;
   width: min(100% - 48px, 1260px);
   margin: 0 auto;
   padding-bottom: 54px;
