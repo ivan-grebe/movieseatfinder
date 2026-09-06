@@ -247,40 +247,38 @@ export function createResultsView({
   function render(data, { isUpdate = false } = {}) {
     const matches = data.matches;
     results.replaceChildren();
-    let showingStart = 0;
-    if (matches.length > 0) {
-      showingStart = (data.page - 1) * data.pageSize + 1;
-    }
-    const showingEnd = showingStart + matches.length - 1;
     const incomplete = data.failedSeatMaps > 0;
-    let pageText = "No matching showtimes";
-    if (incomplete) {
-      pageText = "No matches confirmed in an incomplete search";
-    }
-    if (matches.length > 0) {
-      pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
-    }
-    let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
-    if (incomplete) {
-      summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
-    }
-    setSummary(summary, summaryText, matches.length === 0);
     resultsToolbar.hidden = matches.length === 0;
     renderPagination(data);
 
     if (matches.length === 0) {
+      setSummary(summary, "", true);
       const hint = document.createElement("div");
       hint.className = "empty-state";
+      hint.setAttribute("role", "status");
+      hint.setAttribute("aria-live", "polite");
+      const title = document.createElement("strong");
+      title.textContent = "No matching showtimes";
       const hintText = document.createElement("p");
       hintText.textContent = "Try widening the time range, seat area, or dates.";
       if (incomplete) {
+        title.textContent = "Search incomplete";
         hintText.textContent =
           "Some seat availability could not be checked. Retry before changing your preferences.";
       }
-      hint.append(hintText);
+      hint.append(title, hintText);
       results.append(hint);
       return;
     }
+
+    const showingStart = (data.page - 1) * data.pageSize + 1;
+    const showingEnd = showingStart + matches.length - 1;
+    const pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
+    let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+    if (incomplete) {
+      summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
+    }
+    setSummary(summary, summaryText, false);
 
     matches.forEach((match, index) => {
       const item = document.createElement("article");
