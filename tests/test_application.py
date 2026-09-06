@@ -468,6 +468,10 @@ class RouteTests(unittest.TestCase):
             response.text,
         )
         self.assertIn(
+            f"http://example.test/og-image.png?v={application.ASSET_VERSIONS['og-image.png']}",
+            response.text,
+        )
+        self.assertIn(
             '<meta name="apple-mobile-web-app-title" content="Seat Finder">', response.text
         )
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
@@ -506,7 +510,7 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
     def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
-        for asset in ("app.bundle.js", application.FONT_ASSET):
+        for asset in ("app.bundle.js", application.FONT_ASSET, "og-image.png"):
             response = self.client.get(
                 f"/{asset}",
                 params={"v": application.ASSET_VERSIONS[asset]},
