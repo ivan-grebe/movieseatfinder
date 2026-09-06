@@ -85,7 +85,7 @@ body {
   left: 50%;
   width: min(1220px, 112vw);
   height: 820px;
-  background: radial-gradient(closest-side, rgba(235, 112, 102, 0.52), transparent 72%);
+  background: radial-gradient(closest-side, rgba(180, 70, 130, 0.42), transparent 72%);
   transform: translate3d(-50%, 0, 0);
 }
 
@@ -1972,7 +1972,7 @@ input[type="time"] {
     left: 18%;
     width: 118vw;
     height: 430px;
-    background: radial-gradient(closest-side, rgba(235, 105, 94, 0.42), transparent 72%);
+    background: radial-gradient(closest-side, rgba(180, 70, 130, 0.4), transparent 72%);
   }
 
   .ambient-glow-cool {
