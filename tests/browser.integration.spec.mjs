@@ -286,7 +286,7 @@ test("copy search links preserve result filters and restore them on reload and B
   await expect(shareButton).toHaveAccessibleName("Copied!");
   expect((await shareButton.boundingBox()).width).toBe(idleWidth);
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
-  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual(expected);
+  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual({ ...expected, shared: "1" });
   await expect(shareButton).toHaveAccessibleName("Copy search link");
   await expect(shareButton.locator(".share-label")).toHaveCSS("opacity", "1");
   await expect(shareButton.locator(".share-feedback")).toHaveCSS("opacity", "0");
@@ -448,6 +448,9 @@ for (const device of [
     );
     await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
     const shareButton = page.locator(".share-btn");
+    await expect(shareButton).toBeVisible();
+    const expectedSharedUrl = new URL(page.url());
+    expectedSharedUrl.searchParams.set("shared", "1");
     if (device.native) {
       await expect(shareButton).toHaveAccessibleName("Share");
       await shareButton.click();
@@ -464,16 +467,159 @@ for (const device of [
       expect(shares[0]).toEqual({
         text: expect.stringContaining("Find showtimes for Test Movie\n2 seats together · "),
         title: "Test Movie — Movie Seat Finder",
-        url: page.url(),
+        url: expectedSharedUrl.href,
       });
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
     } else {
       await expect(shareButton).toHaveAccessibleName("Copy search link");
       await shareButton.click();
       await expect(shareButton).toHaveAccessibleName("Copied!");
-      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(page.url());
+      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(expectedSharedUrl.href);
       expect(await page.evaluate(() => globalThis.shareRequests)).toEqual([]);
     }
+  });
+}
+
+for (const width of [390, 1280]) {
+  test(`shared links open results only and Back preserves the controls at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ height: 844, width });
+    let searches = 0;
+    let visits = 0;
+    const requests = [];
+    await mockSearchDependencies(
+      page,
+      (route) => {
+        searches += 1;
+        requests.push(Object.fromEntries(new URL(route.request().url()).searchParams));
+        return route.fulfill({
+          json: { ...emptySearch, matches: [makeSimpleMatch("Shared Cinema", "7 PM")] },
+        });
+      },
+      ["IMAX", "Dolby Cinema"],
+    );
+    await page.route("**/api/events/shared-link-visit", (route) => {
+      visits += 1;
+      return route.fulfill({ status: 204 });
+    });
+    await page.goto("/");
+    await expect(page.locator("#search")).toBeVisible();
+    expect(visits).toBe(0);
+    await page.goto(
+      "/?shared=1&zip=10001&radius=15&movie=Test+Movie&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startTime=17:00&endTime=23:00",
+    );
+    await expect(page.locator(".result")).toHaveCount(1);
+    await expect(page.locator("#search")).toBeHidden();
+    await expect(page.locator(".hero")).toBeHidden();
+    const back = page.getByRole("button", { exact: true, name: "Back" });
+    await expect(back).toBeInViewport();
+    expect(searches).toBe(1);
+    await expect.poll(() => visits).toBe(1);
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("shared-results-light.png"),
+    });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("shared-results-dark.png"),
+    });
+    await back.click();
+    await expect(page.locator("#search")).toBeVisible();
+    await expect(back).toBeHidden();
+    await expect(page.locator("#zipInput")).toHaveValue("10001");
+    await expect(page.locator("#radiusInput")).toHaveValue("15");
+    await expect(page.locator("#movieInput")).toHaveValue("Test Movie");
+    await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
+    await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
+    await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
+    await expect(page.locator("#startTimeInput")).toHaveValue("17:00");
+    await expect(page.locator("#endTimeInput")).toHaveValue("23:00");
+    expect(new URL(page.url()).searchParams.has("shared")).toBe(false);
+    expect(searches).toBe(1);
+    await page.reload();
+    await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
+    await expect(page.locator("#searchButton")).toBeEnabled();
+    await expect(page.locator(".result")).toHaveCount(0);
+    expect(searches).toBe(1);
+    expect(visits).toBe(1);
+    await page.locator("#searchButton").click();
+    await expect(page.locator(".result")).toHaveCount(1);
+    expect(searches).toBe(2);
+    expect(visits).toBe(1);
+    expect(requests[1]).toEqual(requests[0]);
+  });
+}
+
+test("Back during shared-link initialization prevents the automatic search", async ({ page }) => {
+  let searches = 0;
+  await mockSearchDependencies(page, (route) => {
+    searches += 1;
+    return route.fulfill({ json: emptySearch });
+  });
+  const movies = Promise.withResolvers();
+  await page.route("**/api/movies*", async (route) => {
+    await movies.promise;
+    await route.fulfill({ json: { movies: [{ title: "Test Movie" }] } });
+  });
+  await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
+  await expect(page.locator("#search")).toBeHidden();
+  await page.getByRole("button", { exact: true, name: "Back" }).click();
+  movies.resolve();
+  await expect(page.locator("#search")).toBeVisible();
+  await expect(page.locator("#searchButton")).toBeEnabled();
+  expect(searches).toBe(0);
+  await expect(page.locator("#movieInput")).toHaveValue("Test Movie");
+});
+
+test("Back while a shared search is pending ignores its late response", async ({ page }) => {
+  let searches = 0;
+  const response = Promise.withResolvers();
+  await mockSearchDependencies(page, async (route) => {
+    searches += 1;
+    await response.promise;
+    await route.fulfill({
+      json: { ...emptySearch, matches: [makeSimpleMatch("Shared Cinema", "7 PM")] },
+    });
+  });
+  await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
+  await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
+  await expect.poll(() => searches).toBe(1);
+  await page.getByRole("button", { exact: true, name: "Back" }).click();
+  await expect(page.locator("#searchButton")).toBeEnabled();
+  const completed = page.waitForResponse("**/api/search*");
+  response.resolve();
+  await completed;
+  await page.reload();
+  await expect(page.locator("#searchButton")).toBeEnabled();
+  await expect(page.locator(".result")).toHaveCount(0);
+  await expect(page.locator("#search")).toBeVisible();
+  expect(searches).toBe(1);
+});
+
+for (const outcome of ["empty", "error", "missing movie"]) {
+  test(`shared links keep Back available for ${outcome}`, async ({ page }) => {
+    await mockSearchDependencies(page, (route) => {
+      if (outcome === "error") {
+        return route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
+      }
+      return route.fulfill({ json: emptySearch });
+    });
+    if (outcome === "missing movie") {
+      await page.route("**/api/movies*", (route) => route.fulfill({ json: { movies: [] } }));
+    }
+    await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
+    if (outcome === "empty") {
+      await expect(page.getByText("No matching showtimes", { exact: true })).toBeVisible();
+    } else if (outcome === "error") {
+      await expect(page.locator("#summary")).toHaveText("Search unavailable. Try again.");
+    } else {
+      await expect(page.locator("#summary")).toContainText("Could not open this shared search");
+    }
+    await expect(page.locator("#search")).toBeHidden();
+    await page.getByRole("button", { exact: true, name: "Back" }).click();
+    await expect(page.locator("#search")).toBeVisible();
   });
 }
 

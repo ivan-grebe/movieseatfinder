@@ -1,7 +1,7 @@
 import { addDays, formatNiceDate, getJson, todayString } from "../src/frontend/scripts/utils.js";
+import { logSharedLinkVisit, logTicketClick } from "../src/frontend/scripts/tracking.js";
 import assert from "node:assert/strict";
 import { getSearchShareData } from "../src/frontend/scripts/sharing.js";
-import { logTicketClick } from "../src/frontend/scripts/tracking.js";
 import { pickAmbientTarget } from "../src/frontend/scripts/ambient-motion.js";
 import test from "node:test";
 
@@ -110,7 +110,8 @@ test("ticket click tracking uses a non-blocking beacon", () => {
   });
   try {
     logTicketClick();
-    assert.deepEqual(calls, ["/api/events/ticket-click"]);
+    logSharedLinkVisit();
+    assert.deepEqual(calls, ["/api/events/ticket-click", "/api/events/shared-link-visit"]);
   } finally {
     if (originalNavigator === undefined) {
       delete globalThis.navigator;
@@ -136,10 +137,14 @@ test("ticket click tracking falls back when a beacon cannot be queued", async ()
         calls.push({ options, url });
         return Promise.resolve(response(204, ""));
       },
-      () => logTicketClick(),
+      () => {
+        logTicketClick();
+        logSharedLinkVisit();
+      },
     );
     assert.deepEqual(calls, [
       { options: { keepalive: true, method: "POST" }, url: "/api/events/ticket-click" },
+      { options: { keepalive: true, method: "POST" }, url: "/api/events/shared-link-visit" },
     ]);
   } finally {
     if (originalNavigator === undefined) {

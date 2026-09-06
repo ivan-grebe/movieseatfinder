@@ -1191,8 +1191,40 @@ a:focus-visible {
   padding: 42px 0 0;
 }
 
-.results-section:focus {
+.results-section:focus,
+#search:focus {
   outline: none;
+}
+
+.shared-search-nav {
+  display: none;
+  padding-top: 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.shared-search .shared-search-nav {
+  display: flex;
+}
+
+.shared-search .hero,
+.shared-search #search,
+.shared-search .initial-results-placeholder {
+  display: none;
+}
+
+.shared-search .results-section {
+  padding-top: 18px;
+}
+
+.shared-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .faq-section {

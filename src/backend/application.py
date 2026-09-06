@@ -153,6 +153,7 @@ AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
 SearchSort = Literal["earliest", "latest", "nearest"]
 
 RATE_LIMITS = {
+    "/api/events/shared-link-visit": RateLimitItemPerSecond(60, 60),
     "/api/events/ticket-click": RateLimitItemPerSecond(60, 60),
     # Sort changes and pagination each re-run a full search, so a normal
     # browsing session can issue a burst of these; upstream fetches are cached.
@@ -715,8 +716,13 @@ async def unexpected_exception_handler(request, exc):
 
 @app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
-def index():
-    return HTMLResponse(INDEX_TEMPLATE)
+def index(request: Request):
+    shared = request.query_params.get("shared") == "1"
+    return HTMLResponse(
+        INDEX_TEMPLATE.replace(
+            "__SHARED_SEARCH_CLASS__", "shared-search" if shared else ""
+        ).replace("__INITIAL_SUMMARY__", "Loading shared search…" if shared else "")
+    )
 
 
 @app.get("/index.html", include_in_schema=False)
@@ -974,6 +980,13 @@ def location_movie_info(
 def ticket_click(request: Request):
     enforce_rate_limit(request, "/api/events/ticket-click")
     LOGGER.info("event=ticket_click")
+    return Response(status_code=204)
+
+
+@app.post("/api/events/shared-link-visit", status_code=204)
+def shared_link_visit(request: Request):
+    enforce_rate_limit(request, "/api/events/shared-link-visit")
+    LOGGER.info("event=shared_link_visit")
     return Response(status_code=204)
 
 
