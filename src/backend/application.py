@@ -679,9 +679,6 @@ async def security_headers(request, call_next):
     suffix = Path(path).suffix.lower()
     if response.status_code == 200 and path == "/og-image.png":
         response.headers["Cache-Control"] = OG_IMAGE_CACHE_CONTROL
-        response.headers["CDN-Cache-Control"] = OG_IMAGE_CACHE_CONTROL
-        response.headers["Vercel-CDN-Cache-Control"] = OG_IMAGE_CACHE_CONTROL
-        response.headers["Access-Control-Allow-Origin"] = "*"
         if "last-modified" in response.headers:
             del response.headers["last-modified"]
     elif (
@@ -690,8 +687,6 @@ async def security_headers(request, call_next):
         and suffix in VERSIONED_ASSET_SUFFIXES
     ):
         response.headers["Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
-        response.headers["CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
-        response.headers["Vercel-CDN-Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
     return response
 
 

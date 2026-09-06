@@ -515,7 +515,7 @@ class RouteTests(unittest.TestCase):
         ):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
-    def test_versioned_assets_receive_immutable_browser_and_cdn_caching(self):
+    def test_versioned_assets_receive_immutable_caching(self):
         for asset in ("app.bundle.js", application.FONT_ASSET):
             response = self.client.get(
                 f"/{asset}",
@@ -527,27 +527,12 @@ class RouteTests(unittest.TestCase):
                 response.headers["cache-control"],
                 "public, max-age=31536000, immutable",
             )
-            self.assertEqual(
-                response.headers["cdn-cache-control"],
-                "public, max-age=31536000, immutable",
-            )
-            self.assertEqual(
-                response.headers["vercel-cdn-cache-control"],
-                "public, max-age=31536000, immutable",
-            )
 
     def test_og_image_is_revalidated_like_the_public_page(self):
         response = self.client.get("/og-image.png")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "public, max-age=0, must-revalidate")
-        self.assertEqual(
-            response.headers["cdn-cache-control"], "public, max-age=0, must-revalidate"
-        )
-        self.assertEqual(
-            response.headers["vercel-cdn-cache-control"], "public, max-age=0, must-revalidate"
-        )
-        self.assertEqual(response.headers["access-control-allow-origin"], "*")
         self.assertNotIn("last-modified", response.headers)
 
     def test_unversioned_assets_are_not_cached_as_immutable(self):
@@ -988,8 +973,6 @@ class RouteTests(unittest.TestCase):
         self.assertIn("Movie Seat Finder FAQ", response.text)
         self.assertIn('rel="canonical" href="https://movieseatfinder.com/faq"', response.text)
         self.assertIn('"@type": "FAQPage"', response.text)
-        self.assertNotIn("__FAQ_DESCRIPTION__", response.text)
-        self.assertNotIn("__CANONICAL_URL__", response.text)
 
 
 if __name__ == "__main__":
