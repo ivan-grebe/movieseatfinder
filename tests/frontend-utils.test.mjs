@@ -5,29 +5,23 @@ import { getSearchShareData } from "../src/frontend/scripts/sharing.js";
 import { pickAmbientTarget } from "../src/frontend/scripts/ambient-motion.js";
 import test from "node:test";
 
-test("native share content describes the saved search without claiming seats are reserved", () => {
-  const url = new URL("https://movieseatfinder.com/");
-  url.search = new URLSearchParams({
-    adjacentSeats: "3",
-    endDate: "2026-09-08",
-    format: "IMAX,Dolby Cinema",
-    movie: "Dune: Part Three",
-    startDate: "2026-09-06",
-    theatre: "Shared Cinema",
-  }).toString();
-  assert.deepEqual(getSearchShareData(url.href), {
-    text: `Find showtimes for Dune: Part Three\n3 seats together · ${formatNiceDate("2026-09-06")} – ${formatNiceDate("2026-09-08")} · IMAX, Dolby Cinema · Shared Cinema`,
-    title: "Dune: Part Three — Movie Seat Finder",
-    url: url.href,
+test("native share content describes the specific showtime and requested seats", () => {
+  const url = "https://movieseatfinder.com/?movie=Test+Movie&adjacentSeats=3";
+  const match = {
+    date: "2026-09-06",
+    displayTime: "7 PM",
+    format: "IMAX",
+    movieTitle: "Test Movie",
+    theatre: { name: "Shared Cinema" },
+  };
+  assert.deepEqual(getSearchShareData(url, match), {
+    text: `Test Movie\n3 seats together · ${formatNiceDate(match.date)} · 7 PM · IMAX · Shared Cinema`,
+    title: "Test Movie — Movie Seat Finder",
+    url,
   });
-});
-
-test("native share summaries handle one seat and one date without empty details", () => {
-  const url =
-    "https://movieseatfinder.com/?movie=Test+Movie&adjacentSeats=1&startDate=2026-09-06&endDate=2026-09-06&format=&theatre=";
-  assert.equal(
-    getSearchShareData(url).text,
-    `Find showtimes for Test Movie\n1 seat · ${formatNiceDate("2026-09-06")}`,
+  assert.match(
+    getSearchShareData(url.replace("adjacentSeats=3", "adjacentSeats=1"), match).text,
+    /1 seat · /u,
   );
 });
 

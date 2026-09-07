@@ -284,6 +284,7 @@ export function createResultsView({
     matches.forEach((match, index) => {
       const item = document.createElement("article");
       item.className = "result";
+      item.dataset.showtime = match.showtimeHashCode;
       if (isUpdate) {
         item.classList.add("result-update");
       }
@@ -366,7 +367,7 @@ export function createResultsView({
         link.addEventListener("click", logTicketClick);
         actions.append(link);
       }
-      actions.append(createShareButton(searchUrl));
+      actions.append(createShareButton(searchUrl, match));
       item.append(actions);
       results.append(item);
     });
@@ -380,5 +381,32 @@ export function createResultsView({
     setSummary(summary, message, true);
   }
 
-  return { beginReorder, endPageLoading, endReorder, render, renderError, setPageLoading };
+  function focusShowtime(showtime, incomplete) {
+    const card = [...results.querySelectorAll(".result")].find(
+      (item) => item.dataset.showtime === showtime,
+    );
+    if (!card) {
+      let message = "The shared showtime is no longer available with these search filters.";
+      if (incomplete) {
+        message = "Could not confirm the shared showtime’s availability. Please retry the search.";
+      }
+      setSummary(summary, message, false);
+      return;
+    }
+    card.tabIndex = -1;
+    card.focus({ preventScroll: true });
+    card.scrollIntoView({ behavior: "instant", block: "start" });
+    card.classList.add("shared-showtime");
+    globalThis.setTimeout(() => card.classList.remove("shared-showtime"), 2500);
+  }
+
+  return {
+    beginReorder,
+    endPageLoading,
+    endReorder,
+    focusShowtime,
+    render,
+    renderError,
+    setPageLoading,
+  };
 }

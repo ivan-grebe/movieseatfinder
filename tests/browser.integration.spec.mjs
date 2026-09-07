@@ -1,4 +1,4 @@
-import { addDays, todayString } from "../src/frontend/scripts/utils.js";
+import { addDays, formatNiceDate, todayString } from "../src/frontend/scripts/utils.js";
 import { expect, test } from "@playwright/test";
 
 const emptySearch = {
@@ -40,6 +40,7 @@ function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
       },
       totalSeatCount: 1,
     },
+    showtimeHashCode: `${theatreName}-${time}`,
     theatre: { address: "1 Main St", distanceMiles: 1, name: theatreName },
     ticketUrl: "https://tickets.fandango.com/order",
   };
@@ -74,6 +75,120 @@ async function selectMovie(page, title = "Test Movie") {
   await page.getByRole("option", { exact: true, name: title }).click();
   await expect(input).toHaveValue(title);
 }
+
+for (const profile of [
+  { motion: "no-preference", width: 390 },
+  { motion: "no-preference", width: 1280 },
+  { motion: "reduce", width: 390 },
+]) {
+  test(`showtime links find the specific card at ${profile.width}px with ${profile.motion} motion`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ height: 844, width: profile.width });
+    await page.emulateMedia({ reducedMotion: profile.motion });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: (url) => {
+            globalThis.copiedSearchLink = url;
+            return Promise.resolve();
+          },
+        },
+      });
+    });
+    const matches = Array.from({ length: 10 }, (_, index) =>
+      makeSimpleMatch(`Cinema ${index}`, "7 PM"),
+    );
+    const requests = [];
+    await mockSearchDependencies(page, (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requests.push(Object.fromEntries(params));
+      let pageNumber = Number(params.get("page"));
+      let ordered = matches;
+      if (params.has("showtime")) {
+        pageNumber = 2;
+        ordered = [...matches].reverse();
+      }
+      return route.fulfill({
+        json: {
+          ...emptySearch,
+          hasNextPage: true,
+          hasPreviousPage: pageNumber > 1,
+          matches: ordered,
+          page: pageNumber,
+        },
+      });
+    });
+    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
+    const original = page.getByRole("article", { name: /at Cinema 3,/u });
+    await original.getByRole("button", { name: "Copy showtime link" }).click();
+    await expect(original.locator(".share-btn")).toHaveAccessibleName("Copied!");
+    const url = await page.evaluate(() => globalThis.copiedSearchLink);
+    expect(new URL(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
+    await page.goto(url);
+    const target = page.locator(".shared-showtime");
+    await expect(target).toHaveCount(1);
+    await expect(target).toHaveAttribute("data-showtime", "Cinema 3-7 PM");
+    await expect(target).toBeFocused();
+    await expect(target).toHaveCSS("outline-style", "none");
+    expect(Math.abs((await target.boundingBox()).y - 20)).toBeLessThan(2);
+    expect(new URL(page.url()).searchParams.get("page")).toBe("2");
+    expect(requests.at(-1).showtime).toBe("Cinema 3-7 PM");
+    if (profile.motion === "reduce") {
+      expect(await target.evaluate((card) => getComputedStyle(card, "::after").animationName)).toBe(
+        "none",
+      );
+    }
+    await expect(page.locator("#results")).toHaveCSS("opacity", "1");
+    await page.screenshot({ path: testInfo.outputPath("shared-showtime.png") });
+    await expect(page.locator(".shared-showtime")).toHaveCount(0);
+    await page.getByRole("button", { name: "Next page of results" }).click();
+    await expect(page.locator(".pagination-label")).toHaveText("Page 3");
+    expect(requests.at(-1).showtime).toBeUndefined();
+    await page.getByRole("button", { exact: true, name: "Back" }).click();
+    await expect(page.locator("#search")).toBeVisible();
+    expect(new URL(page.url()).searchParams.has("showtime")).toBe(false);
+    expect(requests).toHaveLength(3);
+  });
+}
+
+for (const available of [true, false]) {
+  test(`missing shared showtime explains the change with other results ${available}`, async ({
+    page,
+  }) => {
+    let matches = [];
+    if (available) {
+      matches = [makeSimpleMatch("Other Cinema", "8 PM")];
+    }
+    await mockSearchDependencies(page, (route) =>
+      route.fulfill({ json: { ...emptySearch, matches } }),
+    );
+    await page.goto("/?zip=10001&radius=5&movie=Test+Movie&shared=1&showtime=gone");
+    await expect(page.locator("#summary")).toContainText(
+      "The shared showtime is no longer available",
+    );
+    await expect(page.locator(".shared-showtime")).toHaveCount(0);
+    await expect(page.locator(".result")).toHaveCount(matches.length);
+    await expect(page.getByRole("button", { exact: true, name: "Back" })).toBeVisible();
+  });
+}
+
+test("an unchecked shared showtime is not reported as unavailable", async ({ page }) => {
+  await mockSearchDependencies(page, (route) =>
+    route.fulfill({
+      json: {
+        ...emptySearch,
+        failedSeatMaps: 1,
+        matches: [makeSimpleMatch("Other Cinema", "8 PM")],
+      },
+    }),
+  );
+  await page.goto("/?zip=10001&radius=5&movie=Test+Movie&shared=1&showtime=unchecked");
+  await expect(page.locator("#summary")).toHaveText(
+    "Could not confirm the shared showtime’s availability. Please retry the search.",
+  );
+  await expect(page.locator(".result")).toHaveCount(1);
+});
 
 test("backwards time windows show an inline error and recover when corrected", async ({ page }) => {
   let searches = 0;
@@ -287,8 +402,12 @@ test("copy search links preserve result filters and restore them on reload and B
   await expect(shareButton).toHaveAccessibleName("Copied!");
   expect((await shareButton.boundingBox()).width).toBe(idleWidth);
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
-  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual({ ...expected, shared: "1" });
-  await expect(shareButton).toHaveAccessibleName("Copy search link");
+  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual({
+    ...expected,
+    shared: "1",
+    showtime: "Shared Cinema-7 PM",
+  });
+  await expect(shareButton).toHaveAccessibleName("Copy showtime link");
   await expect(shareButton.locator(".share-label")).toHaveCSS("opacity", "1");
   await expect(shareButton.locator(".share-feedback")).toHaveCSS("opacity", "0");
   expect((await shareButton.boundingBox()).width).toBe(idleWidth);
@@ -345,7 +464,7 @@ test("shared coordinate searches restore the origin and clipboard failures allow
     });
   });
   await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie");
-  const share = page.getByRole("button", { name: "Copy search link" });
+  const share = page.getByRole("button", { name: "Copy showtime link" });
   await share.click();
   await expect(page.getByRole("button", { name: "Copy failed — retry" })).toBeVisible();
   await page.getByRole("button", { name: "Copy failed — retry" }).click();
@@ -452,27 +571,28 @@ for (const device of [
     await expect(shareButton).toBeVisible();
     const expectedSharedUrl = new URL(page.url());
     expectedSharedUrl.searchParams.set("shared", "1");
+    expectedSharedUrl.searchParams.set("showtime", "Share Cinema-7 PM");
     if (device.native) {
-      await expect(shareButton).toHaveAccessibleName("Share");
+      await expect(shareButton).toHaveAccessibleName("Share showtime");
       await shareButton.click();
       await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveAccessibleName("Share");
+      await expect(shareButton).toHaveAccessibleName("Share showtime");
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
       await shareButton.click();
       await expect(shareButton).toHaveAccessibleName("Share failed — retry");
       await shareButton.click();
       await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveAccessibleName("Share");
+      await expect(shareButton).toHaveAccessibleName("Share showtime");
       const shares = await page.evaluate(() => globalThis.shareRequests);
       expect(shares).toHaveLength(3);
       expect(shares[0]).toEqual({
-        text: expect.stringContaining("Find showtimes for Test Movie\n2 seats together · "),
+        text: `Test Movie\n2 seats together · ${formatNiceDate("2026-08-01")} · 7 PM · Standard · Share Cinema`,
         title: "Test Movie — Movie Seat Finder",
         url: expectedSharedUrl.href,
       });
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
     } else {
-      await expect(shareButton).toHaveAccessibleName("Copy search link");
+      await expect(shareButton).toHaveAccessibleName("Copy showtime link");
       await shareButton.click();
       await expect(shareButton).toHaveAccessibleName("Copied!");
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(expectedSharedUrl.href);

@@ -1147,7 +1147,7 @@ def find_seat_matches(
     page_size: PageSize = DEFAULT_PAGE_SIZE,
     lat: float | None = None,
     lon: float | None = None,
-    include_showtime_hash: bool = False,
+    target_showtime: ShortText = "",
 ):
     """Run the shared live showtime and seat-map search operation."""
     try:
@@ -1219,12 +1219,39 @@ def find_seat_matches(
                 "runtime": showtime["runtime"],
                 "genres": showtime["genres"],
                 "seatMap": seat_match,
+                "showtimeHashCode": showtime["showtimeHashCode"],
             }
-            if include_showtime_hash:
-                match["showtimeHashCode"] = showtime["showtimeHashCode"]
             return match
 
-        matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
+        matches = []
+        checked_seat_maps = 0
+        if target_showtime:
+            page = 1
+            target_index = next(
+                (
+                    i
+                    for i, (_, item) in enumerate(candidates)
+                    if item["showtimeHashCode"] == target_showtime
+                ),
+                None,
+            )
+            if target_index is not None:
+                prefix = candidates[: target_index + 1]
+                matches, checked_seat_maps = seat_checked_matches(
+                    prefix, len(prefix), check_candidate
+                )
+                candidates = candidates[target_index + 1 :]
+                if matches and matches[-1]["showtimeHashCode"] == target_showtime:
+                    page = (len(matches) - 1) // page_size + 1
+            page_start = (page - 1) * page_size
+            page_end = page_start + page_size
+        checked_showtimes = checked_seat_maps + len(candidates)
+        if len(matches) <= page_end:
+            remaining, checked = seat_checked_matches(
+                candidates, page_end - len(matches), check_candidate
+            )
+            matches.extend(remaining)
+            checked_seat_maps += checked
         if failed_seat_maps and failed_seat_maps == checked_seat_maps:
             raise HTTPException(
                 status_code=502,
@@ -1237,7 +1264,7 @@ def find_seat_matches(
             "pageSize": page_size,
             "hasPreviousPage": page > 1,
             "hasNextPage": len(matches) > page_end,
-            "checkedShowtimes": len(candidates),
+            "checkedShowtimes": checked_showtimes,
             "checkedSeatMaps": checked_seat_maps,
             "failedSeatMaps": failed_seat_maps,
             "accessibleSeatsExcluded": exclude_accessible,
@@ -1266,6 +1293,7 @@ def api_search(
     sort: SearchSort = "earliest",
     page: PageNumber = 1,
     pageSize: PageSize = DEFAULT_PAGE_SIZE,
+    showtime: ShortText = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -1288,6 +1316,7 @@ def api_search(
         page_size=pageSize,
         lat=lat,
         lon=lon,
+        target_showtime=showtime,
     )
 
 
