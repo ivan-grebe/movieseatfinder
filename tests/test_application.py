@@ -433,6 +433,64 @@ class LiveFandangoIntegrationTests(unittest.TestCase):
 
 
 class RouteTests(unittest.TestCase):
+    @patch("backend.application.showtime_seat_match")
+    @patch("backend.application.collect_candidate_showtimes")
+    @patch(
+        "backend.application.api_search_location", return_value=("00000", (40, -75), "Testville")
+    )
+    def test_shared_showtime_resolves_its_current_page_and_unavailable_returns_first_page(
+        self, location, candidates, seat_match
+    ):
+        candidates.side_effect = lambda *args: [
+            (
+                {"name": "Cinema", "address": "1 Main St", "distanceMiles": 1},
+                {
+                    "showtimeHashCode": f"showtime-{i}",
+                    "movieTitle": "Test Movie",
+                    "date": "2026-09-06",
+                    "time": f"{i // 60:02}:{i % 60:02}",
+                    "displayTime": str(i),
+                    "format": "Standard",
+                    "amenities": "",
+                    "ticketUrl": "https://tickets.fandango.com/order",
+                    "poster": "",
+                    "rating": "",
+                    "runtime": "",
+                    "genres": [],
+                },
+            )
+            for i in range(100)
+        ]
+        # Unavailable earlier showtimes shift the target across page boundaries.
+        seat_match.side_effect = lambda showtime, *args: (
+            {"availableSeatCount": 2} if int(showtime["displayTime"]) % 2 == 0 else None
+        )
+        for target, expected_page, first in [
+            ("showtime-44", 2, "showtime-40"),
+            ("showtime-80", 3, "showtime-80"),
+            ("showtime-10", 1, "showtime-0"),
+            ("showtime-45", 1, "showtime-0"),
+            ("missing", 1, "showtime-0"),
+        ]:
+            with self.subTest(target=target):
+                seat_match.reset_mock()
+                response = self.client.get(
+                    "/api/search",
+                    params={"radius": 5, "movie": "Test Movie", "page": 9, "showtime": target},
+                )
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(data["page"], expected_page)
+                self.assertEqual(data["matches"][0]["showtimeHashCode"], first)
+                self.assertEqual(data["checkedShowtimes"], 100)
+                self.assertEqual(data["checkedSeatMaps"], seat_match.call_count)
+                self.assertEqual(data["hasPreviousPage"], expected_page > 1)
+                self.assertEqual(data["hasNextPage"], expected_page < 3)
+                checked_ids = [
+                    call.args[0]["showtimeHashCode"] for call in seat_match.call_args_list
+                ]
+                self.assertEqual(len(checked_ids), len(set(checked_ids)))
+
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(application.app)

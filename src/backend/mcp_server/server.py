@@ -195,7 +195,6 @@ def _run_seat_search(
             sort=sort,
             page=1,
             page_size=page_size,
-            include_showtime_hash=True,
         )
     except HTTPException as error:
         raise ValueError(_public_error(error)) from error

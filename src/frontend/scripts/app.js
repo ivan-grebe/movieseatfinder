@@ -533,6 +533,7 @@ function searchParams() {
   if (sharedSearch) {
     const params = new URLSearchParams(globalThis.location.search);
     params.delete("shared");
+    params.delete("showtime");
     return params;
   }
   const params = baseParams();
@@ -553,12 +554,16 @@ function searchParams() {
   return params;
 }
 
-async function fetchSearchResults() {
+async function fetchSearchResults(showtime = "") {
   const params = searchParams();
   params.set("page", currentPage);
   params.set("pageSize", PAGE_SIZE);
   params.set("sort", sortInput.value);
+  if (showtime) {
+    params.set("showtime", showtime);
+  }
   const data = await getJson(`/api/search?${params}`);
+  params.set("page", data.page);
   params.delete("pageSize");
   const url = new URL("/", globalThis.location.origin);
   url.search = params.toString();
@@ -579,7 +584,11 @@ function rememberSearch(searchUrl, replaceHistory = false) {
   }
 }
 
-async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
+async function runNewSearch({
+  replaceHistory = false,
+  scrollToResults = false,
+  showtime = "",
+} = {}) {
   finishReorder({ restoreScroll: false });
   if (!sharedSearch && !validateSearchInputs()) {
     return;
@@ -600,12 +609,17 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
     }
   });
   try {
-    const { data, searchUrl } = await fetchSearchResults();
+    const { data, searchUrl } = await fetchSearchResults(showtime);
     if (!isCurrent()) {
       return;
     }
     rememberSearch(searchUrl, replaceHistory);
+    currentPage = data.page;
     resultsView.render(data, { searchUrl });
+    document.body.classList.remove("shared-loading");
+    if (showtime) {
+      resultsView.focusShowtime(showtime, data.failedSeatMaps > 0);
+    }
   } catch (error) {
     if (!isCurrent()) {
       return;
@@ -859,6 +873,7 @@ function bindEvents() {
     document.body.classList.remove("shared-search", "shared-loading");
     const url = new URL(globalThis.location.href);
     url.searchParams.delete("shared");
+    url.searchParams.delete("showtime");
     globalThis.history.replaceState({ showControls: true }, "", url.href);
     const section = searchForm.closest("section");
     section.tabIndex = -1;
@@ -1013,7 +1028,10 @@ async function initialize() {
     logSharedLinkVisit();
     results.replaceChildren();
     setSummary(summary, "Loading shared search…", true);
-    await runNewSearch({ replaceHistory: true });
+    await runNewSearch({
+      replaceHistory: true,
+      showtime: new URLSearchParams(globalThis.location.search).get("showtime") || "",
+    });
     return;
   }
   const optionsLoaded = await loadSearchOptions();

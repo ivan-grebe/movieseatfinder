@@ -1,8 +1,8 @@
 import { formatNiceDate } from "./utils.js";
 
-export function getSearchShareData(searchUrl) {
+export function getSearchShareData(searchUrl, match) {
   const params = new URL(searchUrl).searchParams;
-  const movie = params.get("movie");
+  const movie = match.movieTitle;
   const details = [];
   const seats = Number(params.get("adjacentSeats"));
   if (seats > 1) {
@@ -10,45 +10,30 @@ export function getSearchShareData(searchUrl) {
   } else if (seats === 1) {
     details.push("1 seat");
   }
-  const start = params.get("startDate");
-  const end = params.get("endDate");
-  if (start) {
-    let dates = formatNiceDate(start);
-    if (end && end !== start) {
-      dates += ` – ${formatNiceDate(end)}`;
-    }
-    details.push(dates);
-  }
-  const formats = params.get("format");
-  if (formats) {
-    details.push(formats.split(",").join(", "));
-  }
-  const theatre = params.get("theatre");
-  if (theatre) {
-    details.push(theatre);
-  }
+  details.push(formatNiceDate(match.date), match.displayTime, match.format, match.theatre.name);
   return {
-    text: [`Find showtimes for ${movie}`, details.join(" · ")].filter(Boolean).join("\n"),
+    text: [movie, details.filter(Boolean).join(" · ")].join("\n"),
     title: `${movie} — Movie Seat Finder`,
     url: searchUrl,
   };
 }
 
-export function createShareButton(searchUrl) {
+export function createShareButton(searchUrl, match) {
   // An iPad can identify itself as a Mac; touch distinguishes it from a desktop Mac.
   const mobile =
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const sharedUrl = new URL(searchUrl);
   sharedUrl.searchParams.set("shared", "1");
-  const data = getSearchShareData(sharedUrl.href);
+  sharedUrl.searchParams.set("showtime", match.showtimeHashCode);
+  const data = getSearchShareData(sharedUrl.href, match);
   const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
   const button = document.createElement("button");
   button.type = "button";
   button.className = "buy-btn share-btn";
-  let defaultLabel = "Copy search link";
+  let defaultLabel = "Copy showtime link";
   if (nativeShare) {
-    defaultLabel = "Share";
+    defaultLabel = "Share showtime";
   }
   const label = document.createElement("span");
   label.className = "share-label";
@@ -87,7 +72,7 @@ export function createShareButton(searchUrl) {
         await navigator.share(data);
       } else {
         await navigator.clipboard.writeText(data.url);
-        showFeedback("Copied!", "Search link copied to clipboard.");
+        showFeedback("Copied!", "Showtime link copied to clipboard.");
         resetTimer = globalThis.setTimeout(resetFeedback, 2000);
       }
     } catch (error) {
@@ -96,7 +81,10 @@ export function createShareButton(searchUrl) {
           showFeedback("Share failed — retry", "Could not open sharing. Click to try again.");
         }
       } else {
-        showFeedback("Copy failed — retry", "Could not copy the search link. Click to try again.");
+        showFeedback(
+          "Copy failed — retry",
+          "Could not copy the showtime link. Click to try again.",
+        );
       }
     } finally {
       button.disabled = false;
