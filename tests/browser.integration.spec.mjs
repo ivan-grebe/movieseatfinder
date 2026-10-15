@@ -46,6 +46,15 @@ function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
   };
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/languages*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ languages: ["English", "Hindi"] }),
+      contentType: "application/json",
+    }),
+  );
+});
+
 async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   await page.route("**/api/theatres*", (route) =>
     route.fulfill({
@@ -67,6 +76,303 @@ async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
   );
   await page.route("**/api/search*", onSearch);
 }
+
+test("language selection filters the movie and seat searches before movie selection", async ({
+  page,
+}) => {
+  const movieRequests = [];
+  const searchRequests = [];
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ place: "Testville", theatres: [] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/languages*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ languages: ["English", "Hindi"] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/movies*", (route) => {
+    movieRequests.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({
+      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
+      contentType: "application/json",
+    });
+  });
+  await page.route("**/api/formats*", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ formats: ["Standard"] }),
+      contentType: "application/json",
+    }),
+  );
+  await page.route("**/api/search*", (route) => {
+    searchRequests.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({ json: emptySearch });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#languageInput")).toBeEnabled();
+  await page.locator("#languageInput").selectOption("Hindi");
+  await expect.poll(() => movieRequests.at(-1)?.get("language")).toBe("Hindi");
+  await selectMovie(page);
+  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+  await expect.poll(() => searchRequests.at(-1)?.get("language")).toBe("Hindi");
+});
+
+test("changing language clears the previously selected movie", async ({ page }) => {
+  const formatResponse = Promise.withResolvers();
+  const formatStarted = Promise.withResolvers();
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.route("**/api/formats*", async (route) => {
+    formatStarted.resolve();
+    await formatResponse.promise;
+    await route.fulfill({ json: { formats: ["IMAX"] } });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#languageInput")).toBeEnabled();
+  await selectMovie(page);
+  await formatStarted.promise;
+
+  await page.locator("#languageInput").selectOption("Hindi");
+  await expect(page.locator("#movieInput")).toHaveValue("");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  const oldFormats = page.waitForResponse("**/api/formats*");
+  formatResponse.resolve();
+  await oldFormats;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await expect(page.locator("#formatOptions button")).toHaveText(["Any available format"]);
+  await expect(page.locator("#formatMeta")).toBeEmpty();
+});
+
+test("a late movie response for the previous language cannot replace current movies", async ({
+  page,
+}) => {
+  const hindiResponse = Promise.withResolvers();
+  const hindiStarted = Promise.withResolvers();
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.route("**/api/movies*", async (route) => {
+    const language = new URL(route.request().url()).searchParams.get("language");
+    if (language === "Hindi") {
+      hindiStarted.resolve();
+      await hindiResponse.promise;
+      await route.fulfill({ json: { movies: [{ title: "Hindi Movie" }] } });
+      return;
+    }
+    await route.fulfill({ json: { movies: [{ title: "English Movie" }] } });
+  });
+  await page.goto("/?zip=10001&radius=25");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  await page.locator("#languageInput").selectOption("Hindi");
+  await hindiStarted.promise;
+  await expect(page.locator("#movieInput")).toBeDisabled();
+  await expect(page.locator("#searchButton")).toBeDisabled();
+  await page.locator("#languageInput").selectOption("English");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  const oldMovies = page.waitForResponse(
+    (response) => new URL(response.url()).searchParams.get("language") === "Hindi",
+  );
+  hindiResponse.resolve();
+  await oldMovies;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await page.locator("#movieInput").focus();
+  await expect(page.locator("#movieMenu [role=option]")).toHaveText(["English Movie"]);
+  await expect(page.locator("#languageInput")).toHaveValue("English");
+});
+
+for (const { expectedLanguage, language } of [
+  { expectedLanguage: "Hindi", language: "hInDi" },
+  { expectedLanguage: "any", language: "ANY" },
+]) {
+  test(`saved language ${language} uses the canonical available option`, async ({ page }) => {
+    const searches = [];
+    await mockSearchDependencies(page, (route) => {
+      searches.push(new URL(route.request().url()).searchParams.get("language"));
+      return route.fulfill({ json: emptySearch });
+    });
+    const params = new URLSearchParams({ language, radius: "25", zip: "10001" });
+    await page.goto(`/?${params}`);
+    await expect(page.locator("#movieInput")).toBeEnabled();
+    await expect(page.locator("#languageInput")).toHaveValue(expectedLanguage);
+    await expect(page.locator("#languageInput option")).toHaveText([
+      "Any language",
+      "English",
+      "Hindi",
+    ]);
+    await selectMovie(page);
+    await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
+    let expectedParameter = expectedLanguage;
+    if (expectedLanguage === "any") {
+      expectedParameter = null;
+    }
+    await expect.poll(() => searches).toEqual([expectedParameter]);
+  });
+}
+
+test("criteria refreshes preserve the language even when no showtimes remain", async ({ page }) => {
+  const movieRequests = [];
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.route("**/api/languages*", (route) => {
+    const radius = new URL(route.request().url()).searchParams.get("radius");
+    let languages = ["English", "Hindi"];
+    if (radius === "10") {
+      languages = ["English"];
+    }
+    return route.fulfill({ json: { languages } });
+  });
+  await page.route("**/api/movies*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    movieRequests.push(Object.fromEntries(params));
+    let movies = [{ title: "Test Movie" }];
+    if (params.get("radius") === "10") {
+      movies = [];
+    }
+    return route.fulfill({ json: { movies } });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#languageInput")).toBeEnabled();
+  await page.locator("#languageInput").selectOption("Hindi");
+  await selectMovie(page);
+  await page.locator("#radiusInput").fill("15");
+  await expect.poll(() => movieRequests.at(-1)).toMatchObject({ language: "Hindi", radius: "15" });
+  await expect(page.locator("#languageInput")).toHaveValue("Hindi");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  await page.locator("#radiusInput").fill("10");
+  await expect.poll(() => movieRequests.at(-1)).toMatchObject({ language: "Hindi", radius: "10" });
+  await expect(page.locator("#languageInput")).toHaveValue("Hindi");
+  await expect(page.locator("#languageInput option:checked")).toHaveText("Hindi (no showtimes)");
+  await expect(page.locator("#movieMeta")).toHaveText("0 showing");
+});
+
+for (const shared of [false, true]) {
+  test(`saved language filters survive reload and shared Back with shared=${shared}`, async ({
+    page,
+  }) => {
+    const searches = [];
+    const formatLanguages = [];
+    await mockSearchDependencies(page, (route) => {
+      searches.push(new URL(route.request().url()).searchParams.get("language"));
+      return route.fulfill({
+        json: {
+          ...emptySearch,
+          matches: [{ ...makeSimpleMatch("Cinema", "7 PM"), language: "Hindi" }],
+        },
+      });
+    });
+    await page.route("**/api/formats*", (route) => {
+      formatLanguages.push(new URL(route.request().url()).searchParams.get("language"));
+      return route.fulfill({ json: { formats: ["Standard"] } });
+    });
+    const params = new URLSearchParams({
+      language: "Hindi",
+      movie: "Test Movie",
+      radius: "25",
+      zip: "10001",
+    });
+    if (shared) {
+      params.set("shared", "1");
+    }
+    await page.goto(`/?${params}`);
+    await expect(page.locator(".result-meta")).toContainText("Hindi");
+    expect(searches).toEqual(["Hindi"]);
+    if (shared) {
+      await page.getByRole("button", { exact: true, name: "Back" }).click();
+    }
+    await expect(page.locator("#languageInput")).toHaveValue("Hindi");
+    await expect.poll(() => formatLanguages.at(-1)).toBe("Hindi");
+    await page.reload();
+    await expect(page.locator("#movieInput")).toBeEnabled();
+    await expect(page.locator("#languageInput")).toHaveValue("Hindi");
+    await expect(page.locator("#searchButton")).toBeEnabled();
+    expect(searches.every((language) => language === "Hindi")).toBe(true);
+  });
+}
+
+test("a stale theatre language response cannot reload movies or replace current options", async ({
+  page,
+}) => {
+  const movieRequests = [];
+  const { promise: languageStarted, resolve: markLanguageStarted } = Promise.withResolvers();
+  const { promise: languageGate, resolve: releaseLanguage } = Promise.withResolvers();
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.route("**/api/theatres*", (route) =>
+    route.fulfill({
+      json: { place: "Testville", theatres: [{ name: "Cinema A" }, { name: "Cinema B" }] },
+    }),
+  );
+  await page.route("**/api/languages*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("theatre") === "Cinema A") {
+      markLanguageStarted();
+      await languageGate;
+      await route.fulfill({ json: { languages: ["Spanish"] } });
+      return;
+    }
+    await route.fulfill({ json: { languages: ["Hindi"] } });
+  });
+  await page.route("**/api/movies*", (route) => {
+    movieRequests.push(new URL(route.request().url()).searchParams.get("theatre"));
+    return route.fulfill({ json: { movies: [{ title: "Test Movie" }] } });
+  });
+
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  await page.locator("#theatreInput").fill("Cinema A");
+  await page.getByRole("option", { exact: true, name: "Cinema A" }).click();
+  await languageStarted;
+  await expect(page.locator("#languageInput")).toBeDisabled();
+  await expect(page.locator("#searchButton")).toBeDisabled();
+  await page.locator("#theatreInput").fill("Cinema B");
+  await page.getByRole("option", { exact: true, name: "Cinema B" }).click();
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  expect(movieRequests).toEqual(["", "Cinema B"]);
+  const staleResponse = page.waitForResponse(
+    (response) => new URL(response.url()).searchParams.get("theatre") === "Cinema A",
+  );
+  releaseLanguage();
+  await staleResponse;
+  // Let the response handler and any dependent fetch finish before inspecting state.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  await expect(page.locator("#languageInput option")).toHaveText(["Any language", "Hindi"]);
+  expect(movieRequests).toEqual(["", "Cinema B"]);
+});
+
+test("language failures stop dependent loads and recover on a criteria refresh", async ({
+  page,
+}) => {
+  let movieRequests = 0;
+  let failLanguages = true;
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.route("**/api/languages*", (route) => {
+    if (failLanguages) {
+      return route.fulfill({ json: { error: "Languages unavailable. Try again." }, status: 502 });
+    }
+    return route.fulfill({ json: { languages: ["English", "Hindi"] } });
+  });
+  await page.route("**/api/movies*", (route) => {
+    movieRequests += 1;
+    return route.fulfill({ json: { movies: [{ title: "Test Movie" }] } });
+  });
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#languageStatus")).toHaveText("Languages unavailable. Try again.");
+  await expect(page.locator("#languageInput")).toBeDisabled();
+  await expect(page.locator("#movieInput")).toBeDisabled();
+  await expect(page.locator("#searchButton")).toBeDisabled();
+  expect(movieRequests).toBe(0);
+  failLanguages = false;
+  await page.locator("#radiusInput").fill("10");
+  await expect(page.locator("#languageInput")).toBeEnabled();
+  await expect(page.locator("#movieInput")).toBeEnabled();
+  await expect(page.locator("#languageStatus")).toBeEmpty();
+  expect(movieRequests).toBe(1);
+});
 
 async function selectMovie(page, title = "Test Movie") {
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");

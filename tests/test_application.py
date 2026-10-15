@@ -59,6 +59,182 @@ class DateAndValidationTests(unittest.TestCase):
 
 
 class MovieAndFormatTests(unittest.TestCase):
+    def test_language_labels_are_canonicalized_from_fandango_amenities(self):
+        cases = [
+            ("Arabic Language", "", "Arabic"),
+            ("Cantonese Language", "", "Cantonese"),
+            ("Nepali Language", "", "Nepali"),
+            ("English Dubbed", "This film is dubbed in English.", "English"),
+            ("Hindi Language", "This film is presented in Hindi.", "Hindi"),
+            ("Spanish with English Subtitles", "", "Spanish"),
+            ("Hindi with French Subtitles", "", "Hindi"),
+            ("English Subtitles", "The shows offer English subtitles", "English"),
+            ("Spanish subtitled", "Spanish subtitles are displayed", "English"),
+            ("Closed caption", "Captions are presented in Spanish.", "English"),
+            ("Open caption", "Captions are presented in Spanish.", "English"),
+            ("", "This film is presented in Telugu.", "Telugu"),
+            ("", "This film is dubbed in Japanese.", "Japanese"),
+            ("IMAX", "This film is presented in IMAX.", "English"),
+            ("Digital", "This film is presented in high definition.", "English"),
+            (
+                "Reserved seating",
+                "This showtime allows you to reserve your seats ahead of time.",
+                "English",
+            ),
+        ]
+
+        for name, description, expected in cases:
+            with self.subTest(name=name):
+                self.assertEqual(
+                    application.showtime_language(
+                        {"amenities": [{"name": name, "description": description}]}
+                    ),
+                    expected,
+                )
+
+    def test_explicit_language_label_wins_over_other_amenity_descriptions(self):
+        amenities = [
+            {"name": "Digital", "description": "Presented in English."},
+            {"name": "Hindi Language"},
+        ]
+        for ordered in (amenities, list(reversed(amenities))):
+            with self.subTest(amenities=ordered):
+                self.assertEqual(application.showtime_language({"amenities": ordered}), "Hindi")
+
+    def test_language_filter_matches_explicit_and_unlabeled_showtimes(self):
+        self.assertTrue(application.language_matches("Spanish", "spanish"))
+        self.assertTrue(application.language_matches("English", "english"))
+        self.assertTrue(application.language_matches("Hindi", "any"))
+        self.assertFalse(application.language_matches("Hindi", "Tamil"))
+        self.assertTrue(application.language_matches("日本語", "日本語"))
+        self.assertFalse(application.language_matches("日本語", "한국어"))
+
+    def test_movie_language_filter_keeps_movies_with_matching_available_groups(self):
+        movie = {
+            "title": "Test Movie",
+            "variants": [
+                {
+                    "amenityGroups": [
+                        {
+                            "amenities": [{"name": "Hindi Language"}],
+                            "showtimes": [{"type": "available", "expired": False}],
+                        }
+                    ]
+                }
+            ],
+        }
+
+        self.assertTrue(application.language_matches_for_movie(movie, "Hindi"))
+        self.assertFalse(application.language_matches_for_movie(movie, "English"))
+
+    def test_expired_and_unavailable_groups_do_not_advertise_languages(self):
+        for showtimes in (
+            [],
+            [{"type": "available", "expired": True}],
+            [{"type": "soldOut"}],
+        ):
+            with self.subTest(showtimes=showtimes):
+                movie = {
+                    "variants": [
+                        {
+                            "amenityGroups": [
+                                {
+                                    "amenities": [{"name": "Hindi Language"}],
+                                    "showtimes": showtimes,
+                                }
+                            ]
+                        }
+                    ]
+                }
+                self.assertEqual(application.movie_languages(movie), set())
+                self.assertFalse(application.language_matches_for_movie(movie, "Hindi"))
+                self.assertTrue(application.language_matches_for_movie(movie, "any"))
+
+    def test_missing_language_amenities_default_to_english(self):
+        for group in ({}, {"amenities": None}, {"amenities": []}):
+            with self.subTest(group=group):
+                self.assertEqual(application.showtime_language(group), "English")
+
+    @patch("backend.application.dated_theatres")
+    def test_language_filtered_formats_ignore_unavailable_showtimes_in_a_mixed_group(
+        self, theatres
+    ):
+        theatres.return_value = [
+            {
+                "rawMovies": [
+                    {
+                        "title": "Test Movie",
+                        "variants": [
+                            {
+                                "amenityGroups": [
+                                    {
+                                        "amenities": [{"name": "Hindi Language"}],
+                                        "showtimes": [
+                                            {
+                                                "type": availability,
+                                                "expired": expired,
+                                                "filmFormat": [{"filterName": format_name}],
+                                            }
+                                            for availability, expired, format_name in (
+                                                ("available", False, "Standard"),
+                                                ("available", True, "IMAX"),
+                                                ("soldOut", False, "4DX"),
+                                            )
+                                        ],
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ]
+            }
+        ]
+        params = ("00000", 25, "Test Movie", date(2026, 8, 1), date(2026, 8, 1), "", (40, -75))
+
+        self.assertEqual(
+            application.formats_from_dated_theatre_payloads(*params, requested_language="Hindi"),
+            ["Standard"],
+        )
+        # Searches without a language filter retain their existing format behavior.
+        self.assertEqual(
+            application.formats_from_dated_theatre_payloads(*params),
+            ["4DX", "IMAX", "Standard"],
+        )
+
+    @patch("backend.application.dated_theatres")
+    def test_language_filter_finds_a_matching_movie_after_another_language_with_the_same_title(
+        self, theatres
+    ):
+        theatres.return_value = [
+            {
+                "rawMovies": [
+                    {
+                        "title": "Test Movie",
+                        "variants": [
+                            {
+                                "amenityGroups": [
+                                    {
+                                        "amenities": [{"name": f"{language} Language"}],
+                                        "showtimes": [{"type": "available"}],
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ]
+            }
+            for language in ("English", "Hindi", "Hindi")
+        ]
+        params = ("00000", 25, date(2026, 8, 1), date(2026, 8, 1), "", (40, -75))
+
+        self.assertEqual(
+            application.movies_from_dated_theatre_payloads(*params, requested_language="hInDi"),
+            [{"title": "Test Movie"}],
+        )
+        self.assertEqual(
+            application.languages_from_dated_theatre_payloads(*params), ["English", "Hindi"]
+        )
+
     def test_movie_matching_requires_the_selected_title(self):
         self.assertTrue(
             application.movie_matches("Spider-Man: Homecoming", "spider man homecoming")
@@ -335,6 +511,79 @@ class SeatSelectionTests(unittest.TestCase):
 
 
 class CandidateSearchTests(unittest.TestCase):
+    @patch("backend.application.dated_theatres")
+    def test_candidate_collection_filters_language_before_seat_checks(self, dated_theatres):
+        dated_theatres.return_value = [
+            {
+                "name": "Cinema",
+                "rawMovies": [
+                    {
+                        "title": "Test Movie",
+                        "variants": [
+                            {
+                                "amenityGroups": [
+                                    {
+                                        "amenities": [{"name": "Hindi Language"}],
+                                        "showtimes": [
+                                            {
+                                                "expired": False,
+                                                "filmFormat": [],
+                                                "ticketingDate": "2026-08-01+18:00",
+                                                "type": "available",
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "amenities": [],
+                                        "showtimes": [
+                                            {
+                                                "expired": False,
+                                                "filmFormat": [],
+                                                "ticketingDate": "2026-08-01+19:00",
+                                                "type": "available",
+                                            }
+                                        ],
+                                    },
+                                ]
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        candidates = application.collect_candidate_showtimes(
+            "00000",
+            25,
+            date(2026, 8, 1),
+            date(2026, 8, 1),
+            "",
+            "Test Movie",
+            "any",
+            "00:00",
+            "23:59",
+            (40, -75),
+            requested_language="Hindi",
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0][1]["language"], "Hindi")
+
+        # Existing positional callers keep their meaning and default to all languages.
+        unfiltered = application.collect_candidate_showtimes(
+            "00000",
+            25,
+            date(2026, 8, 1),
+            date(2026, 8, 1),
+            "",
+            "Test Movie",
+            "any",
+            "00:00",
+            "23:59",
+            (40, -75),
+        )
+        self.assertEqual(len(unfiltered), 2)
+
     def test_parallel_checks_preserve_order_and_stop_after_a_page_has_a_next_match(self):
         second_finished = Event()
 
@@ -684,6 +933,164 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"movies": []})
         self.assertEqual(movies_from_payloads.call_args.args[4], "selected cinema")
+
+    @patch(
+        "backend.application.languages_from_dated_theatre_payloads",
+        return_value=["English", "Hindi"],
+    )
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40.0, -75.0), "Testville"),
+    )
+    def test_language_endpoint_returns_available_languages(
+        self, resolve_search_location, languages_from_payloads
+    ):
+        response = self.client.get(
+            "/api/languages",
+            params={
+                "zip": "00000",
+                "radius": 25,
+                "startDate": "2026-07-22",
+                "endDate": "2026-07-23",
+                "theatre": "Selected Cinema",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"languages": ["English", "Hindi"]})
+        self.assertEqual(languages_from_payloads.call_args.args[4], "selected cinema")
+
+    @patch("backend.application.showtime_seat_match", return_value={"availableSeatCount": 2})
+    @patch("backend.application.dated_theatres")
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40, -75), "Testville"),
+    )
+    def test_language_filter_is_consistent_across_options_and_seat_results(
+        self, location, theatres, seat_match
+    ):
+        groups = []
+        for language, format_name, expired in (
+            ("Hindi", "Standard", False),
+            ("English", "IMAX", False),
+            ("Hindi", "IMAX", True),
+            ("Telugu", "Standard", True),
+        ):
+            groups.append(
+                {
+                    "amenities": [{"name": f"{language} Language"}],
+                    "showtimes": [
+                        {
+                            "type": "available",
+                            "expired": expired,
+                            "ticketingDate": "2026-08-01+19:00",
+                            "filmFormat": [{"filterName": format_name}],
+                            "showtimeHashCode": f"{language}-{format_name}",
+                        }
+                    ],
+                }
+            )
+        theatres.return_value = [
+            {
+                "name": "Cinema",
+                "address": "1 Main St",
+                "distanceMiles": 1,
+                "rawMovies": [{"title": "Test Movie", "variants": [{"amenityGroups": groups}]}],
+            }
+        ]
+        params = {"zip": "00000", "radius": 25, "movie": "Test Movie", "language": "Hindi"}
+        self.assertEqual(
+            self.client.get("/api/languages", params=params).json(),
+            {"languages": ["English", "Hindi"]},
+        )
+        self.assertEqual(
+            self.client.get("/api/movies", params=params).json(),
+            {"movies": [{"title": "Test Movie"}]},
+        )
+        self.assertEqual(
+            self.client.get("/api/formats", params=params).json(), {"formats": ["Standard"]}
+        )
+        response = self.client.get("/api/search", params=params)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([match["language"] for match in response.json()["matches"]], ["Hindi"])
+        self.assertEqual(seat_match.call_count, 1)
+        self.assertEqual(seat_match.call_args.args[0]["language"], "Hindi")
+        self.assertEqual(
+            self.client.get("/api/movies", params={**params, "language": "Telugu"}).json(),
+            {"movies": []},
+        )
+        self.assertEqual(
+            self.client.get("/api/formats", params={**params, "language": "Telugu"}).json(),
+            {"formats": []},
+        )
+
+    @patch(
+        "backend.application.languages_from_dated_theatre_payloads",
+        side_effect=application.requests.RequestException("upstream down"),
+    )
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40, -75), "Testville"),
+    )
+    def test_language_endpoint_reports_upstream_failure(self, location, languages):
+        response = self.client.get("/api/languages", params={"zip": "00000", "radius": 25})
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("Could not load real language data", response.json()["error"])
+
+    @patch("backend.application.fandango_theatres_by_date")
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40, -75), "Testville"),
+    )
+    def test_language_endpoint_rejects_invalid_dates_before_fetching_showtimes(
+        self, location, theatres
+    ):
+        for start, end in (("2026-08-02", "2026-08-01"), ("2026-08-01", "2026-08-16")):
+            with self.subTest(start=start, end=end):
+                response = self.client.get(
+                    "/api/languages",
+                    params={
+                        "zip": "00000",
+                        "radius": 25,
+                        "startDate": start,
+                        "endDate": end,
+                    },
+                )
+                self.assertEqual(response.status_code, 400)
+        theatres.assert_not_called()
+
+    @patch("backend.application.languages_from_dated_theatre_payloads", return_value=[])
+    @patch(
+        "backend.application.resolve_search_location",
+        return_value=("00000", (40, -75), "Testville"),
+    )
+    def test_language_endpoint_applies_the_rate_limit(self, location, languages):
+        params = {"zip": "00000", "radius": 25}
+        for _ in range(30):
+            self.assertEqual(self.client.get("/api/languages", params=params).status_code, 200)
+        self.assertEqual(self.client.get("/api/languages", params=params).status_code, 429)
+        self.assertEqual(languages.call_count, 30)
+
+    @patch("backend.application.resolve_search_location")
+    def test_language_inputs_are_validated_before_upstream_work(self, location):
+        base_params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
+        for endpoint in ("/api/movies", "/api/formats", "/api/search"):
+            with self.subTest(endpoint=endpoint):
+                response = self.client.get(endpoint, params={**base_params, "language": "x" * 121})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(set(response.json()), {"error"})
+        for invalid in (
+            {"radius": 0},
+            {"radius": 101},
+            {"lat": 91, "lon": 0},
+            {"lat": 0, "lon": 181},
+            {"startDate": "invalid"},
+        ):
+            with self.subTest(invalid=invalid):
+                response = self.client.get("/api/languages", params={**base_params, **invalid})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(set(response.json()), {"error"})
+        location.assert_not_called()
 
     @patch(
         "backend.application.movies_from_dated_theatre_payloads",

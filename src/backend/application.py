@@ -159,6 +159,7 @@ RATE_LIMITS = {
     # browsing session can issue a burst of these; upstream fetches are cached.
     "/api/search": RateLimitItemPerSecond(30, 60),
     "/api/formats": RateLimitItemPerSecond(30, 60),
+    "/api/languages": RateLimitItemPerSecond(30, 60),
     "/api/movies": RateLimitItemPerSecond(30, 60),
     "/api/theatres": RateLimitItemPerSecond(30, 60),
 }
@@ -344,6 +345,94 @@ def format_matches(format_name, requested):
     return actual in requested_formats
 
 
+LANGUAGE_WITH_SUBTITLES_PATTERN = re.compile(
+    r"^(?P<language>.+?)\s+with\s+.+?\s+subtitles$", re.IGNORECASE
+)
+LANGUAGE_SUFFIX_PATTERN = re.compile(r"^(?P<language>.+?)\s+language$", re.IGNORECASE)
+LANGUAGE_DUBBED_PATTERN = re.compile(r"^(?P<language>.+?)\s+dubbed$", re.IGNORECASE)
+SUBTITLE_ONLY_PATTERN = re.compile(r"^.+\s+(?:subtitles?|subtitled)$", re.IGNORECASE)
+LANGUAGE_LABELS = {
+    "arabic": "Arabic",
+    "cantonese": "Cantonese",
+    "english": "English",
+    "french": "French",
+    "german": "German",
+    "hindi": "Hindi",
+    "italian": "Italian",
+    "japanese": "Japanese",
+    "korean": "Korean",
+    "mandarin": "Mandarin",
+    "nepali": "Nepali",
+    "spanish": "Spanish",
+    "tamil": "Tamil",
+    "telugu": "Telugu",
+}
+
+
+def canonical_language_label(value):
+    cleaned = clean_title(value)
+    return LANGUAGE_LABELS.get(cleaned.casefold(), cleaned)
+
+
+def showtime_language(group):
+    """Resolve the spoken language from Fandango's language amenities."""
+    amenities = group.get("amenities") or []
+    for item in amenities:
+        name = clean_title(item.get("name", ""))
+        if normalized_text(name) in {"english subtitles", "closed caption"}:
+            continue
+        match = LANGUAGE_WITH_SUBTITLES_PATTERN.match(name)
+        if not match:
+            match = LANGUAGE_SUFFIX_PATTERN.match(name)
+        if not match:
+            match = LANGUAGE_DUBBED_PATTERN.match(name)
+        if match:
+            return canonical_language_label(match.group("language"))
+    # Explicit labels take precedence over generic amenity descriptions.
+    for item in amenities:
+        name = clean_title(item.get("name", ""))
+        if SUBTITLE_ONLY_PATTERN.match(name) or normalized_text(name) in {
+            "closed caption",
+            "closed captions",
+            "open caption",
+            "open captions",
+        }:
+            continue
+        description = clean_title(item.get("description", ""))
+        description_match = re.search(
+            r"\b(?:spoken in|presented in|dubbed in)\s+(?P<language>[A-Za-z]+)\b",
+            description,
+            re.IGNORECASE,
+        )
+        if description_match and description_match.group("language").lower() in LANGUAGE_LABELS:
+            return canonical_language_label(description_match.group("language"))
+    return "English"
+
+
+def language_matches(language, requested):
+    requested = canonical_language_label(requested).casefold()
+    if not requested or requested == "any":
+        return True
+    return canonical_language_label(language).casefold() == requested
+
+
+def available_group_showtimes(group):
+    return [
+        showtime
+        for showtime in group.get("showtimes") or []
+        if showtime.get("type") == "available" and not showtime.get("expired")
+    ]
+
+
+def movie_languages(movie):
+    languages = set()
+    for variant in movie.get("variants") or []:
+        for group in variant.get("amenityGroups") or []:
+            if available_group_showtimes(group):
+                languages.add(showtime_language(group))
+    return languages
+
+
 def fandango_theatres(zip_code, radius, origin, show_date=None):
     key = (zip_code, radius, show_date or "", origin)
     cached = THEATRES_CACHE.get(key)
@@ -430,7 +519,7 @@ def dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin
 
 
 def movies_from_dated_theatre_payloads(
-    zip_code, radius, start_date, end_date, theatre_query, origin
+    zip_code, radius, start_date, end_date, theatre_query, origin, requested_language="any"
 ):
     seen = set()
     movies = []
@@ -438,11 +527,33 @@ def movies_from_dated_theatre_payloads(
         for movie in theatre["rawMovies"]:
             title = clean_title(movie.get("title", ""))
             key = normalized_text(title)
-            if not title or key in seen:
+            if (
+                not title
+                or key in seen
+                or not language_matches_for_movie(movie, requested_language)
+            ):
                 continue
             seen.add(key)
             movies.append({"title": title})
     return sorted(movies, key=lambda movie: movie["title"])
+
+
+def language_matches_for_movie(movie, requested_language):
+    if not requested_language or clean_title(requested_language).casefold() == "any":
+        return True
+    return any(
+        language_matches(language, requested_language) for language in movie_languages(movie)
+    )
+
+
+def languages_from_dated_theatre_payloads(
+    zip_code, radius, start_date, end_date, theatre_query, origin
+):
+    languages = set()
+    for theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
+        for movie in theatre["rawMovies"]:
+            languages.update(movie_languages(movie))
+    return sorted(languages)
 
 
 def group_formats(format_name, group):
@@ -452,7 +563,14 @@ def group_formats(format_name, group):
 
 
 def formats_from_dated_theatre_payloads(
-    zip_code, radius, movie_query, start_date, end_date, theatre_query, origin
+    zip_code,
+    radius,
+    movie_query,
+    start_date,
+    end_date,
+    theatre_query,
+    origin,
+    requested_language="any",
 ):
     formats = set()
     for theatre in dated_theatres(zip_code, radius, start_date, end_date, theatre_query, origin):
@@ -462,7 +580,15 @@ def formats_from_dated_theatre_payloads(
             for variant in movie.get("variants") or []:
                 format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
                 for group in variant.get("amenityGroups") or []:
-                    formats.update(group_formats(format_name, group))
+                    if not language_matches(showtime_language(group), requested_language):
+                        continue
+                    if requested_language and clean_title(requested_language).casefold() != "any":
+                        formats.update(
+                            showtime_format(format_name, group, showtime)
+                            for showtime in available_group_showtimes(group)
+                        )
+                    else:
+                        formats.update(group_formats(format_name, group))
     return sorted(formats)
 
 
@@ -606,6 +732,7 @@ def normalize_showtimes(movies):
         for variant in movie.get("variants") or []:
             format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
             for group in variant.get("amenityGroups") or []:
+                language = showtime_language(group)
                 amenity_text = clean_title(group.get("amenityString", ""))
                 amenities = [
                     name
@@ -633,6 +760,7 @@ def normalize_showtimes(movies):
                             "time": show_time,
                             "displayTime": display_showtime_time(show_time),
                             "format": format_label,
+                            "language": language,
                             "amenities": amenity_text,
                             "showtimeHashCode": showtime.get("showtimeHashCode"),
                             "ticketUrl": showtime.get("ticketingJumpPageURL"),
@@ -1013,6 +1141,33 @@ def api_theatres(
         upstream_error("Could not load real theatre data", error)
 
 
+@app.get("/api/languages")
+def api_languages(
+    request: Request,
+    radius: Radius,
+    zip_code: Annotated[ShortText, Query(alias="zip")] = "",
+    startDate: date | None = None,
+    endDate: date | None = None,
+    theatre: ShortText = "",
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+):
+    enforce_rate_limit(request, "/api/languages")
+    try:
+        start_date = startDate or date.today()
+        end_date = endDate or start_date
+        theatre_query = theatre.lower()
+        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
+        languages = languages_from_dated_theatre_payloads(
+            search_zip, radius, start_date, end_date, theatre_query, origin
+        )
+        return {"languages": languages}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except UPSTREAM_ERRORS as error:
+        upstream_error("Could not load real language data", error)
+
+
 @app.get("/api/movies")
 def api_movies(
     request: Request,
@@ -1023,6 +1178,7 @@ def api_movies(
     theatre: ShortText = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    language: ShortText = "any",
 ):
     enforce_rate_limit(request, "/api/movies")
     try:
@@ -1031,7 +1187,7 @@ def api_movies(
         theatre_query = theatre.lower()
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
         movies = movies_from_dated_theatre_payloads(
-            search_zip, radius, start_date, end_date, theatre_query, origin
+            search_zip, radius, start_date, end_date, theatre_query, origin, language
         )
         return {"movies": movies}
     except ValueError as error:
@@ -1051,6 +1207,7 @@ def api_formats(
     theatre: ShortText = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    language: ShortText = "any",
 ):
     enforce_rate_limit(request, "/api/formats")
     try:
@@ -1069,6 +1226,7 @@ def api_formats(
             end_date,
             theatre_query,
             origin,
+            language,
         )
         return {"formats": formats}
     except ValueError as error:
@@ -1088,6 +1246,7 @@ def collect_candidate_showtimes(
     start_time,
     end_time,
     origin,
+    requested_language="any",
 ):
     """Gather (theatre, showtime) pairs that pass every non-seat filter."""
     candidates = []
@@ -1098,6 +1257,8 @@ def collect_candidate_showtimes(
             if movie_matches(movie.get("title", ""), movie_query)
         ]
         for showtime in normalize_showtimes(movies):
+            if not language_matches(showtime["language"], requested_language):
+                continue
             if not format_matches(showtime["format"], requested_format):
                 continue
             if showtime["time"] < start_time or showtime["time"] > end_time:
@@ -1148,6 +1309,8 @@ def find_seat_matches(
     lat: float | None = None,
     lon: float | None = None,
     target_showtime: ShortText = "",
+    *,
+    requested_language: ShortText = "any",
 ):
     """Run the shared live showtime and seat-map search operation."""
     try:
@@ -1175,6 +1338,7 @@ def find_seat_matches(
             start_time,
             end_time,
             origin,
+            requested_language,
         )
         candidates.sort(
             key=lambda candidate: search_sort_key(
@@ -1212,6 +1376,7 @@ def find_seat_matches(
                 "date": showtime["date"],
                 "displayTime": showtime["displayTime"],
                 "format": showtime["format"],
+                "language": showtime.get("language", "English"),
                 "amenities": showtime["amenities"],
                 "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
                 "poster": showtime["poster"],
@@ -1296,6 +1461,7 @@ def api_search(
     showtime: ShortText = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    requested_language: Annotated[ShortText, Query(alias="language")] = "any",
 ):
     enforce_rate_limit(request, "/api/search")
     return find_seat_matches(
@@ -1304,6 +1470,7 @@ def api_search(
         zip_code=zip_code,
         theatre=theatre,
         requested_format=requested_format,
+        requested_language=requested_language,
         start_date=startDate,
         end_date=endDate,
         start_time=startTime,

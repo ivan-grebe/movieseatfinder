@@ -343,6 +343,9 @@ export function createResultsView({
       const meta = document.createElement("div");
       meta.className = "result-meta";
       meta.append(makeTag(match.format, ICON_FILM));
+      if (match.language) {
+        meta.append(makeTag(match.language, ICON_FILM));
+      }
       meta.append(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
       details.append(meta);
       body.append(details);

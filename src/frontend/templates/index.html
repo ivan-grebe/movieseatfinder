@@ -158,6 +158,18 @@
           </p>
           <div class="grid">
             <div class="field-block full">
+              <label class="select-wrap">
+                <span class="field-label-row">
+                  <span>Language</span>
+                  <span id="languageMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
+                </span>
+                <select id="languageInput" aria-describedby="languageStatus" disabled>
+                  <option value="any">Any language</option>
+                </select>
+              </label>
+              <div id="languageStatus" class="status field-status" aria-live="polite"></div>
+            </div>
+            <div class="field-block full">
               <label class="combo">
                 <span class="field-label-row">
                   <span>Movie</span>

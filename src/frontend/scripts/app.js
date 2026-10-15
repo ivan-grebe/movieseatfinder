@@ -14,6 +14,9 @@ const {
   zipInput,
   useLocationButton,
   locationStatus,
+  languageInput,
+  languageMeta,
+  languageStatus,
   radiusInput,
   radiusStatus,
   startDateInput,
@@ -59,6 +62,7 @@ const {
 const PAGE_SIZE = 20;
 const MAX_DATE_RANGE_DAYS = 14;
 let theatres = [];
+let selectedLanguage = "any";
 let movies = [];
 let selectedTheatre = null;
 let selectedTheatreName = "";
@@ -88,6 +92,7 @@ function createRunGuard() {
 }
 
 const theatreLoad = createRunGuard();
+const languageLoad = createRunGuard();
 const movieLoad = createRunGuard();
 const formatLoad = createRunGuard();
 const searchLoad = createRunGuard();
@@ -122,6 +127,7 @@ function searchInputsReady() {
   return (
     locationReady &&
     !theatreInput.hasAttribute("aria-busy") &&
+    !languageInput.disabled &&
     !movieInput.hasAttribute("aria-busy")
   );
 }
@@ -192,6 +198,56 @@ function resetFormats() {
   setStatus(formatStatus, "");
 }
 
+function resetLanguages() {
+  languageLoad.cancel();
+  languageInput.replaceChildren(
+    ...[...new Set(["any", selectedLanguage])].map((value) => languageOption(value)),
+  );
+  languageInput.value = selectedLanguage;
+  languageInput.disabled = true;
+  languageInput.removeAttribute("aria-busy");
+  setStatus(languageMeta, "");
+  setStatus(languageStatus, "");
+}
+
+function languageOption(value) {
+  let label = value;
+  if (value === "any") {
+    label = "Any language";
+  }
+  return new Option(label, value);
+}
+
+function setLanguageLoading(loading) {
+  languageInput.disabled = loading || !locationReady;
+  if (loading) {
+    languageInput.setAttribute("aria-busy", "true");
+  } else {
+    languageInput.removeAttribute("aria-busy");
+  }
+  if (!searchButton.hasAttribute("aria-busy")) {
+    searchButton.disabled = !searchInputsReady();
+  }
+}
+
+function setLanguageOptions(availableLanguages) {
+  const selectedValue = selectedLanguage.toLowerCase();
+  if (selectedValue === "any") {
+    selectedLanguage = "any";
+  } else {
+    selectedLanguage =
+      availableLanguages.find((value) => value.toLowerCase() === selectedValue) || selectedLanguage;
+  }
+  const options = [...new Set(["any", ...availableLanguages, selectedLanguage])];
+  languageInput.replaceChildren(...options.map((value) => languageOption(value)));
+  languageInput.value = selectedLanguage;
+  if (selectedLanguage !== "any" && !availableLanguages.includes(selectedLanguage)) {
+    languageInput.selectedOptions[0].textContent = `${selectedLanguage} (no showtimes)`;
+  }
+  setLanguageLoading(false);
+  setStatus(languageMeta, `${availableLanguages.length} available`);
+}
+
 function clearTheatreSelection({ rememberName = false } = {}) {
   selectedTheatre = null;
   if (!rememberName) {
@@ -199,10 +255,15 @@ function clearTheatreSelection({ rememberName = false } = {}) {
   }
 }
 
-function clearMovieSelection({ rememberTitle = false } = {}) {
+function clearMovieSelection({ rememberTitle = false, clearInput = false } = {}) {
   selectedMovie = null;
   if (!rememberTitle) {
     selectedMovieTitle = "";
+  }
+  if (clearInput) {
+    movieInput.value = "";
+    movieInput.setCustomValidity("");
+    closeCombo(movieInput, movieMenu);
   }
   resetFormats();
 }
@@ -302,7 +363,7 @@ function locationParams(params) {
 }
 
 function baseParams() {
-  return locationParams(
+  const params = locationParams(
     new URLSearchParams({
       endDate: endDateInput.value,
       radius: radiusInput.value,
@@ -311,6 +372,10 @@ function baseParams() {
       zip: zipInput.value.trim(),
     }),
   );
+  if (selectedLanguage !== "any") {
+    params.set("language", selectedLanguage);
+  }
+  return params;
 }
 
 function showLoaderError(error, status) {
@@ -326,10 +391,12 @@ function showLoaderError(error, status) {
 
 async function loadTheatres() {
   const isCurrent = theatreLoad.start();
+  languageLoad.cancel();
   if (!hasSearchBasics()) {
     theatres = [];
     setComboLoading(theatreInput, theatreMenu, true, false);
     setComboLoading(movieInput, movieMenu, true, false);
+    resetLanguages();
     setStatus(theatreMeta, "");
     setStatus(theatreStatus, "");
     return false;
@@ -337,6 +404,7 @@ async function loadTheatres() {
 
   setComboLoading(theatreInput, theatreMenu, true);
   setComboLoading(movieInput, movieMenu, true);
+  setLanguageLoading(true);
   setStatus(theatreMeta, "Loading…", "loading");
   setStatus(theatreStatus, "");
   try {
@@ -376,8 +444,43 @@ async function loadTheatres() {
     theatres = [];
     setComboLoading(theatreInput, theatreMenu, true, false);
     setComboLoading(movieInput, movieMenu, true, false);
+    resetLanguages();
     setStatus(theatreMeta, "");
     showLoaderError(error, theatreStatus);
+    return false;
+  }
+}
+
+async function loadLanguages() {
+  const isCurrent = languageLoad.start();
+  movieLoad.cancel();
+  clearMovieSelection({ rememberTitle: true });
+  setComboLoading(movieInput, movieMenu, true);
+  if (!hasSearchBasics()) {
+    resetLanguages();
+    return false;
+  }
+
+  const params = baseParams();
+  params.delete("language");
+  setLanguageLoading(true);
+  setStatus(languageMeta, "Loading…", "loading");
+  setStatus(languageStatus, "");
+  try {
+    const data = await getJson(`/api/languages?${params}`);
+    if (!isCurrent()) {
+      return null;
+    }
+    setLanguageOptions(data.languages);
+    setStatus(languageStatus, "");
+    return true;
+  } catch (error) {
+    if (!isCurrent()) {
+      return null;
+    }
+    resetLanguages();
+    setComboLoading(movieInput, movieMenu, true, false);
+    showLoaderError(error, languageStatus);
     return false;
   }
 }
@@ -725,6 +828,10 @@ function applyQueryParams() {
       input.value = params.get(name);
     }
   });
+  if (params.has("language")) {
+    selectedLanguage = params.get("language").trim() || "any";
+    setLanguageOptions([]);
+  }
   if (params.has("theatre")) {
     selectedTheatreName = params.get("theatre").trim();
   }
@@ -783,6 +890,7 @@ async function refreshTheatresAndMovies() {
       setLocationReady(false);
     }
     theatreLoad.cancel();
+    languageLoad.cancel();
     movieLoad.cancel();
     formatLoad.cancel();
     theatres = [];
@@ -793,6 +901,7 @@ async function refreshTheatresAndMovies() {
     setStatus(theatreMeta, "");
     setStatus(movieMeta, "");
     clearMovieSelection();
+    resetLanguages();
     [theatreStatus, movieStatus, formatStatus].forEach((status) => setStatus(status, ""));
     return;
   }
@@ -810,6 +919,17 @@ async function refreshTheatresAndMovies() {
     return;
   }
   if (theatreInput.value.trim() && !selectedTheatre) {
+    return;
+  }
+  const languagesLoaded = await loadLanguages();
+  if (languagesLoaded === null) {
+    return;
+  }
+  if (!languagesLoaded) {
+    movieLoad.cancel();
+    movies = [];
+    setStatus(movieMeta, "");
+    setStatus(movieStatus, "");
     return;
   }
   await loadMovies();
@@ -851,6 +971,8 @@ function queueCriteriaRefresh() {
   setStatus(movieMeta, "");
   clearTheatreSelection({ rememberName: true });
   clearMovieSelection({ rememberTitle: true });
+  languageLoad.cancel();
+  setLanguageLoading(true);
   setComboLoading(theatreInput, theatreMenu, true);
   setComboLoading(movieInput, movieMenu, true);
   autoRefresh();
@@ -899,6 +1021,9 @@ function bindEvents() {
       movies = [];
       clearMovieSelection();
       setComboLoading(movieInput, movieMenu, true, false);
+      if ((await loadLanguages()) !== true) {
+        return;
+      }
       await loadMovies();
       if (selectedMovie) {
         await loadFormats();
@@ -961,11 +1086,16 @@ function bindEvents() {
     movies = [];
     clearMovieSelection();
     setComboLoading(movieInput, movieMenu, true);
+    if ((await loadLanguages()) !== true) {
+      return;
+    }
     await loadMovies();
   });
-  theatreInput.addEventListener("input", () => {
+  theatreInput.addEventListener("input", async () => {
     theatreInput.setCustomValidity("");
     clearTheatreSelection();
+    languageLoad.cancel();
+    setLanguageLoading(false);
     movieLoad.cancel();
     movies = [];
     clearMovieSelection();
@@ -973,8 +1103,17 @@ function bindEvents() {
     setStatus(movieStatus, "");
     setComboLoading(movieInput, movieMenu, true, false);
     if (!theatreInput.value.trim()) {
-      loadMovies();
+      if ((await loadLanguages()) === true) {
+        await loadMovies();
+      }
     }
+  });
+  languageInput.addEventListener("change", async () => {
+    selectedLanguage = languageInput.value || "any";
+    movies = [];
+    clearMovieSelection({ clearInput: true });
+    setComboLoading(movieInput, movieMenu, true);
+    await loadMovies();
   });
   movieInput.addEventListener("change", () => {
     if (movieInput.value.trim() && !selectedMovie && resolveTypedMovie()) {
@@ -1001,6 +1140,10 @@ async function loadSearchOptions() {
   if (!theatresLoaded) {
     return false;
   }
+  const languagesLoaded = await loadLanguages();
+  if (!languagesLoaded) {
+    return false;
+  }
   await loadMovies();
   if (!selectedMovie) {
     return false;
@@ -1019,6 +1162,7 @@ async function initialize() {
   startDateInput.value = today;
   endDateInput.value = addDays(today, 7);
   formatPicker.setOptions([]);
+  setLanguageOptions([]);
   bindEvents();
 
   const shouldSearchFromUrl = applyQueryParams();
