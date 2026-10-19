@@ -68,9 +68,8 @@ let preciseLocation = null;
 let currentPage = 1;
 let reorderScrollY = null;
 let locationReady = false;
-let sharedSearch =
-  new URLSearchParams(globalThis.location.search).get("shared") === "1" &&
-  !globalThis.history.state?.showControls;
+const sharedToken = /^\/s\/([^/]+)$/u.exec(globalThis.location.pathname)?.[1] || "";
+const sharedSearch = Boolean(sharedToken);
 
 function createRunGuard() {
   let current = 0;
@@ -534,12 +533,6 @@ function validateSearchInputs() {
 }
 
 function searchParams() {
-  if (sharedSearch) {
-    const params = new URLSearchParams(globalThis.location.search);
-    params.delete("shared");
-    params.delete("showtime");
-    return params;
-  }
   const params = baseParams();
   params.set("movie", selectedMovie.title);
   params.set("format", formatPicker.value());
@@ -558,14 +551,11 @@ function searchParams() {
   return params;
 }
 
-async function fetchSearchResults(showtime = "") {
+async function fetchSearchResults() {
   const params = searchParams();
   params.set("page", currentPage);
   params.set("pageSize", PAGE_SIZE);
   params.set("sort", sortInput.value);
-  if (showtime) {
-    params.set("showtime", showtime);
-  }
   const data = await getJson(`/api/search?${params}`);
   params.set("page", data.page);
   params.delete("pageSize");
@@ -580,10 +570,7 @@ async function fetchSearchResults(showtime = "") {
 
 function rememberSearch(searchUrl, replaceHistory = false) {
   const url = new URL(searchUrl);
-  if (sharedSearch) {
-    url.searchParams.set("shared", "1");
-  }
-  if (globalThis.location.href !== url.href || globalThis.history.state?.showControls) {
+  if (globalThis.location.href !== url.href) {
     if (replaceHistory) {
       globalThis.history.replaceState(null, "", url.href);
     } else {
@@ -592,13 +579,9 @@ function rememberSearch(searchUrl, replaceHistory = false) {
   }
 }
 
-async function runNewSearch({
-  replaceHistory = false,
-  scrollToResults = false,
-  showtime = "",
-} = {}) {
+async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
   finishReorder({ restoreScroll: false });
-  if (!sharedSearch && !validateSearchInputs()) {
+  if (!validateSearchInputs()) {
     return;
   }
   const isCurrent = searchLoad.start();
@@ -611,13 +594,10 @@ async function runNewSearch({
   const stopLoadingStages = startLoadingStages((stage) => {
     if (isCurrent()) {
       setSearchButtonBusy(true, stage);
-      if (sharedSearch) {
-        setSummary(summary, `${stage}…`, true);
-      }
     }
   });
   try {
-    const { data, searchUrl } = await fetchSearchResults(showtime);
+    const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
       return;
     }
@@ -625,9 +605,6 @@ async function runNewSearch({
     currentPage = data.page;
     resultsView.render(data, { searchUrl });
     document.body.classList.remove("shared-loading");
-    if (showtime) {
-      resultsView.focusShowtime(showtime, data.failedSeatMaps > 0);
-    }
   } catch (error) {
     if (!isCurrent()) {
       return;
@@ -650,7 +627,7 @@ async function runNewSearch({
 
 async function runPageChange(page) {
   finishReorder({ restoreScroll: false });
-  if (!sharedSearch && !validateSearchInputs()) {
+  if (!validateSearchInputs()) {
     return;
   }
   const previousPage = currentPage;
@@ -685,7 +662,7 @@ async function runPageChange(page) {
 }
 
 async function runReorder() {
-  if (!sharedSearch && !validateSearchInputs()) {
+  if (!validateSearchInputs()) {
     return;
   }
   const isCurrent = searchLoad.start();
@@ -759,7 +736,7 @@ function applyQueryParams() {
       Math.abs(longitude) <= 180
     ) {
       preciseLocation = { latitude, longitude };
-      setStatus(locationStatus, "Using shared search location");
+      setStatus(locationStatus, "Using location");
     }
   }
   const page = Number(params.get("page"));
@@ -893,9 +870,38 @@ function initializeHalReveal() {
   observer.observe(guideBody);
 }
 
+async function loadSharedShowtime() {
+  const isCurrent = searchLoad.start();
+  try {
+    const data = await getJson(`/api/shared-showtime/${sharedToken}`);
+    if (!isCurrent()) {
+      return;
+    }
+    const match = data.matches[0];
+    movieInput.value = match.movieTitle;
+    selectedMovieTitle = match.movieTitle;
+    startDateInput.value = match.date;
+    endDateInput.value = match.date;
+    adjacentSeatsInput.value = data.preferences.adjacentSeats;
+    excludeAccessibleInput.checked = data.preferences.excludeAccessible === "1";
+    seatGrid.select(data.preferences.seatGrid.split(",").filter(Boolean));
+    const url = new URL("/", globalThis.location.origin);
+    url.search = new URLSearchParams(data.preferences).toString();
+    resultsView.render(data, { searchUrl: url.href, shared: true });
+    resultsView.focusShowtime(match.showtimeHashCode);
+  } catch (error) {
+    if (isCurrent()) {
+      resultsView.renderError(error.message);
+    }
+  } finally {
+    if (isCurrent()) {
+      document.body.classList.remove("shared-loading");
+    }
+  }
+}
+
 function bindEvents() {
   backToSearchButton.addEventListener("click", async () => {
-    sharedSearch = false;
     searchLoad.cancel();
     finishReorder({ restoreScroll: false });
     resultsView.endPageLoading();
@@ -908,10 +914,7 @@ function bindEvents() {
       setSummary(summary, "", true);
     }
     document.body.classList.remove("shared-search", "shared-loading");
-    const url = new URL(globalThis.location.href);
-    url.searchParams.delete("shared");
-    url.searchParams.delete("showtime");
-    globalThis.history.replaceState({ showControls: true }, "", url.href);
+    globalThis.history.replaceState(null, "", "/");
     const section = searchForm.closest("section");
     section.tabIndex = -1;
     section.focus({ preventScroll: true });
@@ -1058,21 +1061,21 @@ async function initialize() {
   formatPicker.setOptions([]);
   bindEvents();
 
-  const shouldSearchFromUrl = applyQueryParams();
+  let shouldSearchFromUrl = false;
+  if (!sharedSearch) {
+    shouldSearchFromUrl = applyQueryParams();
+  }
   document.body.classList.toggle("shared-search", sharedSearch);
   document.body.classList.toggle("shared-loading", sharedSearch);
   if (sharedSearch) {
     logSharedLinkVisit();
     results.replaceChildren();
-    setSummary(summary, "Loading shared search…", true);
-    await runNewSearch({
-      replaceHistory: true,
-      showtime: new URLSearchParams(globalThis.location.search).get("showtime") || "",
-    });
+    setSummary(summary, "Loading shared showtime…", true);
+    await loadSharedShowtime();
     return;
   }
   const optionsLoaded = await loadSearchOptions();
-  if (optionsLoaded && shouldSearchFromUrl && !globalThis.history.state?.showControls) {
+  if (optionsLoaded && shouldSearchFromUrl) {
     await runNewSearch({ replaceHistory: true, scrollToResults: true });
   }
 }

@@ -1247,17 +1247,13 @@ a:focus-visible {
   padding-top: 18px;
 }
 
-.shared-search #summary {
-  min-block-size: calc(2lh + 20px);
-}
-
-.shared-loading #resultsToolbar[hidden] {
-  display: grid;
-  visibility: hidden;
+.shared-search #results {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
 }
 
 .shared-search:not(.shared-loading) :is(#summary, #resultsToolbar, #results) {
-  animation: shared-results-reveal 260ms ease-out both;
+  animation: shared-results-reveal 260ms ease-out backwards;
 }
 
 .shared-search #results > .result:not(.result-update) {

@@ -1,33 +1,53 @@
-"""Compact public search links. Coordinates are never valid token contents."""
+"""Compressed showtime links contain public metadata and seat preferences only."""
 
 import base64
 import binascii
 import re
 import zlib
-from urllib.parse import parse_qsl, urlencode
+from datetime import date
+from typing import Annotated
+from urllib.parse import parse_qsl
 
-PUBLIC_SEARCH_FIELDS = {
-    "zip",
-    "radius",
-    "movie",
-    "theatre",
-    "format",
-    "startDate",
-    "endDate",
-    "startTime",
-    "endTime",
-    "adjacentSeats",
-    "excludeAccessible",
-    "seatGrid",
-    "sort",
-    "page",
-    "shared",
-    "showtime",
-}
+from pydantic import BaseModel, Field, StringConstraints
+
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
+class SharedShowtime(BaseModel, extra="forbid"):
+    movie: Text
+    theatre: Text
+    address: str = Field(default="", max_length=300)
+    amenities: str = Field(default="", max_length=500)
+    show_date: date = Field(alias="date")
+    time: Text
+    format: Text
+    showtime: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,200}$")]
+    ticket: str = Field(default="", max_length=2000)
+    poster: str = Field(default="", max_length=2000)
+    rating: str = Field(default="", max_length=20)
+    runtime: str = Field(default="", max_length=40)
+    genres: str = Field(default="", max_length=200)
+    adjacent_seats: int = Field(default=2, alias="adjacentSeats", ge=1, le=10)
+    exclude_accessible: bool = Field(default=True, alias="excludeAccessible")
+    seat_grid: str = Field(default="", alias="seatGrid", max_length=39)
+
+
+def unpack_seat_grid(area):
+    if not area:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{39}", area):
+        raise ValueError("Invalid seat area")
+    bitmap = base64.urlsafe_b64decode(area + "=")
+    if len(bitmap) != 29 or bitmap[-1] > 1:
+        raise ValueError("Invalid seat area")
+    return ",".join(
+        f"{index // 15}:{index % 15}"
+        for index in range(225)
+        if bitmap[index // 8] & (1 << (index % 8))
+    )
 
 
 def decode_share_link(token):
-    """Bound decompression and accept only public, relative search parameters."""
     try:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,4096}", token):
             raise ValueError
@@ -38,23 +58,12 @@ def decode_share_link(token):
             raise ValueError
         pairs = parse_qsl(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=16)
         params = dict(pairs)
-        if len(params) != len(pairs) or not params.keys() <= PUBLIC_SEARCH_FIELDS:
+        if len(params) != len(pairs):
             raise ValueError
-        if not re.fullmatch(r"\d{5}", params.get("zip", "")) or not params.get("movie"):
-            raise ValueError
-        if params.get("seatGrid"):
-            area = params["seatGrid"]
-            if not re.fullmatch(r"[A-Za-z0-9_-]{39}", area):
-                raise ValueError
-            bitmap = base64.urlsafe_b64decode(area + "=")
-            if len(bitmap) != 29 or bitmap[-1] > 1:
-                raise ValueError
-            params["seatGrid"] = ",".join(
-                f"{index // 15}:{index % 15}"
-                for index in range(225)
-                if bitmap[index // 8] & (1 << (index % 8))
-            )
-        params["shared"] = "1"
-        return "/?" + urlencode(params)
+        shared = SharedShowtime.model_validate(params)
+        shared.seat_grid = unpack_seat_grid(shared.seat_grid)
+        return shared
     except (ValueError, UnicodeError, binascii.Error, zlib.error) as error:
-        raise ValueError("This shared link is invalid. Please create a new link.") from error
+        raise ValueError(
+            "This shared showtime link is invalid. Please create a new link."
+        ) from error
