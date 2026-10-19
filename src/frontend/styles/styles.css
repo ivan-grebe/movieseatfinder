@@ -159,13 +159,17 @@ h1 {
   position: relative;
 }
 
-.card {
-  border-radius: 32px;
+.card,
+.result {
   background: var(--panel);
   box-shadow:
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px) saturate(120%);
+}
+
+.card {
+  border-radius: 32px;
 }
 
 .card-body {
@@ -1589,10 +1593,6 @@ a:focus-visible {
   min-width: 0;
   padding: 13px;
   border-radius: 22px;
-  background: var(--panel);
-  box-shadow:
-    var(--shadow-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   animation: enter-up 380ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
@@ -2464,7 +2464,8 @@ input[type="time"] {
     color: #bbb8b5;
   }
 
-  .card {
+  .card,
+  .result {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2628,11 +2629,6 @@ input[type="time"] {
     color: var(--accent-deep);
   }
 
-  .result {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.055),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
   .result-title {
     color: #f0edeb;
   }
