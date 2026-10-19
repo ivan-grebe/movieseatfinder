@@ -15,14 +15,24 @@ MCP_BROWSER_PAGE = """<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Movie Seat Finder MCP</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/styles.bundle.css">
   <link rel="stylesheet" href="/mcp.bundle.css">
+  <script type="module" src="/dither.bundle.js"></script>
 </head>
-<body>
+<body class="mcp-page">
+  <div class="dither-background" aria-hidden="true">
+    <canvas class="dither-canvas"></canvas>
+  </div>
   <main>
-    <span class="eyebrow">Connection endpoint</span>
-    <h1>Movie Seat Finder MCP</h1>
-    <p>This URL connects MCP-compatible assistants to Movie Seat Finder. There is nothing you need to configure on this page.</p>
-    <a href="/">Open Movie Seat Finder</a>
+    <section class="card mcp-card" aria-labelledby="mcpTitle">
+      <div class="hero-copy">
+        <span class="eyebrow">Connection endpoint</span>
+        <h1 id="mcpTitle">Movie Seat Finder MCP</h1>
+        <p>This URL connects MCP-compatible assistants to Movie Seat Finder. There is nothing you need to configure on this page.</p>
+      </div>
+      <a class="btn-primary" href="/">Open Movie Seat Finder</a>
+    </section>
   </main>
 </body>
 </html>"""
@@ -44,7 +54,8 @@ def _browser_response():
         headers={
             "Cache-Control": "no-store",
             "Content-Security-Policy": (
-                "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+                "default-src 'none'; style-src 'self'; script-src 'self'; "
+                "font-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'"
             ),
             "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
