@@ -9,7 +9,7 @@
     "lint": "oxlint --config config/oxlint.json --deny-warnings src/frontend/scripts tests",
     "lint:fix": "oxlint --config config/oxlint.json --fix src/frontend/scripts tests",
     "lint:frontend": "knip --config config/knip.json --no-config-hints",
-    "test:frontend": "node --test tests/frontend-utils.test.mjs",
+    "test:frontend": "node --test tests/sharing.test.mjs",
     "pretest:browser": "npm run build:frontend",
     "test:browser": "playwright test --config=tests/playwright.browser.config.mjs"
   },

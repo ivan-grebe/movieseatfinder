@@ -92,7 +92,7 @@ python -m ruff format .
 npm run format
 ```
 
-GitHub Actions runs these checks on every pull request, each push to `main`, and daily at 09:17 UTC.
+GitHub Actions runs these checks on every pull request and each push to `main`.
 
 ## Support the project
 
