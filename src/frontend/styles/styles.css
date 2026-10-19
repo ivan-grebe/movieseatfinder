@@ -20,6 +20,9 @@
   --surface-highlight: #fff;
   --accent: #c93a3a;
   --accent-deep: #8f1f26;
+  --button-red: #9e2930;
+  --button-deep: #8a2028;
+  --button-hover: #781c24;
   --accent-soft: rgba(201, 58, 58, 0.1);
   --accent-hover-border: rgba(201, 58, 58, 0.44);
   --good: #13956a;
@@ -450,9 +453,9 @@ select {
 /* Selection is shown by fill only - no width change, so selecting chips never
    reflows or re-wraps the row. */
 .format-option.is-selected {
-  border-color: var(--accent-deep);
+  border-color: var(--button-deep);
   color: #fff;
-  background: var(--accent);
+  background: var(--button-red);
 }
 
 .format-guide {
@@ -670,7 +673,7 @@ input::placeholder {
   padding: 9px 18px;
   border-radius: 12px;
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(135deg, var(--button-red), var(--button-deep));
   box-shadow: 0 7px 14px rgba(143, 31, 38, 0.16);
   font-size: 13px;
   font-weight: 650;
@@ -686,7 +689,7 @@ input::placeholder {
 }
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  filter: saturate(1.06);
+  background: linear-gradient(135deg, var(--button-deep), var(--button-hover));
 }
 .btn-primary:active:not(:disabled) {
   transform: scale(0.96);
@@ -1924,7 +1927,7 @@ a:focus-visible {
   padding: 9px 13px 9px 15px;
   border-radius: 11px;
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(135deg, var(--button-red), var(--button-deep));
   box-shadow: 0 7px 14px rgba(143, 31, 38, 0.16);
   font-size: 13px;
   font-weight: 650;
@@ -1935,7 +1938,7 @@ a:focus-visible {
 
 .buy-btn:hover {
   transform: translateY(-1px);
-  filter: saturate(1.06);
+  background: linear-gradient(135deg, var(--button-deep), var(--button-hover));
 }
 .buy-btn:active {
   transform: scale(0.96);
@@ -2197,7 +2200,7 @@ input[type="time"] {
     min-height: 48px;
     border-radius: 12px;
     color: #fff;
-    background: linear-gradient(135deg, #df514d, var(--accent-deep));
+    background: linear-gradient(135deg, var(--button-red), var(--button-deep));
     box-shadow:
       0 0 0 1px rgba(110, 22, 27, 0.2),
       0 12px 28px rgba(111, 25, 31, 0.32),
@@ -2207,7 +2210,7 @@ input[type="time"] {
   }
 
   .preferences-group.is-locked .btn-small.seat-edit-button {
-    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    background: linear-gradient(135deg, var(--button-red), var(--button-deep));
     box-shadow: 0 0 0 1px rgba(82, 96, 116, 0.08);
     filter: saturate(0.3);
     opacity: 0.56;
@@ -2226,9 +2229,9 @@ input[type="time"] {
     display: none;
   }
 
-  .seat-edit-done {
+  .btn-small.seat-edit-done {
     color: #fff;
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--button-red), var(--button-deep));
     box-shadow:
       0 0 0 1px rgba(142, 31, 31, 0.18),
       0 4px 10px rgba(201, 58, 58, 0.18);
@@ -2305,8 +2308,13 @@ input[type="time"] {
 }
 
 @media (max-width: 700px) and (hover: hover) {
+  .btn-small.seat-edit-done:hover:not(:disabled) {
+    color: #fff;
+    background: linear-gradient(135deg, var(--button-deep), var(--button-hover));
+  }
+
   .preferences-group:not(.is-locked) .btn-small.seat-edit-button:hover {
-    background: linear-gradient(135deg, #eb5e58, #a92d34);
+    background: linear-gradient(135deg, var(--button-deep), var(--button-hover));
     box-shadow:
       0 0 0 1px rgba(110, 22, 27, 0.24),
       0 14px 30px rgba(111, 25, 31, 0.36),
