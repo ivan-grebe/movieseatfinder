@@ -1645,8 +1645,8 @@ a:focus-visible {
 
 .result-poster {
   flex: none;
-  width: 56px;
-  height: 84px;
+  width: 80px;
+  height: 120px;
   border-radius: 9px;
   object-fit: cover;
   background: linear-gradient(180deg, #dce7f2, #b9c7d8);
@@ -2353,10 +2353,6 @@ input[type="time"] {
   }
   .result-body {
     align-items: flex-start;
-  }
-  .result-poster {
-    width: 52px;
-    height: 78px;
   }
 }
 
