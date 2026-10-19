@@ -3,14 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:frontend": "esbuild src/frontend/scripts/app.js --bundle --format=esm --minify --legal-comments=none --outfile=src/frontend/dist/app.bundle.js && esbuild src/frontend/styles/styles.css --minify --outfile=src/frontend/dist/styles.bundle.css",
-    "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- src/frontend/dist/app.bundle.js src/frontend/dist/styles.bundle.css",
+    "build:frontend": "esbuild src/frontend/scripts/app.js src/frontend/scripts/dither.js src/frontend/styles/styles.css src/frontend/styles/mcp.css --bundle --format=esm --minify --legal-comments=none --external:/*.woff2 --outdir=src/frontend/dist --entry-names=[name].bundle",
     "format": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --write .",
     "format:check": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --check .",
     "lint": "oxlint --config config/oxlint.json --deny-warnings src/frontend/scripts tests",
     "lint:fix": "oxlint --config config/oxlint.json --fix src/frontend/scripts tests",
     "lint:frontend": "knip --config config/knip.json --no-config-hints",
-    "test:frontend": "node --test tests/frontend-utils.test.mjs",
+    "test:frontend": "node --test tests/sharing.test.mjs",
     "pretest:browser": "npm run build:frontend",
     "test:browser": "playwright test --config=tests/playwright.browser.config.mjs"
   },
@@ -20,5 +19,8 @@
     "knip": "6.31.0",
     "oxlint": "1.80.0",
     "prettier": "3.9.6"
+  },
+  "dependencies": {
+    "fflate": "0.8.3"
   }
 }
