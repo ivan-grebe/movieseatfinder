@@ -227,3 +227,22 @@ class LocationTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
+
+
+class LiveFandangoIntegrationTests(unittest.TestCase):
+    """Contract check for the upstream endpoint used by production searches."""
+
+    def test_theatre_endpoint_returns_live_theatre_payloads(self):
+        payload = application.fandango_json(
+            "/napi/theaterswithshowtimes",
+            {"zipCode": "10001", "radius": 5, "limit": 5},
+            timeout=30,
+        )
+
+        self.assertIsInstance(payload.get("theaters"), list)
+        self.assertGreater(len(payload["theaters"]), 0)
+        theatre = payload["theaters"][0]
+        self.assertTrue(theatre.get("name"))
+        self.assertIn("geo", theatre)
+        self.assertIn("latitude", theatre["geo"])
+        self.assertIn("longitude", theatre["geo"])
