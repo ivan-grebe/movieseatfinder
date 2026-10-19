@@ -161,7 +161,10 @@ h1 {
 
 .card,
 .result,
-.summary {
+.summary,
+.shared-back,
+.faq-back-link,
+.faq-item {
   background: var(--panel);
   box-shadow:
     var(--shadow-border),
@@ -1269,12 +1272,6 @@ a:focus-visible {
   }
 }
 
-.shared-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
 .faq-section {
   width: min(760px, 100%);
   margin: 72px auto 8px;
@@ -1300,20 +1297,9 @@ a:focus-visible {
 .faq-item {
   overflow: clip;
   border-radius: 14px;
-  background: var(--surface);
-  box-shadow:
-    var(--shadow-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   transition-property: background-color, box-shadow;
   transition-duration: 160ms;
   transition-timing-function: ease-out;
-}
-
-.faq-item[open] {
-  background: var(--surface-raised);
-  box-shadow:
-    var(--shadow-border-hover),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .faq-item summary {
@@ -1374,12 +1360,13 @@ a:focus-visible {
   padding: 28px 0 6px;
 }
 
+.shared-back,
 .faq-back-link {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   min-height: 44px;
-  padding: 0 10px 0 7px;
+  padding: 8px 12px;
   border-radius: 11px;
   color: var(--muted);
   font-size: 12px;
@@ -1394,11 +1381,13 @@ a:focus-visible {
   height: 17px;
 }
 
+.shared-back:hover,
 .faq-back-link:hover {
   color: var(--accent-deep);
-  background: var(--accent-soft);
+  background: var(--surface-hover);
 }
 
+.shared-back:active,
 .faq-back-link:active {
   transform: scale(0.96);
 }
@@ -2459,7 +2448,10 @@ input[type="time"] {
 
   .card,
   .result,
-  .summary {
+  .summary,
+  .shared-back,
+  .faq-back-link,
+  .faq-item {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2609,16 +2601,10 @@ input[type="time"] {
     color: rgba(170, 168, 165, 0.4);
   }
 
-  .faq-item,
-  .faq-item[open] {
-    background: rgba(255, 255, 255, 0.04);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.055),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
   .faq-item summary {
     color: #dedbd7;
   }
+  .shared-back:hover,
   .faq-back-link:hover,
   .footer-links a:hover,
   .footer-attribution a:hover {
