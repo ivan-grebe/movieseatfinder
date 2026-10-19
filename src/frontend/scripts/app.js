@@ -125,17 +125,24 @@ function searchInputsReady() {
   );
 }
 
+function setGroupReady(group, ready) {
+  group.classList.toggle("is-locked", !ready);
+  group.toggleAttribute("inert", !ready);
+  if (ready) {
+    group.removeAttribute("aria-disabled");
+  } else {
+    group.setAttribute("aria-disabled", "true");
+  }
+}
+
+function syncPreferencesReady() {
+  setGroupReady(preferencesGroup, locationReady && selectedMovie !== null);
+}
+
 function setLocationReady(ready) {
   locationReady = ready;
-  [movieGroup, preferencesGroup].forEach((group) => {
-    group.classList.toggle("is-location-locked", !ready);
-    group.toggleAttribute("inert", !ready);
-    if (ready) {
-      group.removeAttribute("aria-disabled");
-    } else {
-      group.setAttribute("aria-disabled", "true");
-    }
-  });
+  setGroupReady(movieGroup, ready);
+  syncPreferencesReady();
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
@@ -200,6 +207,7 @@ function clearTheatreSelection({ rememberName = false } = {}) {
 
 function clearMovieSelection({ rememberTitle = false } = {}) {
   selectedMovie = null;
+  syncPreferencesReady();
   if (!rememberTitle) {
     selectedMovieTitle = "";
   }
@@ -216,6 +224,7 @@ function selectTheatre(theatre) {
 
 function selectMovie(movie) {
   selectedMovie = movie;
+  syncPreferencesReady();
   selectedMovieTitle = movie.title;
   movieInput.value = movie.title;
   movieInput.setCustomValidity("");
@@ -408,10 +417,7 @@ async function loadMovies() {
     selectedMovie = movieWithTitle(selectedMovieTitle);
     const typedMovie = movieInput.value.trim();
     if (selectedMovie) {
-      selectedMovieTitle = selectedMovie.title;
-      movieInput.value = selectedMovie.title;
-      movieInput.setCustomValidity("");
-      setStatus(movieStatus, "");
+      selectMovie(selectedMovie);
       closeCombo(movieInput, movieMenu);
     } else if (typedMovie) {
       if (!resolveTypedMovie() && document.activeElement === movieInput) {

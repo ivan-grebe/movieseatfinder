@@ -910,7 +910,7 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+  await selectMovie(page);
 
   const grid = page.locator("#seatPreferenceGrid");
   const firstCell = grid.locator(".seat-cell").first();
@@ -952,7 +952,9 @@ test("mobile seat preferences require a deliberate, reversible edit mode", async
   await expect(clearButton).toBeVisible();
 });
 
-test("movie and seat controls stay locked until the location resolves", async ({ page }) => {
+test("seat preferences unlock only for a selected movie and relock when it is cleared", async ({
+  page,
+}) => {
   const { promise: theatresStarted, resolve: markTheatresStarted } = Promise.withResolvers();
   const { promise: theatreGate, resolve: releaseTheatres } = Promise.withResolvers();
   await page.route("**/api/theatres*", async (route) => {
@@ -968,6 +970,9 @@ test("movie and seat controls stay locked until the location resolves", async ({
       body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
       contentType: "application/json",
     }),
+  );
+  await page.route("**/api/formats*", (route) =>
+    route.fulfill({ json: { formats: ["Standard"] } }),
   );
   await page.goto("/");
 
@@ -994,13 +999,35 @@ test("movie and seat controls stay locked until the location resolves", async ({
   releaseTheatres();
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
 
-  await Promise.all(
-    [movieGroup, preferencesGroup].flatMap((group) => [
-      expect(group).not.toHaveAttribute("inert", ""),
-      expect(group).not.toHaveAttribute("aria-disabled", "true"),
-    ]),
-  );
+  await expect(movieGroup).not.toHaveAttribute("inert", "");
+  await expect(movieGroup).not.toHaveAttribute("aria-disabled", "true");
+  await expect(preferencesGroup).toHaveAttribute("inert", "");
+  await expect(preferencesGroup).toHaveAttribute("aria-disabled", "true");
+  expect(
+    await page.locator("#startTimeInput").evaluate((input) => {
+      input.focus();
+      return document.activeElement === input;
+    }),
+  ).toBe(false);
   await expect(searchButton).toBeEnabled();
+
+  await page.locator("#movieInput").fill("Test");
+  await expect(preferencesGroup).toHaveAttribute("inert", "");
+  await page.getByRole("option", { exact: true, name: "Test Movie" }).click();
+  await expect(preferencesGroup).not.toHaveAttribute("inert", "");
+  await expect(preferencesGroup).not.toHaveAttribute("aria-disabled", "true");
+  await page.locator("#adjacentSeatsInput").fill("3");
+
+  await page.locator("#movieInput").fill("");
+  await expect(preferencesGroup).toHaveAttribute("inert", "");
+  await expect(preferencesGroup).toHaveAttribute("aria-disabled", "true");
+
+  // An exact loaded title also counts as a selection.
+  await page.locator("#movieInput").fill("Test Movie");
+  await expect(preferencesGroup).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
+  await page.locator("#zipInput").fill("");
+  await expect(preferencesGroup).toHaveAttribute("inert", "");
 });
 
 test("movie options remain selectable beyond the movie card", async ({ page }) => {
