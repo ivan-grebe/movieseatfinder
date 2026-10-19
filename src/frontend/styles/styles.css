@@ -202,15 +202,15 @@ h1 {
   padding-bottom: 6px;
 }
 
-.location-gated {
+.selection-gated {
   position: relative;
 }
 
-.location-gated > * {
+.selection-gated > * {
   transition: opacity 160ms ease-out;
 }
 
-.location-gated::after {
+.selection-gated::after {
   content: "";
   position: absolute;
   z-index: 1;
@@ -222,8 +222,8 @@ h1 {
   transition: opacity 160ms ease-out;
 }
 
-.location-gated.is-location-locked,
-.location-gated.is-location-locked:hover {
+.selection-gated.is-locked,
+.selection-gated.is-locked:hover {
   cursor: not-allowed;
   background: rgba(255, 255, 255, 0.025);
   box-shadow:
@@ -231,11 +231,11 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.location-gated.is-location-locked > * {
+.selection-gated.is-locked > * {
   opacity: 0.62;
 }
 
-.location-gated.is-location-locked::after {
+.selection-gated.is-locked::after {
   opacity: 1;
 }
 
@@ -2206,7 +2206,7 @@ input[type="time"] {
     transform: translate(-50%, -50%);
   }
 
-  .preferences-group.is-location-locked .btn-small.seat-edit-button {
+  .preferences-group.is-locked .btn-small.seat-edit-button {
     background: linear-gradient(135deg, var(--accent), var(--accent-deep));
     box-shadow: 0 0 0 1px rgba(82, 96, 116, 0.08);
     filter: saturate(0.3);
@@ -2305,7 +2305,7 @@ input[type="time"] {
 }
 
 @media (max-width: 700px) and (hover: hover) {
-  .preferences-group:not(.is-location-locked) .btn-small.seat-edit-button:hover {
+  .preferences-group:not(.is-locked) .btn-small.seat-edit-button:hover {
     background: linear-gradient(135deg, #eb5e58, #a92d34);
     box-shadow:
       0 0 0 1px rgba(110, 22, 27, 0.24),
@@ -2417,12 +2417,12 @@ input[type="time"] {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
   }
 
-  .location-gated::after {
+  .selection-gated::after {
     background: rgba(8, 8, 8, 0.22);
   }
 
-  .location-gated.is-location-locked,
-  .location-gated.is-location-locked:hover {
+  .selection-gated.is-locked,
+  .selection-gated.is-locked:hover {
     background: rgba(255, 255, 255, 0.025);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.045),

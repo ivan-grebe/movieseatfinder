@@ -21,7 +21,7 @@ function drawDither() {
     return;
   }
   const { data, height, width } = pixels;
-  const phase = elapsed * 0.24;
+  const phase = elapsed * 0.36;
   let opacity = 0.38;
   if (theme.matches) {
     opacity = 0.5;
@@ -31,10 +31,10 @@ function drawDither() {
     const x = column / width;
     const crest =
       0.2 +
-      0.14 * Math.sin(x * Math.PI * 2 - phase - 0.6) +
-      0.05 * Math.sin(x * Math.PI * 4 + phase * 0.7);
-    const secondCrest = 0.4 + 0.13 * Math.sin(x * Math.PI * 2 + phase * 0.6 + 0.4);
-    const thickness = 0.15 + 0.04 * Math.sin(x * Math.PI * 2 + phase * 0.45);
+      0.17 * Math.sin(x * Math.PI * 2 - phase - 0.6) +
+      0.065 * Math.sin(x * Math.PI * 4 + phase * 0.7);
+    const secondCrest = 0.4 + 0.16 * Math.sin(x * Math.PI * 2 + phase * 0.6 + 0.4);
+    const thickness = 0.15 + 0.055 * Math.sin(x * Math.PI * 2 + phase * 0.45);
     for (let row = 0; row < height; row += 2) {
       const y = row / height;
       const wave = Math.exp(-(((y - crest) / thickness) ** 2));
