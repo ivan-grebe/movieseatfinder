@@ -56,7 +56,7 @@ export function compactShareUrl(searchUrl, showtime) {
   return new URL(`/s/${token}`, source.origin).href;
 }
 
-export function getSearchShareData(searchUrl, match) {
+function getSearchShareData(searchUrl, match) {
   const params = new URL(searchUrl).searchParams;
   const movie = match.movieTitle;
   const details = [];
