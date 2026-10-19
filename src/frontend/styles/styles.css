@@ -75,7 +75,6 @@ body {
   height: 680px;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.65;
   contain: strict;
 }
 

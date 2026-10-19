@@ -21,7 +21,7 @@ function drawDither() {
   }
   const { data, height, width } = pixels;
   const phase = elapsed * 0.36;
-  let opacity = 0.38;
+  let opacity = 0.6;
   if (theme.matches) {
     opacity = 0.5;
   }
