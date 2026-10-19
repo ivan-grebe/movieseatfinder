@@ -160,7 +160,8 @@ h1 {
 }
 
 .card,
-.result {
+.result,
+.summary {
   background: var(--panel);
   box-shadow:
     var(--shadow-border),
@@ -1480,10 +1481,6 @@ a:focus-visible {
   padding: 10px 14px;
   border-radius: 14px;
   color: #514a45;
-  background: var(--panel);
-  box-shadow:
-    var(--shadow-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   text-align: center;
   text-wrap: balance;
 }
@@ -2465,7 +2462,8 @@ input[type="time"] {
   }
 
   .card,
-  .result {
+  .result,
+  .summary {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2605,6 +2603,8 @@ input[type="time"] {
   .summary,
   .empty-state {
     color: #cac7c4;
+  }
+  .empty-state {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
