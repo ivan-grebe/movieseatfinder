@@ -245,11 +245,11 @@ export function createResultsView({
     label.textContent = errorMessage;
   }
 
-  function render(data, { isUpdate = false, searchUrl } = {}) {
+  function render(data, { isUpdate = false, searchUrl, shared = false } = {}) {
     const matches = data.matches;
     results.replaceChildren();
     const incomplete = data.failedSeatMaps > 0;
-    resultsToolbar.hidden = matches.length === 0;
+    resultsToolbar.hidden = shared || matches.length === 0;
     renderPagination(data);
 
     if (matches.length === 0) {
@@ -278,6 +278,12 @@ export function createResultsView({
     let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
     if (incomplete) {
       summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
+    }
+    if (shared) {
+      summaryText = "Live seat availability for this shared showtime.";
+      if (matches[0].seatMap.bestGroup.length === 0) {
+        summaryText = "No seats currently match the shared seat preferences.";
+      }
     }
     setSummary(summary, summaryText, false);
 
@@ -315,10 +321,13 @@ export function createResultsView({
       const title = document.createElement("h2");
       title.className = "result-title";
       title.textContent = match.theatre.name;
-      const distance = document.createElement("span");
-      distance.className = "result-distance";
-      distance.textContent = `${match.theatre.distanceMiles.toFixed(1)} mi`;
-      top.append(title, distance);
+      top.append(title);
+      if (Number.isFinite(match.theatre.distanceMiles)) {
+        const distance = document.createElement("span");
+        distance.className = "result-distance";
+        distance.textContent = `${match.theatre.distanceMiles.toFixed(1)} mi`;
+        top.append(distance);
+      }
       details.append(top);
 
       if (match.theatre.address) {
@@ -381,16 +390,11 @@ export function createResultsView({
     setSummary(summary, message, true);
   }
 
-  function focusShowtime(showtime, incomplete) {
+  function focusShowtime(showtime) {
     const card = [...results.querySelectorAll(".result")].find(
       (item) => item.dataset.showtime === showtime,
     );
     if (!card) {
-      let message = "The shared showtime is no longer available with these search filters.";
-      if (incomplete) {
-        message = "Could not confirm the shared showtime’s availability. Please retry the search.";
-      }
-      setSummary(summary, message, false);
       return;
     }
     card.tabIndex = -1;

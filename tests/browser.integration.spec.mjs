@@ -97,7 +97,7 @@ test("search submits selected filters and displays matching seats", async ({ pag
   });
 });
 
-test("shared links reopen the displayed search without precise coordinates", async ({ page }) => {
+test("shared showtimes refresh directly without a sender location", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       value: {
@@ -109,21 +109,44 @@ test("shared links reopen the displayed search without precise coordinates", asy
     });
   });
   await mockApi(page);
-  await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie&adjacentSeats=2");
-  await expect(page.locator(".result")).toHaveCount(1);
-  expect(new URL(page.url()).searchParams.has("lat")).toBe(false);
-  expect(new URL(page.url()).searchParams.has("lon")).toBe(false);
-  await page.locator("#adjacentSeatsInput").fill("4");
+  await page.route("**/api/shared-showtime/*", (route) =>
+    route.fulfill({
+      json: {
+        ...searchResult,
+        matches: [{ ...match, theatre: { address: "Main St", name: "Cinema" } }],
+        preferences: { adjacentSeats: "2", excludeAccessible: "1", seatGrid: "" },
+      },
+    }),
+  );
+  await page.goto("/?zip=91739&radius=5&movie=Test+Movie&adjacentSeats=2");
   await page.getByRole("button", { name: "Copy showtime link" }).click();
   await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
   const link = await page.evaluate(() => globalThis.copiedLink);
-  expect(new URL(link).pathname).toMatch(/^\/s\//u);
+  await page.unroute("**/api/theatres*");
+  await page.unroute("**/api/movies*");
+  const unexpected = [];
+  await page.route("**/api/theatres*", (route) => {
+    unexpected.push(route.request().url());
+    return route.abort();
+  });
+  await page.route("**/api/movies*", (route) => {
+    unexpected.push(route.request().url());
+    return route.abort();
+  });
+  await page.route("**/api/search*", (route) => {
+    unexpected.push(route.request().url());
+    return route.abort();
+  });
   await page.goto(link);
   await expect(page.locator(".shared-showtime")).toHaveAttribute("data-showtime", "showtime-1");
-  await expect(page.locator("#search")).toBeHidden();
-  await page.getByRole("button", { exact: true, name: "Back" }).click();
+  expect(page.url()).toBe(link);
+  await expect(page.locator(".result-distance")).toHaveCount(0);
+  await expect(page.locator("#resultsToolbar")).toBeHidden();
+  expect(unexpected).toEqual([]);
+  await page.getByRole("button", { exact: true, name: "Find other showtimes" }).click();
+  await expect(page.locator("#zipInput")).toHaveValue("");
   await expect(page.locator("#adjacentSeatsInput")).toHaveValue("2");
-  await expect(page.locator("#zipInput")).toHaveValue("10001");
+  expect(new URL(page.url()).pathname).toBe("/");
 });
 
 test("seat preferences require a selected movie", async ({ page }) => {
