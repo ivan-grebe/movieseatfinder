@@ -5,7 +5,6 @@ import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
-import { initializeHalReveal } from "./hal-reveal.js";
 import { logSharedLinkVisit } from "./tracking.js";
 
 const {
@@ -73,7 +72,6 @@ let sharedSearch =
   new URLSearchParams(globalThis.location.search).get("shared") === "1" &&
   !globalThis.history.state?.showControls;
 
-// Tracks the latest run of an async loader so stale responses can be dropped.
 function createRunGuard() {
   let current = 0;
   return {
@@ -864,6 +862,35 @@ function queueCriteriaRefresh() {
   setComboLoading(theatreInput, theatreMenu, true);
   setComboLoading(movieInput, movieMenu, true);
   autoRefresh();
+}
+
+function initializeHalReveal() {
+  const revealWindow = document.querySelector(".hal-easter-egg");
+  const locationFields = document.querySelector(".location-group > .grid");
+  const movieGroup = document.querySelector(".movie-group");
+  const movieFields = movieGroup.querySelector(".grid");
+  const guideBody = document.querySelector(".format-guide-body");
+
+  function sizeImage() {
+    const bottom = guideBody.getBoundingClientRect().bottom;
+    const padding = Number.parseFloat(getComputedStyle(movieGroup).paddingBottom);
+    const sectionPadding = Number.parseFloat(
+      getComputedStyle(locationFields.parentElement).paddingBottom,
+    );
+    const offset = Number.parseFloat(
+      getComputedStyle(revealWindow).getPropertyValue("--hal-offset"),
+    );
+    const height = Math.max(
+      0,
+      bottom + padding - sectionPadding - revealWindow.getBoundingClientRect().top - offset,
+    );
+    revealWindow.style.setProperty("--hal-height", `${height}px`);
+  }
+
+  const observer = new ResizeObserver(sizeImage);
+  observer.observe(locationFields);
+  observer.observe(movieFields);
+  observer.observe(guideBody);
 }
 
 function bindEvents() {

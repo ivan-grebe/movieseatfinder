@@ -1,4 +1,3 @@
-// A stationary Bayer grid reveals slowly evolving, independently flowing waves.
 const BAYER = [
   [0, 8, 2, 10],
   [12, 4, 14, 6],
@@ -69,7 +68,6 @@ function resizeDither() {
         const dx = (screenX - heroBounds.left - heroBounds.width / 2) / (heroBounds.width / 2 + 32);
         const dy =
           (screenY - heroBounds.top - heroBounds.height / 2) / (heroBounds.height / 2 + 24);
-        // A broad elliptical falloff avoids a rectangular hole in the waves.
         const edge = Math.max(0, Math.min(1, (Math.hypot(dx, dy) - 0.65) / 0.8));
         density = edge * edge * (3 - 2 * edge);
       }

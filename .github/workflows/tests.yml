@@ -48,10 +48,15 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
       - name: Install project
         run: |
           python -m pip install uv==0.12.10
           uv sync --locked --extra test
+      - name: Build frontend
+        run: npm ci && npm run build:frontend
       - name: Run unit tests
         run: uv run python -m unittest discover -s tests -v
 
@@ -72,8 +77,6 @@ jobs:
           uv sync --locked
       - name: Install browser test dependencies
         run: npm ci && npx playwright install --with-deps chromium
-      - name: Verify production frontend bundle
-        run: npm run check:frontend-bundle
       - name: Run frontend tests
         run: npm run test:frontend
       - name: Run browser integration tests
