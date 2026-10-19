@@ -7,7 +7,7 @@
   <meta name="description" content="Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets.">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff7f6">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12151c">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c">
   <link rel="canonical" href="https://movieseatfinder.com/">
   <link rel="icon" href="/favicon-96x96.png?v=__FAVICON_PNG_VERSION__" type="image/png" sizes="96x96">
   <link rel="icon" href="/favicon.svg?v=__FAVICON_VERSION__" type="image/svg+xml">
@@ -81,9 +81,8 @@
   </script>
 </head>
 <body class="__SHARED_SEARCH_CLASS__">
-  <div class="ambient-glows" aria-hidden="true">
-    <span class="ambient-glow ambient-glow-warm"></span>
-    <span class="ambient-glow ambient-glow-cool"></span>
+  <div class="dither-background" aria-hidden="true">
+    <canvas class="dither-canvas"></canvas>
   </div>
   <main>
     <nav class="shared-search-nav" aria-label="Shared search">
@@ -321,5 +320,6 @@
   </footer>
 
   <script src="app.bundle.js?v=__BUNDLE_VERSION__" type="module" async></script>
+  <script type="module" src="/dither.bundle.js?v=__DITHER_VERSION__"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
   <meta name="description" content="Answers about finding nearby movie showtimes, comparing theatre formats, checking live seat maps, and opening ticket links with Movie Seat Finder.">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff7f6">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12151c">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c">
   <link rel="canonical" href="https://movieseatfinder.com/faq">
   <link rel="icon" href="/favicon-96x96.png?v=__FAVICON_PNG_VERSION__" type="image/png" sizes="96x96">
   <link rel="icon" href="/favicon.svg?v=__FAVICON_VERSION__" type="image/svg+xml">
@@ -79,9 +79,8 @@
   </script>
 </head>
 <body class="faq-page">
-  <div class="ambient-glows" aria-hidden="true">
-    <span class="ambient-glow ambient-glow-warm"></span>
-    <span class="ambient-glow ambient-glow-cool"></span>
+  <div class="dither-background" aria-hidden="true">
+    <canvas class="dither-canvas"></canvas>
   </div>
 
   <main>
@@ -132,5 +131,6 @@
     </p>
   </footer>
 
+  <script type="module" src="/dither.bundle.js?v=__DITHER_VERSION__"></script>
 </body>
 </html>

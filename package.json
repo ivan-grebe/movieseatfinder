@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:frontend": "esbuild src/frontend/scripts/app.js --bundle --format=esm --minify --legal-comments=none --outfile=src/frontend/dist/app.bundle.js && esbuild src/frontend/styles/styles.css --minify --outfile=src/frontend/dist/styles.bundle.css",
-    "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- src/frontend/dist/app.bundle.js src/frontend/dist/styles.bundle.css",
+    "build:frontend": "esbuild src/frontend/scripts/app.js src/frontend/scripts/dither.js --bundle --format=esm --minify --legal-comments=none --outdir=src/frontend/dist --entry-names=[name].bundle && esbuild src/frontend/styles/styles.css --minify --outfile=src/frontend/dist/styles.bundle.css",
+    "check:frontend-bundle": "npm run build:frontend && git diff --exit-code -- src/frontend/dist/app.bundle.js src/frontend/dist/dither.bundle.js src/frontend/dist/styles.bundle.css",
     "format": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --write .",
     "format:check": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --check .",
     "lint": "oxlint --config config/oxlint.json --deny-warnings src/frontend/scripts tests",

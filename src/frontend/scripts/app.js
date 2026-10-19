@@ -5,7 +5,6 @@ import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
-import { initializeAmbientMotion } from "./ambient-motion.js";
 import { logSharedLinkVisit } from "./tracking.js";
 
 const {
@@ -1040,6 +1039,5 @@ async function initialize() {
   }
 }
 
-initializeAmbientMotion();
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- Initialization should not block module evaluation.
 initialize();
