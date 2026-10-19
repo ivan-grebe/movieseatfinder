@@ -51,10 +51,6 @@ branding/                Repository and website brand assets
 tests/                   Python, frontend, and browser tests
 ```
 
-## Deployment
-
-Vercel builds the frontend through `[tool.vercel.scripts]` in `pyproject.toml`. Keep the Vercel dashboard Build Command unset so this repository configuration applies. Other hosts must run `npm ci --include=dev` and `npm run build:frontend` before starting the Python server. Bundles are generated during builds and are not committed.
-
 ## MCP integration
 
 The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It uses a discovery-first flow:
