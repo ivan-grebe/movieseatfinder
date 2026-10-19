@@ -517,14 +517,8 @@ class RouteTests(unittest.TestCase):
         self.assertIn("Movie Seat Finder", response.text)
         self.assertIn('<link rel="canonical" href="https://movieseatfinder.com/">', response.text)
         self.assertIn('href="/faq"', response.text)
-        self.assertIn(
-            f"/inter-variable.woff2?v={application.ASSET_VERSIONS[application.FONT_ASSET]}",
-            response.text,
-        )
-        self.assertIn(
-            f"/favicon-96x96.png?v={application.ASSET_VERSIONS['favicon-96x96.png']}",
-            response.text,
-        )
+        self.assertIn('href="/styles.bundle.css"', response.text)
+        self.assertIn('href="/favicon-96x96.png"', response.text)
         self.assertIn("https://movieseatfinder.com/og-image.png", response.text)
         self.assertIn('<meta property="og:image:width" content="3840">', response.text)
         self.assertIn('<meta property="og:image:height" content="2160">', response.text)
@@ -534,6 +528,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         content_security_policy = response.headers["content-security-policy"]
         self.assertIn("default-src 'self'", content_security_policy)
+        self.assertIn("style-src 'self';", content_security_policy)
         self.assertIn("require-trusted-types-for 'script'", content_security_policy)
         self.assertEqual(response.headers["cross-origin-opener-policy"], "same-origin")
 
@@ -576,11 +571,13 @@ class RouteTests(unittest.TestCase):
             "/ui.js",
             "/results.js",
             "/styles.css",
-            "/styles.bundle.css",
         ):
             self.assertEqual(self.client.get(source_path).status_code, 404, source_path)
         for public_path in (
             "/app.bundle.js",
+            "/styles.bundle.css",
+            "/mcp.bundle.css",
+            "/dither.bundle.js",
             "/apple-touch-icon-precomposed.png",
             "/apple-touch-icon.png",
             "/favicon-96x96.png",
@@ -593,37 +590,17 @@ class RouteTests(unittest.TestCase):
         ):
             self.assertEqual(self.client.get(public_path).status_code, 200, public_path)
 
-    def test_versioned_assets_receive_immutable_caching(self):
-        for asset in ("app.bundle.js", application.FONT_ASSET):
-            response = self.client.get(
-                f"/{asset}",
-                params={"v": application.ASSET_VERSIONS[asset]},
-            )
-
-            self.assertEqual(response.status_code, 200, asset)
-            self.assertEqual(
-                response.headers["cache-control"],
-                "public, max-age=31536000, immutable",
-            )
-
-    def test_og_image_is_revalidated_like_the_public_page(self):
-        response = self.client.get("/og-image.png")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers["cache-control"], "public, max-age=0, must-revalidate")
-        self.assertNotIn("last-modified", response.headers)
-
-    def test_unversioned_assets_are_not_cached_as_immutable(self):
-        response = self.client.get("/app.bundle.js")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("immutable", response.headers.get("cache-control", ""))
-
-    def test_missing_versioned_assets_are_not_cached_as_immutable(self):
-        response = self.client.get("/missing.js?v=missing")
-
-        self.assertEqual(response.status_code, 404)
-        self.assertNotIn("immutable", response.headers.get("cache-control", ""))
+    def test_assets_revalidate_cached_content(self):
+        for asset in ("app.bundle.js", "styles.bundle.css", "inter-variable.woff2", "hal-9000.png"):
+            with self.subTest(asset=asset):
+                response = self.client.get(f"/{asset}")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["cache-control"], "no-cache")
+                cached = self.client.get(
+                    f"/{asset}", headers={"If-None-Match": response.headers["etag"]}
+                )
+                self.assertEqual(cached.status_code, 304)
+                self.assertEqual(cached.headers["cache-control"], "no-cache")
 
     @patch("backend.application.LOGGER.info")
     def test_ticket_click_is_logged_without_request_data(self, logger_info):

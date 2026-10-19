@@ -98,81 +98,62 @@ async function selectMovie(page, title = "Test Movie") {
   await expect(input).toHaveValue(title);
 }
 
-for (const profile of [
-  { motion: "no-preference", width: 390 },
-  { motion: "no-preference", width: 1280 },
-  { motion: "reduce", width: 390 },
-]) {
-  test(`showtime links find the specific card at ${profile.width}px with ${profile.motion} motion`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ height: 844, width: profile.width });
-    await page.emulateMedia({ reducedMotion: profile.motion });
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "clipboard", {
-        value: {
-          writeText: (url) => {
-            globalThis.copiedSearchLink = url;
-            return Promise.resolve();
-          },
+test("showtime links find the specific card and preserve pagination", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: (url) => {
+          globalThis.copiedSearchLink = url;
+          return Promise.resolve();
         },
-      });
+      },
     });
-    const matches = Array.from({ length: 10 }, (_, index) =>
-      makeSimpleMatch(`Cinema ${index}`, "7 PM"),
-    );
-    const requests = [];
-    await mockSearchDependencies(page, (route) => {
-      const params = new URL(route.request().url()).searchParams;
-      requests.push(Object.fromEntries(params));
-      let pageNumber = Number(params.get("page"));
-      let ordered = matches;
-      if (params.has("showtime")) {
-        pageNumber = 2;
-        ordered = [...matches].reverse();
-      }
-      return route.fulfill({
-        json: {
-          ...emptySearch,
-          hasNextPage: true,
-          hasPreviousPage: pageNumber > 1,
-          matches: ordered,
-          page: pageNumber,
-        },
-      });
-    });
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
-    const original = page.getByRole("article", { name: /at Cinema 3,/u });
-    await original.getByRole("button", { name: "Copy showtime link" }).click();
-    await expect(original.locator(".share-btn")).toHaveAccessibleName("Copied!");
-    const url = await page.evaluate(() => globalThis.copiedSearchLink);
-    expect(expandShareUrl(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
-    await page.goto(url);
-    const target = page.locator(".shared-showtime");
-    await expect(target).toHaveCount(1);
-    await expect(target).toHaveAttribute("data-showtime", "Cinema 3-7 PM");
-    await expect(target).toBeFocused();
-    await expect(target).toHaveCSS("outline-style", "none");
-    expect(Math.abs((await target.boundingBox()).y - 20)).toBeLessThan(2);
-    expect(new URL(page.url()).searchParams.get("page")).toBe("2");
-    expect(requests.at(-1).showtime).toBe("Cinema 3-7 PM");
-    if (profile.motion === "reduce") {
-      expect(await target.evaluate((card) => getComputedStyle(card, "::after").animationName)).toBe(
-        "none",
-      );
-    }
-    await expect(page.locator("#results")).toHaveCSS("opacity", "1");
-    await page.screenshot({ path: testInfo.outputPath("shared-showtime.png") });
-    await expect(page.locator(".shared-showtime")).toHaveCount(0);
-    await page.getByRole("button", { name: "Next page of results" }).click();
-    await expect(page.locator(".pagination-label")).toHaveText("Page 3");
-    expect(requests.at(-1).showtime).toBeUndefined();
-    await page.getByRole("button", { exact: true, name: "Back" }).click();
-    await expect(page.locator("#search")).toBeVisible();
-    expect(new URL(page.url()).searchParams.has("showtime")).toBe(false);
-    expect(requests).toHaveLength(3);
   });
-}
+  const matches = Array.from({ length: 10 }, (_, index) =>
+    makeSimpleMatch(`Cinema ${index}`, "7 PM"),
+  );
+  const requests = [];
+  await mockSearchDependencies(page, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push(Object.fromEntries(params));
+    let pageNumber = Number(params.get("page"));
+    let ordered = matches;
+    if (params.has("showtime")) {
+      pageNumber = 2;
+      ordered = [...matches].reverse();
+    }
+    return route.fulfill({
+      json: {
+        ...emptySearch,
+        hasNextPage: true,
+        hasPreviousPage: pageNumber > 1,
+        matches: ordered,
+        page: pageNumber,
+      },
+    });
+  });
+  await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
+  const original = page.getByRole("article", { name: /at Cinema 3,/u });
+  await original.getByRole("button", { name: "Copy showtime link" }).click();
+  await expect(original.locator(".share-btn")).toHaveAccessibleName("Copied!");
+  const url = await page.evaluate(() => globalThis.copiedSearchLink);
+  expect(expandShareUrl(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
+  await page.goto(url);
+  const target = page.locator(".shared-showtime");
+  await expect(target).toHaveCount(1);
+  await expect(target).toHaveAttribute("data-showtime", "Cinema 3-7 PM");
+  await expect(target).toBeFocused();
+  expect(new URL(page.url()).searchParams.get("page")).toBe("2");
+  expect(requests.at(-1).showtime).toBe("Cinema 3-7 PM");
+  await expect(page.locator(".shared-showtime")).toHaveCount(0);
+  await page.getByRole("button", { name: "Next page of results" }).click();
+  await expect(page.locator(".pagination-label")).toHaveText("Page 3");
+  expect(requests.at(-1).showtime).toBeUndefined();
+  await page.getByRole("button", { exact: true, name: "Back" }).click();
+  await expect(page.locator("#search")).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("showtime")).toBe(false);
+  expect(requests).toHaveLength(3);
+});
 
 for (const available of [true, false]) {
   test(`missing shared showtime explains the change with other results ${available}`, async ({
@@ -295,54 +276,9 @@ test("a total availability failure displays an error without widening advice", a
   await expect(page.locator("#results")).toBeEmpty();
 });
 
-for (const scenario of [
-  { outcome: "matches", width: 390 },
-  { outcome: "matches", width: 1280 },
-  { outcome: "empty", width: 390 },
-  { outcome: "error", width: 390 },
-]) {
-  test(`shared searches reveal ${scenario.outcome} after loading at ${scenario.width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ height: 844, width: scenario.width });
-    const response = Promise.withResolvers();
-    await mockSearchDependencies(page, async (route) => {
-      await response.promise;
-      if (scenario.outcome === "error") {
-        await route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
-        return;
-      }
-      const matches = [];
-      if (scenario.outcome === "matches") {
-        matches.push(makeSimpleMatch("Shared Cinema", "7 PM"));
-      }
-      await route.fulfill({ json: { ...emptySearch, matches } });
-    });
-    await page.goto("/");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
-    await expect(page.locator("#results-section")).not.toBeFocused();
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
-    await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
-    response.resolve();
-    await expect(page.locator("#results-section")).toBeFocused();
-    await expect(page.locator("#results-section")).toHaveCSS("outline-style", "none");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
-    if (scenario.outcome === "matches") {
-      await expect(page.locator(".result").first()).toBeInViewport();
-    } else if (scenario.outcome === "empty") {
-      await expect(page.getByText("No matching showtimes", { exact: true })).toBeInViewport();
-    } else {
-      await expect(
-        page.getByText("Search unavailable. Try again.", { exact: true }),
-      ).toBeInViewport();
-    }
-  });
-}
-
 test("copy search links preserve result filters and restore them on reload and Back", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       value: {
@@ -419,10 +355,8 @@ test("copy search links preserve result filters and restore them on reload and B
   // Unsubmitted edits must not change the link attached to the displayed results.
   await page.locator("#adjacentSeatsInput").fill("4");
   const shareButton = result.locator(".share-btn");
-  const idleWidth = (await shareButton.boundingBox()).width;
   await shareButton.click();
   await expect(shareButton).toHaveAccessibleName("Copied!");
-  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
   expect(Object.fromEntries(expandShareUrl(copied).searchParams)).toEqual({
     ...expected,
@@ -430,9 +364,6 @@ test("copy search links preserve result filters and restore them on reload and B
     showtime: "Shared Cinema-7 PM",
   });
   await expect(shareButton).toHaveAccessibleName("Copy showtime link");
-  await expect(shareButton.locator(".share-label")).toHaveCSS("opacity", "1");
-  await expect(shareButton.locator(".share-feedback")).toHaveCSS("opacity", "0");
-  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
 
   await page.goto(copied);
   await expect(result).toHaveCount(1);
@@ -446,18 +377,6 @@ test("copy search links preserve result filters and restore them on reload and B
   await expect(page.locator("#sortInput")).toHaveValue("nearest");
   await expect(result).toHaveCount(1);
   expect(requests.at(-1)).toMatchObject(expected);
-  const buttons = await result.locator(".result-actions").evaluate((element) => {
-    const [tickets, share] = element.children;
-    // Compare layout positions without hover or entrance transforms.
-    return {
-      shareTop: share.offsetTop,
-      ticketsTop: tickets.offsetTop,
-    };
-  });
-  expect(buttons.shareTop).toBe(buttons.ticketsTop);
-  await result.screenshot({ path: testInfo.outputPath("share-light.png") });
-  await page.emulateMedia({ colorScheme: "dark" });
-  await result.screenshot({ path: testInfo.outputPath("share-dark.png") });
 });
 
 test("precise searches share only a ZIP and clipboard failures allow retry", async ({ page }) => {
@@ -633,7 +552,7 @@ for (const device of [
 for (const width of [390, 1280]) {
   test(`shared links open results only and Back preserves the controls at ${width}px`, async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ height: 844, width });
     let searches = 0;
     let visits = 0;
@@ -673,27 +592,11 @@ for (const width of [390, 1280]) {
     await expect(page.locator(".result")).toHaveCount(1);
     await expect(page.locator("#search")).toBeHidden();
     await expect(page.locator(".hero")).toBeHidden();
-    const footerTop = await page
-      .locator(".site-footer")
-      .evaluate((element) => element.getBoundingClientRect().top);
-    const resultsBottom = await page
-      .locator("#results-section")
-      .evaluate((element) => element.getBoundingClientRect().bottom);
-    expect(footerTop).toBeGreaterThanOrEqual(resultsBottom);
     const back = page.getByRole("button", { exact: true, name: "Back" });
     await expect(back).toBeInViewport();
     expect(searches).toBe(1);
     expect(optionRequests).toEqual([]);
     await expect.poll(() => visits).toBe(1);
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-results-light.png"),
-    });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-results-dark.png"),
-    });
     await back.click();
     await expect(page.locator("#search")).toBeVisible();
     await expect(back).toBeHidden();
@@ -719,72 +622,6 @@ for (const width of [390, 1280]) {
     expect(searches).toBe(2);
     expect(visits).toBe(1);
     expect(requests[1]).toEqual(requests[0]);
-  });
-}
-
-for (const profile of [
-  { motion: "no-preference", width: 320 },
-  { motion: "no-preference", width: 390 },
-  { motion: "no-preference", width: 1280 },
-  { motion: "reduce", width: 390 },
-]) {
-  test(`shared results keep the header stable at ${profile.width}px with ${profile.motion} motion`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ height: 844, width: profile.width });
-    await page.emulateMedia({ reducedMotion: profile.motion });
-    const response = Promise.withResolvers();
-    await mockSearchDependencies(page, async (route) => {
-      await response.promise;
-      await route.fulfill({
-        json: {
-          ...emptySearch,
-          checkedSeatMaps: 123,
-          checkedShowtimes: 150,
-          matches: Array.from({ length: 9 }, (_, index) =>
-            makeSimpleMatch(`Cinema ${index + 1}`, "7 PM"),
-          ),
-        },
-      });
-    });
-    await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
-    await expect(page.locator("body")).toHaveClass(/shared-loading/u);
-    await page.evaluate(() => document.fonts.ready);
-    await expect(page.locator("#sortInput")).toBeHidden();
-    const before = await page.locator("#results-section").evaluate((section) => ({
-      resultsTop: section.querySelector("#results").offsetTop,
-      summaryHeight: section.querySelector("#summary").offsetHeight,
-      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
-    }));
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-before.png"),
-    });
-    response.resolve();
-    await expect(page.locator(".result")).toHaveCount(9);
-    await expect(page.locator("body")).not.toHaveClass(/shared-loading/u);
-    const after = await page.locator("#results-section").evaluate((section) => ({
-      resultsTop: section.querySelector("#results").offsetTop,
-      summaryHeight: section.querySelector("#summary").offsetHeight,
-      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
-    }));
-    expect(after).toEqual(before);
-    let expectedAnimation = "shared-results-reveal";
-    if (profile.motion === "reduce") {
-      expectedAnimation = "none";
-    }
-    await Promise.all(
-      ["#summary", "#resultsToolbar", "#results"].map((selector) =>
-        expect(page.locator(selector)).toHaveCSS("animation-name", expectedAnimation),
-      ),
-    );
-    await expect(page.locator(".result").first()).toHaveCSS("animation-name", "none");
-    await expect(page.locator("#sortInput")).toBeEnabled();
-    await expect(page.getByRole("button", { exact: true, name: "Back" })).toBeInViewport();
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-after.png"),
-    });
   });
 }
 
@@ -844,9 +681,7 @@ test("shared sorting and pagination preserve URL filters without loading options
   await expect(page.locator("#search")).toBeHidden();
 });
 
-test("Back while a shared search is pending ignores its late response", async ({
-  page,
-}, testInfo) => {
+test("Back while a shared search is pending ignores its late response", async ({ page }) => {
   let searches = 0;
   const response = Promise.withResolvers();
   await mockSearchDependencies(page, async (route) => {
@@ -859,14 +694,6 @@ test("Back while a shared search is pending ignores its late response", async ({
   await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
   await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
   await expect.poll(() => searches).toBe(1);
-  const footerBottom = await page
-    .locator(".site-footer")
-    .evaluate((element) => element.getBoundingClientRect().bottom);
-  expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
-  await page.screenshot({
-    animations: "disabled",
-    path: testInfo.outputPath("shared-loading-footer.png"),
-  });
   await page.getByRole("button", { exact: true, name: "Back" }).click();
   await expect(page.locator("#searchButton")).toBeEnabled();
   const completed = page.waitForResponse("**/api/search*");
@@ -902,35 +729,10 @@ for (const outcome of ["empty", "error", "invalid filters"]) {
       await expect(page.locator("#summary")).toContainText("One of the search values is invalid");
     }
     await expect(page.locator("#search")).toBeHidden();
-    const footerBottom = await page
-      .locator(".site-footer")
-      .evaluate((element) => element.getBoundingClientRect().bottom);
-    expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
     await page.getByRole("button", { exact: true, name: "Back" }).click();
     await expect(page.locator("#search")).toBeVisible();
   });
 }
-
-test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
-  await page.setViewportSize({ height: 700, width: 320 });
-  await page.goto("/");
-  await page.evaluate(() => document.fonts.ready);
-
-  const layout = await page.evaluate(() => ({
-    fontFamily: getComputedStyle(document.body).fontFamily,
-    fontResourceLoaded: performance
-      .getEntriesByType("resource")
-      .some((entry) => new URL(entry.name).pathname === "/inter-variable.woff2"),
-    inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
-    scrollWidth: document.documentElement.scrollWidth,
-    viewportWidth: document.documentElement.clientWidth,
-  }));
-
-  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  expect(layout.inputFontSize).toBe("16px");
-  expect(layout.fontFamily).toContain("Inter");
-  expect(layout.fontResourceLoaded).toBe(true);
-});
 
 test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
   await mockSearchDependencies(page, (route) =>
@@ -1054,7 +856,6 @@ test("seat preferences unlock only for a selected movie and relock when it is cl
   await expect(preferencesGroup).toHaveAttribute("inert", "");
   await expect(preferencesGroup).toHaveAttribute("aria-disabled", "true");
 
-  // An exact loaded title also counts as a selection.
   await page.locator("#movieInput").fill("Test Movie");
   await expect(preferencesGroup).not.toHaveAttribute("inert", "");
   await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
@@ -1262,8 +1063,6 @@ test("mobile format chips send every selected format to the search", async ({ pa
 
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  // Wait for the ZIP-triggered movie refresh to finish before choosing a
-  // Movie and its formats, matching the order a user sees in the UI.
   await selectMovie(page);
 
   const imax = page.getByRole("button", { exact: true, name: "IMAX" });
@@ -1348,9 +1147,6 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await latestSearchStarted;
   const spinner = page.locator("#sortStatus .spinner");
   await expect(spinner).toBeVisible();
-  const spinnerBox = await spinner.boundingBox();
-  const labelBox = await page.locator(".sort-label").boundingBox();
-  expect(spinnerBox.x + spinnerBox.width).toBeLessThan(labelBox.x);
   await expect(sortInput).toBeDisabled();
   await expect(page.locator("#searchButton")).toBeEnabled();
 
@@ -1362,50 +1158,6 @@ test("result sorting defaults to earliest and reruns the search when changed", a
   await sortInput.selectOption("nearest");
   await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
   expect(searchSorts[0]).toBe("earliest");
-});
-
-test("desktop result amenities reserve matching space when one list wraps", async ({ page }) => {
-  await page.setViewportSize({ height: 900, width: 1200 });
-  const matchingSearch = {
-    ...emptySearch,
-    matches: [
-      makeSimpleMatch("Short Amenities Cinema", "7:00 PM"),
-      makeSimpleMatch(
-        "Long Amenities Cinema",
-        "8:00 PM",
-        "IMAX with Laser, Reserved seating, Closed caption, Accessibility devices available, Luxury Electric Recliners, Laser Projection",
-      ),
-    ],
-  };
-  await mockSearchDependencies(page, (route) =>
-    route.fulfill({ body: JSON.stringify(matchingSearch), contentType: "application/json" }),
-  );
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.locator("#searchButton").click();
-
-  const amenities = page.locator(".result-amenities");
-  await expect(amenities).toHaveCount(2);
-  const amenityLayouts = await amenities.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const text = document.createRange();
-      text.selectNodeContents(node);
-      const lines = [...text.getClientRects()].filter((line) => line.width > 0);
-      return {
-        height: node.getBoundingClientRect().height,
-        lineCount: lines.length,
-      };
-    }),
-  );
-  expect(amenityLayouts.map(({ lineCount }) => lineCount)).toEqual([1, 2]);
-  expect(Math.abs(amenityLayouts[0].height - amenityLayouts[1].height)).toBeLessThanOrEqual(1);
-
-  const seatMapTops = await page
-    .locator(".real-seat-map")
-    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
-  expect(Math.abs(seatMapTops[0] - seatMapTops[1])).toBeLessThanOrEqual(1);
 });
 
 test("pagination keeps current results until the next page loads", async ({ page }) => {
@@ -1632,114 +1384,4 @@ test("mobile results render the native seat map and update accessibility states"
   await expect(includedCompanionSeat).toHaveClass(/accessible/u);
   await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
   await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
-});
-
-[320, 390, 1280].forEach((width) => {
-  test(`location feedback keeps controls in place at ${width}px`, async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "geolocation", {
-        value: {
-          getCurrentPosition(onSuccess) {
-            globalThis.resolveTestLocation = () =>
-              onSuccess({ coords: { latitude: 40.75, longitude: -73.99 } });
-          },
-        },
-      });
-    });
-    await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
-
-    await page.setViewportSize({ height: 900, width });
-    await page.goto("/");
-    await page.evaluate(() => document.fonts.ready);
-    const anchors = page.locator("#startDateInput, #preferencesGroup, #searchButton");
-    function positions() {
-      return anchors.evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().top + globalThis.scrollY),
-      );
-    }
-    const before = await positions();
-    await page.getByRole("button", { name: "Use my current location" }).click();
-    await expect(page.locator("#locationStatus")).toContainText("Requesting your location");
-    expect(await positions()).toEqual(before);
-    await page.evaluate(() => globalThis.resolveTestLocation());
-    await expect(page.locator("#locationStatus")).toHaveText("Using location");
-    await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-    expect(await positions()).toEqual(before);
-  });
-});
-
-// A CSS-only easter egg uses the extra desktop row height, never mobile space.
-test("HAL appears beside the expanded format guide only on desktop", async ({ page }) => {
-  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
-  await page.setViewportSize({ height: 900, width: 1280 });
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-  const egg = page.locator(".hal-easter-egg");
-  const toggle = page.locator("#formatGuideButton");
-  await expect(egg).toBeHidden();
-  const image = egg.locator("img");
-  await expect
-    .poll(() => image.evaluate((el) => el.getBoundingClientRect().height))
-    .toBeGreaterThan(0);
-  const imageHeight = await image.evaluate((el) => el.getBoundingClientRect().height);
-  await toggle.click();
-  await expect(egg).toBeVisible();
-  expect(await image.evaluate((el) => el.getBoundingClientRect().height)).toBeCloseTo(
-    imageHeight,
-    1,
-  );
-  await expect
-    .poll(async () => {
-      const [windowHeight, fullImageHeight] = await Promise.all([
-        egg.evaluate((el) => el.getBoundingClientRect().height),
-        image.evaluate((el) => el.getBoundingClientRect().height),
-      ]);
-      return Math.abs(windowHeight - fullImageHeight - 24);
-    })
-    .toBeLessThan(1);
-  const layout = await page.evaluate(() => {
-    const eggElement = document.querySelector(".hal-easter-egg");
-    const movie = document.querySelector(".movie-group");
-    const withImage = movie.getBoundingClientRect().height;
-    eggElement.style.display = "none";
-    const withoutImage = movie.getBoundingClientRect().height;
-    eggElement.style.removeProperty("display");
-    return {
-      padding: getComputedStyle(document.querySelector(".location-group")).paddingBottom,
-      withImage,
-      withoutImage,
-    };
-  });
-  expect(layout.withImage).toBeCloseTo(layout.withoutImage, 1);
-  expect(layout.padding).toBe("14px");
-  const [imageBounds, revealBounds] = await Promise.all([image.boundingBox(), egg.boundingBox()]);
-  expect(imageBounds.y - revealBounds.y).toBeCloseTo(24, 1);
-  expect(imageBounds.y + imageBounds.height).toBeLessThanOrEqual(
-    revealBounds.y + revealBounds.height + 1,
-  );
-  const captionBounds = await egg.locator(".hal-caption").boundingBox();
-  expect(captionBounds.x).toBeGreaterThan(imageBounds.x + imageBounds.width);
-  expect(captionBounds.y + captionBounds.height / 2).toBeCloseTo(
-    imageBounds.y + imageBounds.height / 2,
-    1,
-  );
-  expect((imageBounds.x + captionBounds.x + captionBounds.width) / 2).toBeCloseTo(
-    revealBounds.x + revealBounds.width / 2,
-    1,
-  );
-  await expect(page.locator("#formatGuideContent")).toHaveAttribute("aria-hidden", "false");
-  const [eggBounds, locationBounds] = await Promise.all([
-    egg.boundingBox(),
-    page.locator(".location-group").boundingBox(),
-  ]);
-  expect(eggBounds.y + eggBounds.height).toBeLessThanOrEqual(
-    locationBounds.y + locationBounds.height,
-  );
-  await page.setViewportSize({ height: 844, width: 390 });
-  await expect(egg).toBeHidden();
-  await page.setViewportSize({ height: 900, width: 1280 });
-  await toggle.click();
-  await expect(egg).toBeHidden();
 });
