@@ -5,6 +5,7 @@ import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
+import { initializeHalReveal } from "./hal-reveal.js";
 import { logSharedLinkVisit } from "./tracking.js";
 
 const {
@@ -570,6 +571,10 @@ async function fetchSearchResults(showtime = "") {
   const data = await getJson(`/api/search?${params}`);
   params.set("page", data.page);
   params.delete("pageSize");
+  // Keep exact coordinates in memory/API calls only, never browser or share URLs.
+  params.delete("lat");
+  params.delete("lon");
+  params.set("zip", data.zipCode);
   const url = new URL("/", globalThis.location.origin);
   url.search = params.toString();
   return { data, searchUrl: url.href };
@@ -1047,3 +1052,4 @@ async function initialize() {
 
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- Initialization should not block module evaluation.
 initialize();
+initializeHalReveal();

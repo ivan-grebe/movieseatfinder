@@ -38,6 +38,7 @@ from .seat_matching import (
     parse_seat_grid,
     showtime_seat_match,
 )
+from .share_links import decode_share_link
 
 # The Mozilla prefix matters: Fandango's WAF rejects obviously non-browser UAs.
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
@@ -66,11 +67,16 @@ BRANDING_ASSETS = {
     "web-app-manifest-192x192.png",
     "web-app-manifest-512x512.png",
 }
-BACKEND_ASSETS = {FONT_ASSET}
+BACKEND_ASSETS = {FONT_ASSET, "hal-9000.png"}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
 # instead of relying on hand-bumped version strings.
 ASSET_VERSIONS = {
-    "dither.bundle.js": hashlib.sha256((STATIC_DIR / "dither.bundle.js").read_bytes()).hexdigest()[:12],
+    "hal-9000.png": hashlib.sha256((BACKEND_ASSET_DIR / "hal-9000.png").read_bytes()).hexdigest()[
+        :12
+    ],
+    "dither.bundle.js": hashlib.sha256((STATIC_DIR / "dither.bundle.js").read_bytes()).hexdigest()[
+        :12
+    ],
     "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
     "apple-touch-icon-precomposed.png": hashlib.sha256(
         (BRANDING_DIR / "apple-touch-icon-precomposed.png").read_bytes()
@@ -104,6 +110,7 @@ INDEX_TEMPLATE = (
     (TEMPLATE_DIR / "index.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
+    .replace("__HAL_VERSION__", ASSET_VERSIONS["hal-9000.png"])
     .replace("__DITHER_VERSION__", ASSET_VERSIONS["dither.bundle.js"])
     .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
     .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
@@ -156,6 +163,7 @@ AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
 SearchSort = Literal["earliest", "latest", "nearest"]
 
 RATE_LIMITS = {
+    "/s": RateLimitItemPerSecond(30, 60),
     "/api/events/shared-link-visit": RateLimitItemPerSecond(60, 60),
     "/api/events/ticket-click": RateLimitItemPerSecond(60, 60),
     # Sort changes and pagination each re-run a full search, so a normal
@@ -733,6 +741,15 @@ def index_html():
     return RedirectResponse("/", status_code=308)
 
 
+@app.get("/s/{token}", include_in_schema=False)
+def shared_showtime(request: Request, token: str):
+    enforce_rate_limit(request, "/s")
+    try:
+        return RedirectResponse(decode_share_link(token), status_code=302)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.head("/faq", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
 def faq():
@@ -1263,6 +1280,7 @@ def find_seat_matches(
 
         return {
             "matches": matches[page_start:page_end],
+            "zipCode": search_zip,
             "page": page,
             "pageSize": page_size,
             "hasPreviousPage": page > 1,

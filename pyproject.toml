@@ -45,7 +45,7 @@ where = ["src"]
 include = ["backend*"]
 
 [tool.setuptools.package-data]
-backend = ["assets/*.ttf", "assets/*.woff2", "assets/OFL.txt"]
+backend = ["assets/*.ttf", "assets/*.woff2", "assets/*.png", "assets/OFL.txt"]
 
 [tool.vercel]
 entrypoint = "src.backend.server:app"
