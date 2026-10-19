@@ -1,5 +1,7 @@
 """Public request handling and throttling for the MCP endpoint."""
 
+from pathlib import Path
+
 from limits import RateLimitItemPerMinute
 from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
@@ -9,33 +11,9 @@ from starlette.responses import HTMLResponse, JSONResponse
 MCP_GLOBAL_RATE_LIMIT = RateLimitItemPerMinute(1200)
 MCP_RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 
-MCP_BROWSER_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Movie Seat Finder MCP</title>
-  <link rel="icon" href="/favicon.ico">
-  <link rel="stylesheet" href="/styles.bundle.css">
-  <link rel="stylesheet" href="/mcp.bundle.css">
-  <script type="module" src="/dither.bundle.js"></script>
-</head>
-<body class="mcp-page">
-  <div class="dither-background" aria-hidden="true">
-    <canvas class="dither-canvas"></canvas>
-  </div>
-  <main>
-    <section class="card mcp-card" aria-labelledby="mcpTitle">
-      <div class="hero-copy">
-        <span class="eyebrow">Connection endpoint</span>
-        <h1 id="mcpTitle">Movie Seat Finder MCP</h1>
-        <p>This URL connects MCP-compatible assistants to Movie Seat Finder. There is nothing you need to configure on this page.</p>
-      </div>
-      <a class="btn-primary" href="/">Open Movie Seat Finder</a>
-    </section>
-  </main>
-</body>
-</html>"""
+MCP_BROWSER_PAGE = (
+    Path(__file__).resolve().parents[2] / "frontend" / "templates" / "mcp.html"
+).read_text(encoding="utf-8")
 
 
 def _is_browser_navigation(scope, headers):
