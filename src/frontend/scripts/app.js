@@ -5,7 +5,6 @@ import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
-import { initializeAmbientMotion } from "./ambient-motion.js";
 import { logSharedLinkVisit } from "./tracking.js";
 
 const {
@@ -73,7 +72,6 @@ let sharedSearch =
   new URLSearchParams(globalThis.location.search).get("shared") === "1" &&
   !globalThis.history.state?.showControls;
 
-// Tracks the latest run of an async loader so stale responses can be dropped.
 function createRunGuard() {
   let current = 0;
   return {
@@ -126,17 +124,24 @@ function searchInputsReady() {
   );
 }
 
+function setGroupReady(group, ready) {
+  group.classList.toggle("is-locked", !ready);
+  group.toggleAttribute("inert", !ready);
+  if (ready) {
+    group.removeAttribute("aria-disabled");
+  } else {
+    group.setAttribute("aria-disabled", "true");
+  }
+}
+
+function syncPreferencesReady() {
+  setGroupReady(preferencesGroup, locationReady && selectedMovie !== null);
+}
+
 function setLocationReady(ready) {
   locationReady = ready;
-  [movieGroup, preferencesGroup].forEach((group) => {
-    group.classList.toggle("is-location-locked", !ready);
-    group.toggleAttribute("inert", !ready);
-    if (ready) {
-      group.removeAttribute("aria-disabled");
-    } else {
-      group.setAttribute("aria-disabled", "true");
-    }
-  });
+  setGroupReady(movieGroup, ready);
+  syncPreferencesReady();
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
@@ -201,6 +206,7 @@ function clearTheatreSelection({ rememberName = false } = {}) {
 
 function clearMovieSelection({ rememberTitle = false } = {}) {
   selectedMovie = null;
+  syncPreferencesReady();
   if (!rememberTitle) {
     selectedMovieTitle = "";
   }
@@ -217,6 +223,7 @@ function selectTheatre(theatre) {
 
 function selectMovie(movie) {
   selectedMovie = movie;
+  syncPreferencesReady();
   selectedMovieTitle = movie.title;
   movieInput.value = movie.title;
   movieInput.setCustomValidity("");
@@ -409,10 +416,7 @@ async function loadMovies() {
     selectedMovie = movieWithTitle(selectedMovieTitle);
     const typedMovie = movieInput.value.trim();
     if (selectedMovie) {
-      selectedMovieTitle = selectedMovie.title;
-      movieInput.value = selectedMovie.title;
-      movieInput.setCustomValidity("");
-      setStatus(movieStatus, "");
+      selectMovie(selectedMovie);
       closeCombo(movieInput, movieMenu);
     } else if (typedMovie) {
       if (!resolveTypedMovie() && document.activeElement === movieInput) {
@@ -565,6 +569,10 @@ async function fetchSearchResults(showtime = "") {
   const data = await getJson(`/api/search?${params}`);
   params.set("page", data.page);
   params.delete("pageSize");
+  // Keep exact coordinates in memory/API calls only, never browser or share URLs.
+  params.delete("lat");
+  params.delete("lon");
+  params.set("zip", data.zipCode);
   const url = new URL("/", globalThis.location.origin);
   url.search = params.toString();
   return { data, searchUrl: url.href };
@@ -856,6 +864,35 @@ function queueCriteriaRefresh() {
   autoRefresh();
 }
 
+function initializeHalReveal() {
+  const revealWindow = document.querySelector(".hal-easter-egg");
+  const locationFields = document.querySelector(".location-group > .grid");
+  const movieGroup = document.querySelector(".movie-group");
+  const movieFields = movieGroup.querySelector(".grid");
+  const guideBody = document.querySelector(".format-guide-body");
+
+  function sizeImage() {
+    const bottom = guideBody.getBoundingClientRect().bottom;
+    const padding = Number.parseFloat(getComputedStyle(movieGroup).paddingBottom);
+    const sectionPadding = Number.parseFloat(
+      getComputedStyle(locationFields.parentElement).paddingBottom,
+    );
+    const offset = Number.parseFloat(
+      getComputedStyle(revealWindow).getPropertyValue("--hal-offset"),
+    );
+    const height = Math.max(
+      0,
+      bottom + padding - sectionPadding - revealWindow.getBoundingClientRect().top - offset,
+    );
+    revealWindow.style.setProperty("--hal-height", `${height}px`);
+  }
+
+  const observer = new ResizeObserver(sizeImage);
+  observer.observe(locationFields);
+  observer.observe(movieFields);
+  observer.observe(guideBody);
+}
+
 function bindEvents() {
   backToSearchButton.addEventListener("click", async () => {
     sharedSearch = false;
@@ -1040,6 +1077,6 @@ async function initialize() {
   }
 }
 
-initializeAmbientMotion();
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- Initialization should not block module evaluation.
 initialize();
+initializeHalReveal();

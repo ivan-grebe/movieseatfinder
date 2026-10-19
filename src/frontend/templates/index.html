@@ -7,13 +7,13 @@
   <meta name="description" content="Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets.">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff7f6">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12151c">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c">
   <link rel="canonical" href="https://movieseatfinder.com/">
-  <link rel="icon" href="/favicon-96x96.png?v=__FAVICON_PNG_VERSION__" type="image/png" sizes="96x96">
-  <link rel="icon" href="/favicon.svg?v=__FAVICON_VERSION__" type="image/svg+xml">
-  <link rel="shortcut icon" href="/favicon.ico?v=__FAVICON_ICO_VERSION__">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_VERSION__" sizes="180x180">
-  <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon-precomposed.png?v=__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__" sizes="180x180">
+  <link rel="icon" href="/favicon-96x96.png" type="image/png" sizes="96x96">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon-precomposed.png" sizes="180x180">
   <meta name="apple-mobile-web-app-title" content="Seat Finder">
   <link rel="manifest" href="/site.webmanifest">
 
@@ -35,7 +35,7 @@
   <meta name="twitter:image" content="https://movieseatfinder.com/og-image.png">
   <meta name="twitter:image:alt" content="Movie Seat Finder seat map preview">
 
-  <style>__INLINE_STYLES__</style>
+  <link rel="stylesheet" href="/styles.bundle.css">
 
   <script defer src="/_vercel/insights/script.js"></script>
 
@@ -81,9 +81,8 @@
   </script>
 </head>
 <body class="__SHARED_SEARCH_CLASS__">
-  <div class="ambient-glows" aria-hidden="true">
-    <span class="ambient-glow ambient-glow-warm"></span>
-    <span class="ambient-glow ambient-glow-cool"></span>
+  <div class="dither-background" aria-hidden="true">
+    <canvas class="dither-canvas"></canvas>
   </div>
   <main>
     <nav class="shared-search-nav" aria-label="Shared search">
@@ -149,9 +148,15 @@
               <div id="theatreStatus" class="status field-status" aria-live="polite"></div>
             </div>
           </div>
+          <div class="hal-easter-egg" aria-hidden="true">
+            <div class="hal-composition">
+              <img class="hal-image" src="/hal-9000.png" width="250" height="738" alt="" decoding="async">
+              <p class="hal-caption">Nice seats, Dave...</p>
+            </div>
+          </div>
         </div>
 
-        <div id="movieGroup" class="group movie-group location-gated is-location-locked" inert aria-disabled="true">
+        <div id="movieGroup" class="group movie-group selection-gated is-locked" inert aria-disabled="true">
           <p class="group-title">
             <svg class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4"/></svg>
             Movie &amp; format
@@ -210,7 +215,7 @@
           </div>
         </div>
 
-        <div id="preferencesGroup" class="group preferences-group location-gated is-location-locked" inert aria-disabled="true">
+        <div id="preferencesGroup" class="group preferences-group selection-gated is-locked" inert aria-disabled="true">
           <p class="group-title">
             <svg class="group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/><path d="M5 11a2 2 0 0 1 2 2v3h10v-3a2 2 0 0 1 2-2"/><path d="M7 19v1.5M17 19v1.5"/></svg>
             Seat preferences
@@ -320,6 +325,7 @@
     </p>
   </footer>
 
-  <script src="app.bundle.js?v=__BUNDLE_VERSION__" type="module" async></script>
+  <script src="app.bundle.js" type="module" async></script>
+  <script type="module" src="/dither.bundle.js"></script>
 </body>
 </html>

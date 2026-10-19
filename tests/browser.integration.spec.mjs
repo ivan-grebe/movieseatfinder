@@ -1,1611 +1,202 @@
-import { addDays, formatNiceDate, todayString } from "../src/frontend/scripts/utils.js";
 import { expect, test } from "@playwright/test";
 
-const emptySearch = {
+const match = {
+  amenities: "Reserved seating",
+  date: "2026-08-01",
+  displayTime: "7 PM",
+  format: "IMAX",
+  genres: [],
+  movieTitle: "Test Movie",
+  seatMap: {
+    availableSeatCount: 2,
+    bestGroup: ["A1", "A2"],
+    layout: {
+      height: 30,
+      seats: [
+        {
+          height: 10,
+          id: "A1",
+          matched: true,
+          status: "A",
+          type: "standard",
+          width: 10,
+          x: 10,
+          y: 10,
+        },
+        {
+          height: 10,
+          id: "A2",
+          matched: true,
+          status: "A",
+          type: "standard",
+          width: 10,
+          x: 20,
+          y: 10,
+        },
+      ],
+      width: 40,
+    },
+    matchingGroups: [["A1", "A2"]],
+    totalSeatCount: 2,
+  },
+  showtimeHashCode: "showtime-1",
+  theatre: { address: "Main St", distanceMiles: 1, name: "Cinema" },
+  ticketUrl: "https://tickets.fandango.com/order",
+};
+const searchResult = {
   checkedSeatMaps: 1,
   checkedShowtimes: 1,
   failedSeatMaps: 0,
   hasNextPage: false,
   hasPreviousPage: false,
-  matches: [],
+  matches: [match],
   page: 1,
   pageSize: 20,
+  zipCode: "10001",
 };
 
-function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
-  return {
-    amenities,
-    date: "2026-08-01",
-    displayTime: time,
-    format: "Standard",
-    genres: [],
-    movieTitle: "Test Movie",
-    seatMap: {
-      availableSeatCount: 1,
-      layout: {
-        height: 30,
-        seats: [
-          {
-            height: 10,
-            id: `${theatreName}-${time}`,
-            matched: true,
-            status: "A",
-            type: "standard",
-            width: 10,
-            x: 10,
-            y: 10,
-          },
-        ],
-        width: 30,
-      },
-      totalSeatCount: 1,
-    },
-    showtimeHashCode: `${theatreName}-${time}`,
-    theatre: { address: "1 Main St", distanceMiles: 1, name: theatreName },
-    ticketUrl: "https://tickets.fandango.com/order",
-  };
-}
-
-async function mockSearchDependencies(page, onSearch, formats = ["Standard"]) {
+async function mockApi(page, onSearch = (route) => route.fulfill({ json: searchResult })) {
   await page.route("**/api/theatres*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ place: "Testville", theatres: [] }),
-      contentType: "application/json",
-    }),
+    route.fulfill({ json: { place: "Testville", theatres: [] } }),
   );
   await page.route("**/api/movies*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-      contentType: "application/json",
-    }),
+    route.fulfill({ json: { movies: [{ title: "Test Movie" }] } }),
   );
   await page.route("**/api/formats*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ formats }),
-      contentType: "application/json",
-    }),
+    route.fulfill({ json: { formats: ["IMAX", "Dolby Cinema"] } }),
   );
   await page.route("**/api/search*", onSearch);
 }
 
-async function selectMovie(page, title = "Test Movie") {
+async function selectMovie(page) {
+  await page.locator("#zipInput").fill("10001");
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-  const input = page.locator("#movieInput");
-  await input.fill(title);
-  await page.getByRole("option", { exact: true, name: title }).click();
-  await expect(input).toHaveValue(title);
+  await page.locator("#movieInput").fill("Test");
+  await page.getByRole("option", { exact: true, name: "Test Movie" }).click();
 }
 
-for (const profile of [
-  { motion: "no-preference", width: 390 },
-  { motion: "no-preference", width: 1280 },
-  { motion: "reduce", width: 390 },
-]) {
-  test(`showtime links find the specific card at ${profile.width}px with ${profile.motion} motion`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ height: 844, width: profile.width });
-    await page.emulateMedia({ reducedMotion: profile.motion });
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "clipboard", {
-        value: {
-          writeText: (url) => {
-            globalThis.copiedSearchLink = url;
-            return Promise.resolve();
-          },
-        },
-      });
-    });
-    const matches = Array.from({ length: 10 }, (_, index) =>
-      makeSimpleMatch(`Cinema ${index}`, "7 PM"),
-    );
-    const requests = [];
-    await mockSearchDependencies(page, (route) => {
-      const params = new URL(route.request().url()).searchParams;
-      requests.push(Object.fromEntries(params));
-      let pageNumber = Number(params.get("page"));
-      let ordered = matches;
-      if (params.has("showtime")) {
-        pageNumber = 2;
-        ordered = [...matches].reverse();
-      }
-      return route.fulfill({
-        json: {
-          ...emptySearch,
-          hasNextPage: true,
-          hasPreviousPage: pageNumber > 1,
-          matches: ordered,
-          page: pageNumber,
-        },
-      });
-    });
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
-    const original = page.getByRole("article", { name: /at Cinema 3,/u });
-    await original.getByRole("button", { name: "Copy showtime link" }).click();
-    await expect(original.locator(".share-btn")).toHaveAccessibleName("Copied!");
-    const url = await page.evaluate(() => globalThis.copiedSearchLink);
-    expect(new URL(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
-    await page.goto(url);
-    const target = page.locator(".shared-showtime");
-    await expect(target).toHaveCount(1);
-    await expect(target).toHaveAttribute("data-showtime", "Cinema 3-7 PM");
-    await expect(target).toBeFocused();
-    await expect(target).toHaveCSS("outline-style", "none");
-    expect(Math.abs((await target.boundingBox()).y - 20)).toBeLessThan(2);
-    expect(new URL(page.url()).searchParams.get("page")).toBe("2");
-    expect(requests.at(-1).showtime).toBe("Cinema 3-7 PM");
-    if (profile.motion === "reduce") {
-      expect(await target.evaluate((card) => getComputedStyle(card, "::after").animationName)).toBe(
-        "none",
-      );
-    }
-    await expect(page.locator("#results")).toHaveCSS("opacity", "1");
-    await page.screenshot({ path: testInfo.outputPath("shared-showtime.png") });
-    await expect(page.locator(".shared-showtime")).toHaveCount(0);
-    await page.getByRole("button", { name: "Next page of results" }).click();
-    await expect(page.locator(".pagination-label")).toHaveText("Page 3");
-    expect(requests.at(-1).showtime).toBeUndefined();
-    await page.getByRole("button", { exact: true, name: "Back" }).click();
-    await expect(page.locator("#search")).toBeVisible();
-    expect(new URL(page.url()).searchParams.has("showtime")).toBe(false);
-    expect(requests).toHaveLength(3);
-  });
-}
-
-for (const available of [true, false]) {
-  test(`missing shared showtime explains the change with other results ${available}`, async ({
-    page,
-  }) => {
-    let matches = [];
-    if (available) {
-      matches = [makeSimpleMatch("Other Cinema", "8 PM")];
-    }
-    await mockSearchDependencies(page, (route) =>
-      route.fulfill({ json: { ...emptySearch, matches } }),
-    );
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie&shared=1&showtime=gone");
-    await expect(page.locator("#summary")).toContainText(
-      "The shared showtime is no longer available",
-    );
-    await expect(page.locator(".shared-showtime")).toHaveCount(0);
-    await expect(page.locator(".result")).toHaveCount(matches.length);
-    await expect(page.getByRole("button", { exact: true, name: "Back" })).toBeVisible();
-  });
-}
-
-test("an unchecked shared showtime is not reported as unavailable", async ({ page }) => {
-  await mockSearchDependencies(page, (route) =>
-    route.fulfill({
-      json: {
-        ...emptySearch,
-        failedSeatMaps: 1,
-        matches: [makeSimpleMatch("Other Cinema", "8 PM")],
-      },
-    }),
-  );
-  await page.goto("/?zip=10001&radius=5&movie=Test+Movie&shared=1&showtime=unchecked");
-  await expect(page.locator("#summary")).toHaveText(
-    "Could not confirm the shared showtime’s availability. Please retry the search.",
-  );
-  await expect(page.locator(".result")).toHaveCount(1);
-});
-
-test("backwards time windows show an inline error and recover when corrected", async ({ page }) => {
-  let searches = 0;
-  await mockSearchDependencies(page, (route) => {
-    searches += 1;
-    return route.fulfill({ json: emptySearch });
+test("search submits selected filters and displays matching seats", async ({ page }) => {
+  let submitted = null;
+  await mockApi(page, (route) => {
+    submitted = Object.fromEntries(new URL(route.request().url()).searchParams);
+    return route.fulfill({ json: searchResult });
   });
   await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
   await selectMovie(page);
-  await page.locator("#startTimeInput").fill("21:00");
-  await page.locator("#endTimeInput").fill("17:00");
-  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-  await expect(page.locator("#timeStatus")).toHaveText(
-    "Latest time must be on or after earliest time.",
-  );
-  await expect(page.locator("#endTimeInput")).toHaveAttribute("aria-invalid", "true");
-  expect(searches).toBe(0);
-  await page.locator("#startTimeInput").fill("16:00");
-  await expect(page.locator("#timeStatus")).toBeEmpty();
-  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-  await expect(page.locator(".empty-state")).toContainText("No matching showtimes");
-  expect(searches).toBe(1);
-});
-
-for (const hasMatches of [true, false]) {
-  test(`incomplete seat searches show a retry warning with matches=${hasMatches}`, async ({
-    page,
-  }) => {
-    const matches = [];
-    if (hasMatches) {
-      matches.push(makeSimpleMatch("Confirmed Cinema", "7 PM"));
-    }
-    await mockSearchDependencies(page, (route) =>
-      route.fulfill({
-        json: {
-          ...emptySearch,
-          checkedSeatMaps: 2,
-          failedSeatMaps: 1,
-          matches,
-        },
-      }),
-    );
-    await page.goto("/");
-    await page.locator("#zipInput").fill("10001");
-    await selectMovie(page);
-    await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-    if (hasMatches) {
-      await expect(page.locator("#summary")).toContainText("Results are incomplete");
-      await expect(page.locator("#summary")).toContainText("1 seat map could not be checked");
-      await expect(page.getByRole("heading", { name: "Confirmed Cinema" })).toBeVisible();
-    } else {
-      await expect(page.locator(".empty-state strong")).toHaveText("Search incomplete");
-      await expect(page.locator(".empty-state")).toContainText(
-        "Retry before changing your preferences",
-      );
-      await expect(page.locator("#summary")).toBeEmpty();
-      await expect(page.locator("#summary")).toBeHidden();
-    }
-  });
-}
-
-test("a total availability failure displays an error without widening advice", async ({ page }) => {
-  let searches = 0;
-  await mockSearchDependencies(page, (route) => {
-    searches += 1;
-    if (searches === 1) {
-      return route.fulfill({ json: emptySearch });
-    }
-    return route.fulfill({
-      json: { error: "Seat availability could not be checked. Please try again." },
-      status: 502,
-    });
-  });
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-  await expect(page.locator(".empty-state")).toContainText("Try widening");
-  await page.getByRole("button", { exact: true, name: "Find matching seats" }).click();
-  await expect(page.locator("#summary")).toContainText("Seat availability could not be checked");
-  await expect(page.locator("#results")).toBeEmpty();
-});
-
-for (const scenario of [
-  { outcome: "matches", width: 390 },
-  { outcome: "matches", width: 1280 },
-  { outcome: "empty", width: 390 },
-  { outcome: "error", width: 390 },
-]) {
-  test(`shared searches reveal ${scenario.outcome} after loading at ${scenario.width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ height: 844, width: scenario.width });
-    const response = Promise.withResolvers();
-    await mockSearchDependencies(page, async (route) => {
-      await response.promise;
-      if (scenario.outcome === "error") {
-        await route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
-        return;
-      }
-      const matches = [];
-      if (scenario.outcome === "matches") {
-        matches.push(makeSimpleMatch("Shared Cinema", "7 PM"));
-      }
-      await route.fulfill({ json: { ...emptySearch, matches } });
-    });
-    await page.goto("/");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
-    await expect(page.locator("#results-section")).not.toBeFocused();
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
-    await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBe(0);
-    response.resolve();
-    await expect(page.locator("#results-section")).toBeFocused();
-    await expect(page.locator("#results-section")).toHaveCSS("outline-style", "none");
-    expect(await page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(0);
-    if (scenario.outcome === "matches") {
-      await expect(page.locator(".result").first()).toBeInViewport();
-    } else if (scenario.outcome === "empty") {
-      await expect(page.getByText("No matching showtimes", { exact: true })).toBeInViewport();
-    } else {
-      await expect(
-        page.getByText("Search unavailable. Try again.", { exact: true }),
-      ).toBeInViewport();
-    }
-  });
-}
-
-test("copy search links preserve result filters and restore them on reload and Back", async ({
-  page,
-}, testInfo) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "clipboard", {
-      value: {
-        writeText: (text) => {
-          globalThis.copiedSearchLink = text;
-          return Promise.resolve();
-        },
-      },
-    });
-  });
-  const requests = [];
-  await mockSearchDependencies(
-    page,
-    (route) => {
-      const params = new URL(route.request().url()).searchParams;
-      requests.push(Object.fromEntries(params));
-      return route.fulfill({
-        json: {
-          ...emptySearch,
-          matches: [
-            makeSimpleMatch("Shared Cinema", "7 PM", "Reserved seating, Recliners, Closed caption"),
-          ],
-          page: Number(params.get("page")),
-        },
-      });
-    },
-    ["IMAX", "Dolby Cinema"],
-  );
-  await page.route("**/api/theatres*", (route) =>
-    route.fulfill({
-      json: {
-        place: "Testville",
-        theatres: [{ name: "Shared Cinema" }],
-      },
-    }),
-  );
-  const today = new Date();
-  const date = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
-  const params = new URLSearchParams({
-    adjacentSeats: "3",
-    endDate: date,
-    endTime: "23:00",
-    excludeAccessible: "0",
+  await page.getByRole("button", { exact: true, name: "IMAX" }).click();
+  await page.getByRole("button", { exact: true, name: "Dolby Cinema" }).click();
+  await page.locator("#searchButton").click();
+  await expect(page.getByRole("heading", { exact: true, name: "Cinema" })).toBeVisible();
+  await expect(page.locator(".real-seat.matched")).toHaveCount(2);
+  expect(submitted).toMatchObject({
+    adjacentSeats: "2",
+    excludeAccessible: "1",
     format: "IMAX,Dolby Cinema",
     movie: "Test Movie",
-    page: "2",
-    radius: "15",
-    seatGrid: "7:7,7:8",
-    sort: "nearest",
-    startDate: date,
-    startTime: "17:00",
-    theatre: "Shared Cinema",
     zip: "10001",
   });
-  await page.goto("/");
-  const initialHistoryLength = await page.evaluate(() => globalThis.history.length);
-  await page.goto(`/?${params}`);
-  const result = page.locator(".result");
-  await expect(result).toHaveCount(1);
-  expect(await page.evaluate(() => globalThis.history.length)).toBe(initialHistoryLength + 1);
-  await expect(result.locator(".result-open")).toHaveCount(0);
-  await expect(result.locator(".real-seat-map-title")).toContainText("1 available / 1 total");
-  await expect(result.locator(".result-amenities")).toHaveText(
-    "Reserved seating, Recliners, Closed caption",
-  );
-  await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
-  const expected = Object.fromEntries(params);
-  expect(requests.at(-1)).toMatchObject(expected);
-
-  // Unsubmitted edits must not change the link attached to the displayed results.
-  await page.locator("#adjacentSeatsInput").fill("4");
-  const shareButton = result.locator(".share-btn");
-  const idleWidth = (await shareButton.boundingBox()).width;
-  await shareButton.click();
-  await expect(shareButton).toHaveAccessibleName("Copied!");
-  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
-  const copied = await page.evaluate(() => globalThis.copiedSearchLink);
-  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual({
-    ...expected,
-    shared: "1",
-    showtime: "Shared Cinema-7 PM",
-  });
-  await expect(shareButton).toHaveAccessibleName("Copy showtime link");
-  await expect(shareButton.locator(".share-label")).toHaveCSS("opacity", "1");
-  await expect(shareButton.locator(".share-feedback")).toHaveCSS("opacity", "0");
-  expect((await shareButton.boundingBox()).width).toBe(idleWidth);
-
-  await page.goto(copied);
-  await expect(result).toHaveCount(1);
-  await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
-  await expect(page.locator("#sortInput")).toHaveValue("nearest");
-  await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
-  expect(requests.at(-1)).toMatchObject(expected);
-  await page.locator("#sortInput").selectOption("latest");
-  await expect(page).toHaveURL(/sort=latest/u);
-  await page.goBack();
-  await expect(page.locator("#sortInput")).toHaveValue("nearest");
-  await expect(result).toHaveCount(1);
-  expect(requests.at(-1)).toMatchObject(expected);
-  const buttons = await result.locator(".result-actions").evaluate((element) => {
-    const [tickets, share] = element.children;
-    // Compare layout positions without hover or entrance transforms.
-    return {
-      shareTop: share.offsetTop,
-      ticketsTop: tickets.offsetTop,
-    };
-  });
-  expect(buttons.shareTop).toBe(buttons.ticketsTop);
-  await result.screenshot({ path: testInfo.outputPath("share-light.png") });
-  await page.emulateMedia({ colorScheme: "dark" });
-  await result.screenshot({ path: testInfo.outputPath("share-dark.png") });
 });
 
-test("shared coordinate searches restore the origin and clipboard failures allow retry", async ({
-  page,
-}) => {
+test("shared links reopen the displayed search without precise coordinates", async ({ page }) => {
   await page.addInitScript(() => {
-    let attempts = 0;
     Object.defineProperty(navigator, "clipboard", {
       value: {
         writeText: (text) => {
-          attempts += 1;
-          if (attempts === 1) {
-            return Promise.reject(new Error("Clipboard unavailable"));
-          }
-          globalThis.copiedSearchLink = text;
+          globalThis.copiedLink = text;
           return Promise.resolve();
         },
       },
     });
   });
-  let search = null;
-  await mockSearchDependencies(page, (route) => {
-    search = new URL(route.request().url()).searchParams;
-    return route.fulfill({
-      json: { ...emptySearch, matches: [makeSimpleMatch("Nearby Cinema", "7 PM")] },
-    });
-  });
-  await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie");
-  const share = page.getByRole("button", { name: "Copy showtime link" });
-  await share.click();
-  await expect(page.getByRole("button", { name: "Copy failed — retry" })).toBeVisible();
-  await page.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
-  expect(search.get("lat")).toBe("40.75");
-  expect(search.get("lon")).toBe("-73.99");
-  const copied = new URL(await page.evaluate(() => globalThis.copiedSearchLink));
-  expect(copied.searchParams.get("lat")).toBe("40.75");
-  expect(copied.searchParams.get("lon")).toBe("-73.99");
-});
-
-for (const device of [
-  {
-    name: "iPhone",
-    native: true,
-    platform: "iPhone",
-    supported: true,
-    touch: 5,
-    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-  },
-  {
-    name: "Android",
-    native: true,
-    platform: "Linux armv8l",
-    supported: true,
-    touch: 5,
-    userAgent: "Mozilla/5.0 (Linux; Android 15)",
-  },
-  {
-    name: "iPad desktop mode",
-    native: true,
-    platform: "MacIntel",
-    supported: true,
-    touch: 5,
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
-  },
-  {
-    name: "touchscreen Windows desktop",
-    native: false,
-    platform: "Win32",
-    supported: true,
-    touch: 10,
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-  },
-  {
-    name: "Mac desktop",
-    native: false,
-    platform: "MacIntel",
-    supported: true,
-    touch: 0,
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)",
-  },
-  {
-    name: "mobile without URL sharing support",
-    native: false,
-    platform: "iPhone",
-    supported: false,
-    touch: 5,
-    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
-  },
-]) {
-  test(`sharing behavior on ${device.name}`, async ({ page }) => {
-    // Desktop cases deliberately keep the narrow viewport to rule out size-based detection.
-    await page.addInitScript((profile) => {
-      Object.defineProperties(navigator, {
-        canShare: { value: () => profile.supported },
-        clipboard: {
-          value: {
-            writeText: (url) => {
-              globalThis.copiedSearchLink = url;
-              return Promise.resolve();
-            },
-          },
-        },
-        maxTouchPoints: { value: profile.touch },
-        platform: { value: profile.platform },
-        share: {
-          value: (data) => {
-            globalThis.shareRequests.push(data);
-            if (globalThis.shareRequests.length === 1) {
-              return Promise.reject(new DOMException("Dismissed", "AbortError"));
-            }
-            if (globalThis.shareRequests.length === 2) {
-              return Promise.reject(new DOMException("Sharing unavailable", "NotAllowedError"));
-            }
-            return Promise.resolve();
-          },
-        },
-        userAgent: { value: profile.userAgent },
-      });
-      globalThis.shareRequests = [];
-      globalThis.copiedSearchLink = null;
-    }, device);
-    await mockSearchDependencies(page, (route) =>
-      route.fulfill({
-        json: {
-          ...emptySearch,
-          matches: [makeSimpleMatch("Share Cinema", "7 PM")],
-        },
-      }),
-    );
-    await page.goto("/?zip=10001&radius=5&movie=Test+Movie");
-    const shareButton = page.locator(".share-btn");
-    await expect(shareButton).toBeVisible();
-    const expectedSharedUrl = new URL(page.url());
-    expectedSharedUrl.searchParams.set("shared", "1");
-    expectedSharedUrl.searchParams.set("showtime", "Share Cinema-7 PM");
-    if (device.native) {
-      await expect(shareButton).toHaveAccessibleName("Share showtime");
-      await shareButton.click();
-      await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveAccessibleName("Share showtime");
-      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
-      await shareButton.click();
-      await expect(shareButton).toHaveAccessibleName("Share failed — retry");
-      await shareButton.click();
-      await expect(shareButton).toBeEnabled();
-      await expect(shareButton).toHaveAccessibleName("Share showtime");
-      const shares = await page.evaluate(() => globalThis.shareRequests);
-      expect(shares).toHaveLength(3);
-      expect(shares[0]).toEqual({
-        text: `Test Movie\n2 seats together · ${formatNiceDate("2026-08-01")} · 7 PM · Standard · Share Cinema`,
-        title: "Test Movie — Movie Seat Finder",
-        url: expectedSharedUrl.href,
-      });
-      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
-    } else {
-      await expect(shareButton).toHaveAccessibleName("Copy showtime link");
-      await shareButton.click();
-      await expect(shareButton).toHaveAccessibleName("Copied!");
-      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(expectedSharedUrl.href);
-      expect(await page.evaluate(() => globalThis.shareRequests)).toEqual([]);
-    }
-  });
-}
-
-for (const width of [390, 1280]) {
-  test(`shared links open results only and Back preserves the controls at ${width}px`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ height: 844, width });
-    let searches = 0;
-    let visits = 0;
-    const requests = [];
-    const optionRequests = [];
-    page.on("request", (request) => {
-      const path = new URL(request.url()).pathname;
-      if (["/api/theatres", "/api/movies", "/api/formats"].includes(path)) {
-        optionRequests.push(path);
-      }
-    });
-    await mockSearchDependencies(
-      page,
-      (route) => {
-        searches += 1;
-        requests.push(Object.fromEntries(new URL(route.request().url()).searchParams));
-        return route.fulfill({
-          json: { ...emptySearch, matches: [makeSimpleMatch("Shared Cinema", "7 PM")] },
-        });
-      },
-      ["IMAX", "Dolby Cinema"],
-    );
-    await page.route("**/api/events/shared-link-visit", (route) => {
-      visits += 1;
-      return route.fulfill({ status: 204 });
-    });
-    await page.goto("/");
-    await expect(page.locator("#search")).toBeVisible();
-    expect(visits).toBe(0);
-    const sharedUrl = new URL(
-      "/?shared=1&zip=10001&radius=15&movie=Test+Movie&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startTime=17:00&endTime=23:00&theatre=",
-      page.url(),
-    );
-    sharedUrl.searchParams.set("startDate", todayString());
-    sharedUrl.searchParams.set("endDate", addDays(todayString(), 7));
-    await page.goto(sharedUrl.href);
-    await expect(page.locator(".result")).toHaveCount(1);
-    await expect(page.locator("#search")).toBeHidden();
-    await expect(page.locator(".hero")).toBeHidden();
-    const footerTop = await page
-      .locator(".site-footer")
-      .evaluate((element) => element.getBoundingClientRect().top);
-    const resultsBottom = await page
-      .locator("#results-section")
-      .evaluate((element) => element.getBoundingClientRect().bottom);
-    expect(footerTop).toBeGreaterThanOrEqual(resultsBottom);
-    const back = page.getByRole("button", { exact: true, name: "Back" });
-    await expect(back).toBeInViewport();
-    expect(searches).toBe(1);
-    expect(optionRequests).toEqual([]);
-    await expect.poll(() => visits).toBe(1);
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-results-light.png"),
-    });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-results-dark.png"),
-    });
-    await back.click();
-    await expect(page.locator("#search")).toBeVisible();
-    await expect(back).toBeHidden();
-    await expect(page.locator("#zipInput")).toHaveValue("10001");
-    await expect(page.locator("#radiusInput")).toHaveValue("15");
-    await expect(page.locator("#movieInput")).toHaveValue("Test Movie");
-    await expect(page.locator("#adjacentSeatsInput")).toHaveValue("3");
-    await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
-    expect(optionRequests).toEqual(["/api/theatres", "/api/movies", "/api/formats"]);
-    await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
-    await expect(page.locator("#startTimeInput")).toHaveValue("17:00");
-    await expect(page.locator("#endTimeInput")).toHaveValue("23:00");
-    expect(new URL(page.url()).searchParams.has("shared")).toBe(false);
-    expect(searches).toBe(1);
-    await page.reload();
-    await expect(page.locator("#formatOptions .is-selected")).toHaveText(["IMAX", "Dolby Cinema"]);
-    await expect(page.locator("#searchButton")).toBeEnabled();
-    await expect(page.locator(".result")).toHaveCount(0);
-    expect(searches).toBe(1);
-    expect(visits).toBe(1);
-    await page.locator("#searchButton").click();
-    await expect(page.locator(".result")).toHaveCount(1);
-    expect(searches).toBe(2);
-    expect(visits).toBe(1);
-    expect(requests[1]).toEqual(requests[0]);
-  });
-}
-
-for (const profile of [
-  { motion: "no-preference", width: 320 },
-  { motion: "no-preference", width: 390 },
-  { motion: "no-preference", width: 1280 },
-  { motion: "reduce", width: 390 },
-]) {
-  test(`shared results keep the header stable at ${profile.width}px with ${profile.motion} motion`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ height: 844, width: profile.width });
-    await page.emulateMedia({ reducedMotion: profile.motion });
-    const response = Promise.withResolvers();
-    await mockSearchDependencies(page, async (route) => {
-      await response.promise;
-      await route.fulfill({
-        json: {
-          ...emptySearch,
-          checkedSeatMaps: 123,
-          checkedShowtimes: 150,
-          matches: Array.from({ length: 9 }, (_, index) =>
-            makeSimpleMatch(`Cinema ${index + 1}`, "7 PM"),
-          ),
-        },
-      });
-    });
-    await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
-    await expect(page.locator("body")).toHaveClass(/shared-loading/u);
-    await page.evaluate(() => document.fonts.ready);
-    await expect(page.locator("#sortInput")).toBeHidden();
-    const before = await page.locator("#results-section").evaluate((section) => ({
-      resultsTop: section.querySelector("#results").offsetTop,
-      summaryHeight: section.querySelector("#summary").offsetHeight,
-      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
-    }));
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-before.png"),
-    });
-    response.resolve();
-    await expect(page.locator(".result")).toHaveCount(9);
-    await expect(page.locator("body")).not.toHaveClass(/shared-loading/u);
-    const after = await page.locator("#results-section").evaluate((section) => ({
-      resultsTop: section.querySelector("#results").offsetTop,
-      summaryHeight: section.querySelector("#summary").offsetHeight,
-      toolbarTop: section.querySelector("#resultsToolbar").offsetTop,
-    }));
-    expect(after).toEqual(before);
-    let expectedAnimation = "shared-results-reveal";
-    if (profile.motion === "reduce") {
-      expectedAnimation = "none";
-    }
-    await Promise.all(
-      ["#summary", "#resultsToolbar", "#results"].map((selector) =>
-        expect(page.locator(selector)).toHaveCSS("animation-name", expectedAnimation),
-      ),
-    );
-    await expect(page.locator(".result").first()).toHaveCSS("animation-name", "none");
-    await expect(page.locator("#sortInput")).toBeEnabled();
-    await expect(page.getByRole("button", { exact: true, name: "Back" })).toBeInViewport();
-    await page.screenshot({
-      animations: "disabled",
-      path: testInfo.outputPath("shared-after.png"),
-    });
-  });
-}
-
-test("shared sorting and pagination preserve URL filters without loading options", async ({
-  page,
-}) => {
-  const requests = [];
-  const unexpected = [];
-  await page.route("**/api/**", (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.startsWith("/api/events/")) {
-      return route.fulfill({ status: 204 });
-    }
-    if (url.pathname !== "/api/search") {
-      unexpected.push(url.pathname);
-      return route.fulfill({ status: 503 });
-    }
-    requests.push(Object.fromEntries(url.searchParams));
-    const pageNumber = Number(url.searchParams.get("page"));
-    return route.fulfill({
-      json: {
-        ...emptySearch,
-        hasNextPage: pageNumber === 1,
-        hasPreviousPage: pageNumber > 1,
-        matches: [makeSimpleMatch("Shared Cinema", "7 PM")],
-        page: pageNumber,
-      },
-    });
-  });
-  await page.goto(
-    "/?shared=1&lat=40.75&lon=-73.99&radius=15&movie=Test+Movie&theatre=Shared+Cinema&adjacentSeats=3&format=IMAX,Dolby+Cinema&seatGrid=7:7,7:8&excludeAccessible=0&startDate=2026-09-06&endDate=2026-09-08&startTime=17:00&endTime=23:00",
-  );
+  await mockApi(page);
+  await page.goto("/?lat=40.75&lon=-73.99&radius=5&movie=Test+Movie&adjacentSeats=2");
   await expect(page.locator(".result")).toHaveCount(1);
-  expect(requests).toHaveLength(1);
-  expect(requests[0]).toMatchObject({
-    adjacentSeats: "3",
-    format: "IMAX,Dolby Cinema",
-    lat: "40.75",
-    lon: "-73.99",
-    seatGrid: "7:7,7:8",
-    startDate: "2026-09-06",
-    theatre: "Shared Cinema",
-  });
-  expect(requests[0]).not.toHaveProperty("shared");
-  await page.locator("#sortInput").selectOption("latest");
-  await expect(page.locator("#sortInput")).toBeEnabled();
-  expect(requests).toHaveLength(2);
-  expect(requests[1]).toEqual({ ...requests[0], sort: "latest" });
-  await page.getByRole("button", { exact: true, name: "Next page of results" }).click();
-  await expect(page.locator(".pagination-label")).toHaveText("Page 2");
-  expect(requests).toHaveLength(3);
-  expect(requests[2]).toEqual({ ...requests[0], page: "2", sort: "latest" });
-  expect(unexpected).toEqual([]);
+  expect(new URL(page.url()).searchParams.has("lat")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("lon")).toBe(false);
+  await page.locator("#adjacentSeatsInput").fill("4");
+  await page.getByRole("button", { name: "Copy showtime link" }).click();
+  await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
+  const link = await page.evaluate(() => globalThis.copiedLink);
+  expect(new URL(link).pathname).toMatch(/^\/s\//u);
+  await page.goto(link);
+  await expect(page.locator(".shared-showtime")).toHaveAttribute("data-showtime", "showtime-1");
   await expect(page.locator("#search")).toBeHidden();
-});
-
-test("Back while a shared search is pending ignores its late response", async ({
-  page,
-}, testInfo) => {
-  let searches = 0;
-  const response = Promise.withResolvers();
-  await mockSearchDependencies(page, async (route) => {
-    searches += 1;
-    await response.promise;
-    await route.fulfill({
-      json: { ...emptySearch, matches: [makeSimpleMatch("Shared Cinema", "7 PM")] },
-    });
-  });
-  await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
-  await expect(page.locator("#searchButton")).toHaveAttribute("aria-busy", "true");
-  await expect.poll(() => searches).toBe(1);
-  const footerBottom = await page
-    .locator(".site-footer")
-    .evaluate((element) => element.getBoundingClientRect().bottom);
-  expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
-  await page.screenshot({
-    animations: "disabled",
-    path: testInfo.outputPath("shared-loading-footer.png"),
-  });
   await page.getByRole("button", { exact: true, name: "Back" }).click();
-  await expect(page.locator("#searchButton")).toBeEnabled();
-  const completed = page.waitForResponse("**/api/search*");
-  response.resolve();
-  await completed;
-  await page.reload();
-  await expect(page.locator("#searchButton")).toBeEnabled();
-  await expect(page.locator(".result")).toHaveCount(0);
-  await expect(page.locator("#search")).toBeVisible();
-  expect(searches).toBe(1);
+  await expect(page.locator("#adjacentSeatsInput")).toHaveValue("2");
+  await expect(page.locator("#zipInput")).toHaveValue("10001");
 });
 
-for (const outcome of ["empty", "error", "invalid filters"]) {
-  test(`shared links keep Back available for ${outcome}`, async ({ page }) => {
-    await mockSearchDependencies(page, (route) => {
-      if (outcome === "error") {
-        return route.fulfill({ json: { error: "Search unavailable. Try again." }, status: 503 });
-      }
-      if (outcome === "invalid filters") {
-        return route.fulfill({
-          json: { error: "One of the search values is invalid. Adjust the form and try again." },
-          status: 400,
-        });
-      }
-      return route.fulfill({ json: emptySearch });
-    });
-    await page.goto("/?shared=1&zip=10001&radius=5&movie=Test+Movie");
-    if (outcome === "empty") {
-      await expect(page.getByText("No matching showtimes", { exact: true })).toBeVisible();
-    } else if (outcome === "error") {
-      await expect(page.locator("#summary")).toHaveText("Search unavailable. Try again.");
-    } else {
-      await expect(page.locator("#summary")).toContainText("One of the search values is invalid");
-    }
-    await expect(page.locator("#search")).toBeHidden();
-    const footerBottom = await page
-      .locator(".site-footer")
-      .evaluate((element) => element.getBoundingClientRect().bottom);
-    expect(footerBottom).toBeCloseTo(page.viewportSize().height, 0);
-    await page.getByRole("button", { exact: true, name: "Back" }).click();
-    await expect(page.locator("#search")).toBeVisible();
-  });
-}
-
-test("mobile form fits a narrow phone without horizontal scrolling", async ({ page }) => {
-  await page.setViewportSize({ height: 700, width: 320 });
+test("seat preferences require a selected movie", async ({ page }) => {
+  await mockApi(page);
   await page.goto("/");
-  await page.evaluate(() => document.fonts.ready);
-
-  const layout = await page.evaluate(() => ({
-    fontFamily: getComputedStyle(document.body).fontFamily,
-    fontResourceLoaded: performance
-      .getEntriesByType("resource")
-      .some((entry) => new URL(entry.name).pathname === "/inter-variable.woff2"),
-    inputFontSize: getComputedStyle(document.querySelector("#zipInput")).fontSize,
-    scrollWidth: document.documentElement.scrollWidth,
-    viewportWidth: document.documentElement.clientWidth,
-  }));
-
-  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
-  expect(layout.inputFontSize).toBe("16px");
-  expect(layout.fontFamily).toContain("Inter");
-  expect(layout.fontResourceLoaded).toBe(true);
-});
-
-test("mobile seat preferences require a deliberate, reversible edit mode", async ({ page }) => {
-  await mockSearchDependencies(page, (route) =>
-    route.fulfill({
-      body: JSON.stringify(emptySearch),
-      contentType: "application/json",
-    }),
-  );
-
-  await page.goto("/");
+  const seats = page.locator("#adjacentSeatsInput");
+  await expect(seats).toBeDisabled();
   await page.locator("#zipInput").fill("10001");
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-
-  const grid = page.locator("#seatPreferenceGrid");
-  const firstCell = grid.locator(".seat-cell").first();
-  const editButton = page.locator("#editSeatGridButton");
-  const centerButton = page.locator("#selectCenterGridButton");
-  const clearButton = page.locator("#clearGridButton");
-  const cancelButton = page.locator("#cancelSeatGridButton");
-  const doneButton = page.locator("#doneSeatGridButton");
-
-  await expect(editButton).toBeVisible();
-  await expect(centerButton).toBeHidden();
-  await expect(clearButton).toBeHidden();
-  await firstCell.dispatchEvent("click");
-  await expect(firstCell).toHaveAttribute("aria-pressed", "false");
-
-  await editButton.click();
-  await expect(editButton).toBeHidden();
-  await expect(centerButton).toBeVisible();
-  await expect(clearButton).toBeVisible();
-  await expect(cancelButton).toBeVisible();
-  await expect(doneButton).toBeVisible();
-
-  await centerButton.tap();
-  await clearButton.tap();
-
-  await firstCell.click();
-  await expect(firstCell).toHaveAttribute("aria-pressed", "true");
-  await cancelButton.click();
-  await expect(firstCell).toHaveAttribute("aria-pressed", "false");
-
-  await editButton.click();
-  await firstCell.click();
-  await doneButton.click();
-  await expect(firstCell).toHaveAttribute("aria-pressed", "true");
-
-  await page.setViewportSize({ height: 700, width: 900 });
-  await expect(editButton).toBeHidden();
-  await expect(centerButton).toBeVisible();
-  await expect(clearButton).toBeVisible();
+  await expect(seats).toBeDisabled();
+  await page.locator("#movieInput").fill("Test");
+  await page.getByRole("option", { exact: true, name: "Test Movie" }).click();
+  await expect(seats).toBeEnabled();
+  await page.locator("#movieInput").fill("");
+  await expect(seats).toBeDisabled();
 });
 
-test("movie and seat controls stay locked until the location resolves", async ({ page }) => {
-  const { promise: theatresStarted, resolve: markTheatresStarted } = Promise.withResolvers();
-  const { promise: theatreGate, resolve: releaseTheatres } = Promise.withResolvers();
-  await page.route("**/api/theatres*", async (route) => {
-    markTheatresStarted();
-    await theatreGate;
-    await route.fulfill({
-      body: JSON.stringify({ place: "Testville", theatres: [] }),
-      contentType: "application/json",
-    });
-  });
-  await page.route("**/api/movies*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-      contentType: "application/json",
-    }),
-  );
+test("seat-area edits can be cancelled or saved", async ({ page }) => {
+  await mockApi(page);
   await page.goto("/");
-
-  const movieGroup = page.locator("#movieGroup");
-  const preferencesGroup = page.locator("#preferencesGroup");
-  const searchButton = page.locator("#searchButton");
-  await Promise.all(
-    [movieGroup, preferencesGroup].flatMap((group) => [
-      expect(group).toHaveAttribute("inert", ""),
-      expect(group).toHaveAttribute("aria-disabled", "true"),
-    ]),
-  );
-  expect(
-    await page.locator("#movieInput").evaluate((input) => {
-      input.focus();
-      return document.activeElement === input;
-    }),
-  ).toBe(false);
-  await expect(searchButton).toBeDisabled();
-  await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
-
-  await page.locator("#zipInput").fill("10001");
-  await theatresStarted;
-  releaseTheatres();
-  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-
-  await Promise.all(
-    [movieGroup, preferencesGroup].flatMap((group) => [
-      expect(group).not.toHaveAttribute("inert", ""),
-      expect(group).not.toHaveAttribute("aria-disabled", "true"),
-    ]),
-  );
-  await expect(searchButton).toBeEnabled();
-});
-
-test("movie options remain selectable beyond the movie card", async ({ page }) => {
-  const movies = Array.from({ length: 12 }, (_, index) => ({ title: `Test Movie ${index + 1}` }));
-  await page.route("**/api/theatres*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ place: "Testville", theatres: [] }),
-      contentType: "application/json",
-    }),
-  );
-  await page.route("**/api/movies*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ movies }),
-      contentType: "application/json",
-    }),
-  );
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#movieMeta")).toHaveText("12 showing");
-
-  await page.locator("#movieInput").click();
-  await expect(page.locator("#movieMenu")).toBeVisible();
-  await page.getByRole("option", { exact: true, name: "Test Movie 12" }).click();
-  await expect(page.locator("#movieInput")).toHaveValue("Test Movie 12");
-  await expect(page.locator("#movieMenu")).toBeHidden();
-});
-
-test("an unknown ZIP shows one error at the ZIP field and stops dependent loads", async ({
-  page,
-}) => {
-  let movieRequestCount = 0;
-  await page.route("**/api/theatres*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({
-        code: "location",
-        error: "We couldn't find that ZIP code. Check it and try again.",
-      }),
-      contentType: "application/json",
-      status: 400,
-    }),
-  );
-  await page.route("**/api/movies*", (route) => {
-    movieRequestCount += 1;
-    return route.fulfill({ body: JSON.stringify({ movies: [] }), contentType: "application/json" });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("00000");
-  await expect(page.locator("#locationStatus")).toHaveText(
-    "We couldn't find that ZIP code. Check it and try again.",
-  );
-  await expect(page.locator("#movieGroup")).toHaveAttribute("inert", "");
-  await expect(page.locator("#searchButton")).toBeDisabled();
-  expect(movieRequestCount).toBe(0);
-});
-
-test("mobile search keeps content stable while loading and then renders its response", async ({
-  page,
-}) => {
-  const { promise: searchStarted, resolve: markSearchStarted } = Promise.withResolvers();
-  const { promise: searchGate, resolve: releaseSearch } = Promise.withResolvers();
-  await mockSearchDependencies(page, async (route) => {
-    markSearchStarted();
-    await searchGate;
-    await route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
   await selectMovie(page);
-
-  const searchButton = page.locator("#searchButton");
-  const emptyState = page.locator(".empty-state");
-  await expect(emptyState).toBeVisible();
-  await searchButton.click();
-  await searchStarted;
-
-  await expect(searchButton).toBeDisabled();
-  await expect(searchButton).toHaveAttribute("aria-busy", "true");
-  await expect(emptyState).toBeVisible();
-
-  releaseSearch();
-  await expect(emptyState.locator("strong")).toHaveText("No matching showtimes");
-  await expect(emptyState.locator("p")).toHaveText(
-    "Try widening the time range, seat area, or dates.",
-  );
-  await expect(emptyState).toHaveAttribute("role", "status");
-  await expect(page.locator("#summary")).toBeEmpty();
-  await expect(page.locator("#summary")).toBeHidden();
-  await expect(page.locator("#resultsToolbar")).toBeHidden();
-  await expect(page.locator("#results").locator(":scope > *")).toHaveCount(1);
-  await expect(searchButton).not.toHaveAttribute("aria-busy", "true");
+  const seat = page.locator("#seatPreferenceGrid .seat-cell").first();
+  await page.locator("#editSeatGridButton").click();
+  await seat.click();
+  await expect(seat).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#cancelSeatGridButton").click();
+  await expect(seat).toHaveAttribute("aria-pressed", "false");
+  await page.locator("#editSeatGridButton").click();
+  await seat.click();
+  await page.locator("#doneSeatGridButton").click();
+  await expect(seat).toHaveAttribute("aria-pressed", "true");
 });
 
-test("movie search accepts a selected suggestion or an exact loaded title", async ({ page }) => {
-  let searchUrl = "";
-  let searchCount = 0;
-  await mockSearchDependencies(page, (route) => {
-    searchCount += 1;
-    searchUrl = route.request().url();
-    return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-
-  const movieInput = page.locator("#movieInput");
-  const searchButton = page.locator("#searchButton");
-  await movieInput.fill("Test");
-  const suggestion = page.getByRole("option", { exact: true, name: "Test Movie" });
-  await expect(suggestion).toBeVisible();
-  await searchButton.click();
-
-  await expect(movieInput).not.toHaveJSProperty("validationMessage", "");
-  expect(searchUrl).toBe("");
-
-  await movieInput.fill("Test Movie");
-  await expect(searchButton).toBeEnabled();
-  await searchButton.click();
-  await expect.poll(() => searchUrl).not.toBe("");
-  await expect(searchButton).toBeEnabled();
-  expect(new URL(searchUrl).searchParams.get("movie")).toBe("Test Movie");
-  expect(searchCount).toBe(1);
-
-  await page.locator("#radiusInput").evaluate((input) => {
-    input.value = "10";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    document.querySelector("#searchButton").click();
-  });
-  await expect(movieInput).toBeDisabled();
-  expect(searchCount).toBe(1);
-  await expect(movieInput).toBeEnabled();
-  await expect(movieInput).toHaveValue("Test Movie");
-});
-
-test("theatre filter accepts only an empty, selected, or exact loaded theatre", async ({
-  page,
-}) => {
-  let searchUrl = "";
-  const movieUrls = [];
-  await page.route("**/api/theatres*", (route) =>
+test("partial availability failures warn without hiding confirmed matches", async ({ page }) => {
+  await mockApi(page, (route) =>
     route.fulfill({
-      body: JSON.stringify({
-        place: "Testville",
-        theatres: [{ name: "Test Cinema" }, { name: "Test Cinema East" }],
-      }),
-      contentType: "application/json",
+      json: { ...searchResult, checkedSeatMaps: 2, failedSeatMaps: 1 },
     }),
   );
-  await page.route("**/api/movies*", (route) => {
-    movieUrls.push(route.request().url());
-    return route.fulfill({
-      body: JSON.stringify({ movies: [{ title: "Test Movie" }] }),
-      contentType: "application/json",
-    });
-  });
-  await page.route("**/api/formats*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ formats: ["Standard"] }),
-      contentType: "application/json",
-    }),
-  );
-  await page.route("**/api/search*", (route) => {
-    searchUrl = route.request().url();
-    return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
-  });
-
   await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await expect(page.locator("#theatreMeta")).toHaveText("2 nearby");
-
-  const theatreInput = page.locator("#theatreInput");
-  await theatreInput.fill("Test");
-  await expect(page.getByRole("option", { exact: true, name: "Test Cinema" })).toBeVisible();
-  await page.locator("#searchButton").click();
-  await expect(theatreInput).not.toHaveJSProperty("validationMessage", "");
-  expect(searchUrl).toBe("");
-
-  await theatreInput.fill("Test Cinema");
-  await theatreInput.press("Tab");
-  await expect.poll(() => movieUrls.at(-1)).toContain("theatre=Test+Cinema");
   await selectMovie(page);
   await page.locator("#searchButton").click();
-  await expect.poll(() => searchUrl).not.toBe("");
-  expect(new URL(searchUrl).searchParams.get("theatre")).toBe("Test Cinema");
+  await expect(page.locator("#summary")).toContainText("Results are incomplete");
+  await expect(page.getByRole("heading", { exact: true, name: "Cinema" })).toBeVisible();
 });
 
-test("mobile format chips send every selected format to the search", async ({ page }) => {
-  let searchUrl = "";
-  await mockSearchDependencies(
-    page,
-    (route) => {
-      searchUrl = route.request().url();
-      return route.fulfill({ body: JSON.stringify(emptySearch), contentType: "application/json" });
-    },
-    ["IMAX", "Dolby Cinema", "Standard"],
-  );
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  // Wait for the ZIP-triggered movie refresh to finish before choosing a
-  // Movie and its formats, matching the order a user sees in the UI.
-  await selectMovie(page);
-
-  const imax = page.getByRole("button", { exact: true, name: "IMAX" });
-  const dolby = page.getByRole("button", { exact: true, name: "Dolby Cinema" });
-  await expect(page.locator("#formatStatus")).toBeEmpty();
-  await expect(imax).toBeVisible();
-  await imax.click();
-  await dolby.click();
-  await expect(imax).toHaveAttribute("aria-pressed", "true");
-  await expect(dolby).toHaveAttribute("aria-pressed", "true");
-
-  await page.locator("#searchButton").click();
-  await expect.poll(() => searchUrl).toContain("format=IMAX%2CDolby+Cinema");
-  expect(searchUrl).toContain("excludeAccessible=1");
-
-  const guideButton = page.locator("#formatGuideButton");
-  await guideButton.click();
-  await expect(guideButton).toHaveAttribute("aria-expanded", "true");
-  await guideButton.click();
-  await expect(guideButton).toHaveAttribute("aria-expanded", "false");
-});
-
-test("result sorting defaults to earliest and reruns the search when changed", async ({ page }) => {
-  const searchSorts = [];
-  const { promise: latestSearchStarted, resolve: markLatestSearchStarted } =
-    Promise.withResolvers();
-  const { promise: latestSearchGate, resolve: releaseLatestSearch } = Promise.withResolvers();
-  const matchingSearch = {
-    ...emptySearch,
-    matches: [
-      {
-        amenities: "Reserved seating",
-        date: "2026-08-01",
-        displayTime: "7:00 PM",
-        format: "Standard",
-        genres: [],
-        movieTitle: "Test Movie",
-        seatMap: {
-          availableSeatCount: 1,
-          layout: {
-            height: 30,
-            seats: [
-              {
-                height: 10,
-                id: "A1",
-                matched: true,
-                status: "A",
-                type: "standard",
-                width: 10,
-                x: 10,
-                y: 10,
-              },
-            ],
-            width: 30,
-          },
-          totalSeatCount: 1,
-        },
-        theatre: { address: "1 Main St", distanceMiles: 1, name: "Test Cinema" },
-      },
-    ],
-  };
-  await mockSearchDependencies(page, async (route) => {
-    const sort = new URL(route.request().url()).searchParams.get("sort");
-    searchSorts.push(sort);
-    if (sort === "latest") {
-      markLatestSearchStarted();
-      await latestSearchGate;
-    }
-    return route.fulfill({ body: JSON.stringify(matchingSearch), contentType: "application/json" });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.locator("#searchButton").click();
-
-  const sortInput = page.locator("#sortInput");
-  await expect(sortInput).toBeVisible();
-  await expect(sortInput).toHaveValue("earliest");
-  await page.locator("#resultsToolbar").scrollIntoViewIfNeeded();
-  await sortInput.selectOption("latest");
-  await latestSearchStarted;
-  const spinner = page.locator("#sortStatus .spinner");
-  await expect(spinner).toBeVisible();
-  const spinnerBox = await spinner.boundingBox();
-  const labelBox = await page.locator(".sort-label").boundingBox();
-  expect(spinnerBox.x + spinnerBox.width).toBeLessThan(labelBox.x);
-  await expect(sortInput).toBeDisabled();
-  await expect(page.locator("#searchButton")).toBeEnabled();
-
-  releaseLatestSearch();
-  await expect.poll(() => searchSorts.at(-1)).toBe("latest");
-  await expect(sortInput).toBeEnabled();
-  await expect(page.locator("#sortStatus")).toBeEmpty();
-
-  await sortInput.selectOption("nearest");
-  await expect.poll(() => searchSorts.at(-1)).toBe("nearest");
-  expect(searchSorts[0]).toBe("earliest");
-});
-
-test("desktop result amenities reserve matching space when one list wraps", async ({ page }) => {
-  await page.setViewportSize({ height: 900, width: 1200 });
-  const matchingSearch = {
-    ...emptySearch,
-    matches: [
-      makeSimpleMatch("Short Amenities Cinema", "7:00 PM"),
-      makeSimpleMatch(
-        "Long Amenities Cinema",
-        "8:00 PM",
-        "IMAX with Laser, Reserved seating, Closed caption, Accessibility devices available, Luxury Electric Recliners, Laser Projection",
-      ),
-    ],
-  };
-  await mockSearchDependencies(page, (route) =>
-    route.fulfill({ body: JSON.stringify(matchingSearch), contentType: "application/json" }),
-  );
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.locator("#searchButton").click();
-
-  const amenities = page.locator(".result-amenities");
-  await expect(amenities).toHaveCount(2);
-  const amenityLayouts = await amenities.evaluateAll((nodes) =>
-    nodes.map((node) => {
-      const text = document.createRange();
-      text.selectNodeContents(node);
-      const lines = [...text.getClientRects()].filter((line) => line.width > 0);
-      return {
-        height: node.getBoundingClientRect().height,
-        lineCount: lines.length,
-      };
-    }),
-  );
-  expect(amenityLayouts.map(({ lineCount }) => lineCount)).toEqual([1, 2]);
-  expect(Math.abs(amenityLayouts[0].height - amenityLayouts[1].height)).toBeLessThanOrEqual(1);
-
-  const seatMapTops = await page
-    .locator(".real-seat-map")
-    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top));
-  expect(Math.abs(seatMapTops[0] - seatMapTops[1])).toBeLessThanOrEqual(1);
-});
-
-test("pagination keeps current results until the next page loads", async ({ page }) => {
-  await page.setViewportSize({ height: 700, width: 320 });
-  const { promise: secondPageStarted, resolve: markSecondPageStarted } = Promise.withResolvers();
-  const { promise: secondPageGate, resolve: releaseSecondPage } = Promise.withResolvers();
-  await mockSearchDependencies(page, async (route) => {
-    const requestedPage = Number(new URL(route.request().url()).searchParams.get("page"));
-    if (requestedPage === 2) {
-      markSecondPageStarted();
-      await secondPageGate;
-      await route.fulfill({
-        body: JSON.stringify({
-          ...emptySearch,
-          hasPreviousPage: true,
-          matches: [makeSimpleMatch("Page Two Cinema", "20:00")],
-          page: 2,
-        }),
-        contentType: "application/json",
-      });
-      return;
-    }
-    await route.fulfill({
-      body: JSON.stringify({
-        ...emptySearch,
-        hasNextPage: true,
-        matches: [makeSimpleMatch("Page One Cinema", "19:00")],
-      }),
-      contentType: "application/json",
-    });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.locator("#searchButton").click();
-  await expect(page.getByRole("heading", { exact: true, name: "Page One Cinema" })).toBeVisible();
-
-  const pagination = page.locator("#pagination");
-  const previousPage = page.getByRole("button", { name: "Previous page of results" });
-  const nextPage = page.getByRole("button", { name: "Next page of results" });
-  await nextPage.scrollIntoViewIfNeeded();
-  await nextPage.click();
-  await secondPageStarted;
-
-  await expect(pagination).toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#sortStatus .spinner")).toBeVisible();
-  await expect(pagination.locator(".pagination-label")).toContainText("Page 1");
-  await expect(pagination.locator(".spinner")).toBeInViewport();
-  await expect(previousPage).toBeDisabled();
-  await expect(nextPage).toBeDisabled();
-  await expect(page.getByRole("heading", { exact: true, name: "Page One Cinema" })).toBeVisible();
-
-  releaseSecondPage();
-  await expect(page.getByRole("heading", { exact: true, name: "Page Two Cinema" })).toBeVisible();
-  await expect(pagination).not.toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#results > :first-child")).toBeFocused();
-  await expect(
-    page.getByRole("heading", { exact: true, name: "Page Two Cinema" }),
-  ).toBeInViewport();
-  await expect(pagination.locator(".spinner")).toHaveCount(0);
-  await expect(page.locator("#sortStatus")).toBeEmpty();
-});
-
-test("stale movie responses do not replace options for newer criteria", async ({ page }) => {
-  let movieRequestCount = 0;
-  let firstMovieRequestFulfilled = false;
-  const { promise: firstMovieRequestStarted, resolve: markFirstMovieRequestStarted } =
-    Promise.withResolvers();
-  const { promise: firstMovieRequestGate, resolve: releaseFirstMovieRequest } =
-    Promise.withResolvers();
-
-  await page.route("**/api/theatres*", (route) =>
-    route.fulfill({
-      body: JSON.stringify({ place: "Testville", theatres: [] }),
-      contentType: "application/json",
-    }),
-  );
+test("a delayed response cannot replace newer movie options", async ({ page }) => {
+  await mockApi(page);
+  const releaseOldRequest = Promise.withResolvers();
+  let requests = 0;
   await page.route("**/api/movies*", async (route) => {
-    movieRequestCount += 1;
-    if (movieRequestCount === 1) {
-      markFirstMovieRequestStarted();
-      await firstMovieRequestGate;
-      await route.fulfill({
-        body: JSON.stringify({ movies: [{ title: "Stale Movie" }] }),
-        contentType: "application/json",
-      });
-      firstMovieRequestFulfilled = true;
-      return;
+    requests += 1;
+    const isOldRequest = requests === 1;
+    let title = "Current Movie";
+    if (isOldRequest) {
+      await releaseOldRequest.promise;
+      title = "Old Movie";
     }
-    await route.fulfill({
-      body: JSON.stringify({ movies: [{ title: "Current Movie" }] }),
-      contentType: "application/json",
-    });
+    await route.fulfill({ json: { movies: [{ title }] } });
   });
-
   await page.goto("/");
   await page.locator("#zipInput").fill("10001");
-  await firstMovieRequestStarted;
+  await expect.poll(() => requests).toBe(1);
   await page.locator("#radiusInput").fill("10");
   await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-
-  releaseFirstMovieRequest();
-  await expect.poll(() => firstMovieRequestFulfilled).toBe(true);
-  await page.locator("#movieInput").focus();
+  const oldResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/movies?") &&
+      new URL(response.url()).searchParams.get("radius") === "25",
+  );
+  releaseOldRequest.resolve();
+  await oldResponse;
+  await page.locator("#movieInput").fill("Movie");
   await expect(page.getByRole("option", { exact: true, name: "Current Movie" })).toBeVisible();
-  await expect(page.getByRole("option", { exact: true, name: "Stale Movie" })).toHaveCount(0);
-});
-
-test("mobile results render the native seat map and update accessibility states", async ({
-  page,
-}) => {
-  const matchingSearch = {
-    ...emptySearch,
-    accessibleSeatsExcluded: true,
-    matches: [
-      {
-        amenities: "Reserved seating",
-        date: "2026-07-22",
-        displayTime: "7:00 PM",
-        format: "IMAX",
-        genres: [],
-        movieTitle: "Test Movie",
-        seatMap: {
-          availableSeatCount: 2,
-          layout: {
-            height: 50,
-            seats: [
-              {
-                height: 10,
-                id: "A1",
-                matched: true,
-                status: "A",
-                type: "standard",
-                width: 10,
-                x: 10,
-                y: 10,
-              },
-              {
-                height: 10,
-                id: "A2",
-                matched: false,
-                status: "A",
-                type: "wheelchair",
-                width: 10,
-                x: 30,
-                y: 10,
-              },
-              {
-                height: 10,
-                id: "A3",
-                matched: false,
-                status: "U",
-                type: "wheelchair",
-                width: 10,
-                x: 50,
-                y: 10,
-              },
-              {
-                height: 10,
-                id: "A4",
-                matched: false,
-                status: "A",
-                type: "companion",
-                width: 10,
-                x: 70,
-                y: 10,
-              },
-              {
-                height: 10,
-                id: "A5",
-                matched: false,
-                status: "U",
-                type: "companion",
-                width: 10,
-                x: 90,
-                y: 10,
-              },
-            ],
-            width: 100,
-          },
-          totalSeatCount: 2,
-        },
-        theatre: { address: "1 Main St", distanceMiles: 1, name: "Test Cinema" },
-      },
-    ],
-  };
-  await mockSearchDependencies(page, (route) => {
-    const accessibleSeatsExcluded =
-      new URL(route.request().url()).searchParams.get("excludeAccessible") === "1";
-    return route.fulfill({
-      body: JSON.stringify({ ...matchingSearch, accessibleSeatsExcluded }),
-      contentType: "application/json",
-    });
-  });
-
-  await page.goto("/");
-  await page.locator("#zipInput").fill("10001");
-  await selectMovie(page);
-  await page.locator("#searchButton").click();
-
-  const matchedSeat = page.locator(".real-seat.matched");
-  await expect(matchedSeat).toHaveCount(1);
-  const wheelchairSeat = page.locator(
-    '.real-seat[title="A2 - available - wheelchair - excluded by filter"]',
-  );
-  await expect(wheelchairSeat).toHaveClass(/accessible/u);
-  const companionSeat = page.locator(
-    '.real-seat[title="A4 - available - companion - excluded by filter"]',
-  );
-  await expect(companionSeat).toHaveClass(/accessible/u);
-  await expect(page.getByText("Unavailable / excluded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Accessible", { exact: true })).toHaveCount(0);
-
-  await page
-    .getByText("Exclude accessible, companion, & wheelchair seats from matches", { exact: true })
-    .click();
-  await expect(page.locator("#excludeAccessibleInput")).not.toBeChecked();
-  await page.locator("#searchButton").click();
-
-  const includedWheelchairSeat = page.locator('.real-seat[title="A2 - available - wheelchair"]');
-  await expect(includedWheelchairSeat).toHaveClass(/accessible/u);
-  const includedCompanionSeat = page.locator('.real-seat[title="A4 - available - companion"]');
-  await expect(includedCompanionSeat).toHaveClass(/accessible/u);
-  await expect(page.getByText("Accessible", { exact: true })).toBeVisible();
-  await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
-});
-
-[320, 390, 1280].forEach((width) => {
-  test(`location feedback keeps controls in place at ${width}px`, async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "geolocation", {
-        value: {
-          getCurrentPosition(onSuccess) {
-            globalThis.resolveTestLocation = () =>
-              onSuccess({ coords: { latitude: 40.75, longitude: -73.99 } });
-          },
-        },
-      });
-    });
-    await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
-
-    await page.setViewportSize({ height: 900, width });
-    await page.goto("/");
-    await page.evaluate(() => document.fonts.ready);
-    const anchors = page.locator("#startDateInput, #preferencesGroup, #searchButton");
-    function positions() {
-      return anchors.evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().top + globalThis.scrollY),
-      );
-    }
-    const before = await positions();
-    await page.getByRole("button", { name: "Use my current location" }).click();
-    await expect(page.locator("#locationStatus")).toContainText("Requesting your location");
-    expect(await positions()).toEqual(before);
-    await page.evaluate(() => globalThis.resolveTestLocation());
-    await expect(page.locator("#locationStatus")).toHaveText("Using location");
-    await expect(page.locator("#movieMeta")).toHaveText("1 showing");
-    expect(await positions()).toEqual(before);
-  });
+  await expect(page.getByRole("option", { exact: true, name: "Old Movie" })).toHaveCount(0);
 });

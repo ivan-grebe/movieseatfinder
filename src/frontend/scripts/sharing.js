@@ -1,6 +1,62 @@
+import { strToU8, zlibSync } from "fflate";
 import { formatNiceDate } from "./utils.js";
 
-export function getSearchShareData(searchUrl, match) {
+export function compactShareUrl(searchUrl, showtime) {
+  const source = new URL(searchUrl);
+  const fields = [
+    "zip",
+    "radius",
+    "movie",
+    "theatre",
+    "format",
+    "startDate",
+    "endDate",
+    "startTime",
+    "endTime",
+    "adjacentSeats",
+    "excludeAccessible",
+    "seatGrid",
+    "sort",
+    "page",
+  ];
+  const params = new URLSearchParams();
+  for (const field of fields) {
+    if (source.searchParams.has(field)) {
+      params.set(field, source.searchParams.get(field));
+    }
+  }
+  if (!/^\d{5}$/u.test(params.get("zip") || "")) {
+    throw new Error("A resolved ZIP is required to share without precise coordinates.");
+  }
+  params.set("shared", "1");
+  params.set("showtime", showtime);
+  if (params.get("seatGrid")) {
+    const bitmap = new Uint8Array(29);
+    for (const cell of params.get("seatGrid").split(",")) {
+      if (!/^(?:[0-9]|1[0-4]):(?:[0-9]|1[0-4])$/u.test(cell)) {
+        throw new Error("Invalid seat area.");
+      }
+      const [row, column] = cell.split(":").map(Number);
+      const index = row * 15 + column;
+      bitmap[Math.floor(index / 8)] |= 1 << (index % 8);
+    }
+    params.set(
+      "seatGrid",
+      btoa(String.fromCharCode(...bitmap))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replaceAll("=", ""),
+    );
+  }
+  const compressed = zlibSync(strToU8(params.toString()), { level: 9 });
+  const token = btoa(String.fromCharCode(...compressed))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return new URL(`/s/${token}`, source.origin).href;
+}
+
+function getSearchShareData(searchUrl, match) {
   const params = new URL(searchUrl).searchParams;
   const movie = match.movieTitle;
   const details = [];
@@ -23,10 +79,8 @@ export function createShareButton(searchUrl, match) {
   const mobile =
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const sharedUrl = new URL(searchUrl);
-  sharedUrl.searchParams.set("shared", "1");
-  sharedUrl.searchParams.set("showtime", match.showtimeHashCode);
-  const data = getSearchShareData(sharedUrl.href, match);
+  const data = getSearchShareData(searchUrl, match);
+  data.url = compactShareUrl(searchUrl, match.showtimeHashCode);
   const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
   const button = document.createElement("button");
   button.type = "button";

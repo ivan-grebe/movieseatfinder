@@ -46,7 +46,7 @@ src/backend/             Python website and MCP server
 src/frontend/scripts/    Browser JavaScript modules
 src/frontend/styles/     Authored stylesheets
 src/frontend/templates/  Server-rendered HTML templates
-src/frontend/dist/       Generated production bundles
+src/frontend/dist/       Generated production bundles (ignored by Git)
 branding/                Repository and website brand assets
 tests/                   Python, frontend, and browser tests
 ```
@@ -73,13 +73,13 @@ The MCP endpoint is public and requires no authentication. Requests are accepted
 ## Testing
 
 ```bash
+npm run build:frontend
 python -m unittest discover -s tests -v
 python -m ruff check .
 python -m ruff format --check .
 npm run format:check
 npm run lint
 npm run lint:frontend
-npm run check:frontend-bundle
 npm run test:frontend
 npm run test:browser
 ```

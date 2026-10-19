@@ -1,5 +1,3 @@
-import base64
-import hashlib
 import logging
 import re
 import sys
@@ -38,6 +36,7 @@ from .seat_matching import (
     parse_seat_grid,
     showtime_seat_match,
 )
+from .share_links import decode_share_link
 
 # The Mozilla prefix matters: Fandango's WAF rejects obviously non-browser UAs.
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
@@ -51,11 +50,7 @@ STATIC_DIR = FRONTEND_DIR / "dist"
 TEMPLATE_DIR = FRONTEND_DIR / "templates"
 BRANDING_DIR = BASE_DIR / "branding"
 BACKEND_ASSET_DIR = Path(__file__).resolve().parent / "assets"
-FONT_ASSET = "inter-variable.woff2"
-VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-OG_IMAGE_CACHE_CONTROL = "public, max-age=0, must-revalidate"
-VERSIONED_ASSET_SUFFIXES = {".ico", ".js", ".png", ".svg", ".woff2"}
-PUBLIC_ASSETS = {"app.bundle.js"}
+PUBLIC_ASSETS = {"app.bundle.js", "dither.bundle.js", "styles.bundle.css", "mcp.bundle.css"}
 BRANDING_ASSETS = {
     "apple-touch-icon-precomposed.png",
     "apple-touch-icon.png",
@@ -66,66 +61,9 @@ BRANDING_ASSETS = {
     "web-app-manifest-192x192.png",
     "web-app-manifest-512x512.png",
 }
-BACKEND_ASSETS = {FONT_ASSET}
-# Content-derived ?v= values, so cached assets roll over automatically on deploy
-# instead of relying on hand-bumped version strings.
-ASSET_VERSIONS = {
-    "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
-    "apple-touch-icon-precomposed.png": hashlib.sha256(
-        (BRANDING_DIR / "apple-touch-icon-precomposed.png").read_bytes()
-    ).hexdigest()[:12],
-    "apple-touch-icon.png": hashlib.sha256(
-        (BRANDING_DIR / "apple-touch-icon.png").read_bytes()
-    ).hexdigest()[:12],
-    "favicon-96x96.png": hashlib.sha256(
-        (BRANDING_DIR / "favicon-96x96.png").read_bytes()
-    ).hexdigest()[:12],
-    "favicon.ico": hashlib.sha256((BRANDING_DIR / "favicon.ico").read_bytes()).hexdigest()[:12],
-    "favicon.svg": hashlib.sha256((BRANDING_DIR / "favicon.svg").read_bytes()).hexdigest()[:12],
-    "web-app-manifest-192x192.png": hashlib.sha256(
-        (BRANDING_DIR / "web-app-manifest-192x192.png").read_bytes()
-    ).hexdigest()[:12],
-    "web-app-manifest-512x512.png": hashlib.sha256(
-        (BRANDING_DIR / "web-app-manifest-512x512.png").read_bytes()
-    ).hexdigest()[:12],
-    FONT_ASSET: hashlib.sha256((BACKEND_ASSET_DIR / FONT_ASSET).read_bytes()).hexdigest()[:12],
-}
-INLINE_STYLES = (
-    (STATIC_DIR / "styles.bundle.css")
-    .read_text(encoding="utf-8")
-    .replace("__FONT_VERSION__", ASSET_VERSIONS[FONT_ASSET])
-)
-INLINE_STYLE_HASH = base64.b64encode(hashlib.sha256(INLINE_STYLES.encode("utf-8")).digest()).decode(
-    "ascii"
-)
-# Static tokens are substituted once at import.
-INDEX_TEMPLATE = (
-    (TEMPLATE_DIR / "index.html")
-    .read_text(encoding="utf-8")
-    .replace("__INLINE_STYLES__", INLINE_STYLES)
-    .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
-    .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
-    .replace(
-        "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
-        ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
-    )
-    .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
-    .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
-    .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
-)
-FAQ_TEMPLATE = (
-    (TEMPLATE_DIR / "faq.html")
-    .read_text(encoding="utf-8")
-    .replace("__INLINE_STYLES__", INLINE_STYLES)
-    .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
-    .replace(
-        "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",
-        ASSET_VERSIONS["apple-touch-icon-precomposed.png"],
-    )
-    .replace("__FAVICON_PNG_VERSION__", ASSET_VERSIONS["favicon-96x96.png"])
-    .replace("__FAVICON_ICO_VERSION__", ASSET_VERSIONS["favicon.ico"])
-    .replace("__FAVICON_VERSION__", ASSET_VERSIONS["favicon.svg"])
-)
+BACKEND_ASSETS = {"inter-variable.woff2", "hal-9000.png"}
+INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
+FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
@@ -153,6 +91,7 @@ AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
 SearchSort = Literal["earliest", "latest", "nearest"]
 
 RATE_LIMITS = {
+    "/s": RateLimitItemPerSecond(30, 60),
     "/api/events/shared-link-visit": RateLimitItemPerSecond(60, 60),
     "/api/events/ticket-click": RateLimitItemPerSecond(60, 60),
     # Sort changes and pagination each re-run a full search, so a normal
@@ -667,23 +606,11 @@ async def security_headers(request, call_next):
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; "
-        f"style-src 'self' 'sha256-{INLINE_STYLE_HASH}'; "
+        "style-src 'self'; "
         "img-src 'self' data: https://images.fandango.com; "
         "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
         "require-trusted-types-for 'script'; trusted-types 'none'"
     )
-    path = request.url.path
-    suffix = Path(path).suffix.lower()
-    if response.status_code == 200 and path == "/og-image.png":
-        response.headers["Cache-Control"] = OG_IMAGE_CACHE_CONTROL
-        if "last-modified" in response.headers:
-            del response.headers["last-modified"]
-    elif (
-        response.status_code == 200
-        and request.query_params.get("v")
-        and suffix in VERSIONED_ASSET_SUFFIXES
-    ):
-        response.headers["Cache-Control"] = VERSIONED_ASSET_CACHE_CONTROL
     return response
 
 
@@ -728,6 +655,15 @@ def index(request: Request):
 @app.get("/index.html", include_in_schema=False)
 def index_html():
     return RedirectResponse("/", status_code=308)
+
+
+@app.get("/s/{token}", include_in_schema=False)
+def shared_showtime(request: Request, token: str):
+    enforce_rate_limit(request, "/s")
+    try:
+        return RedirectResponse(decode_share_link(token), status_code=302)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.head("/faq", include_in_schema=False)
@@ -794,18 +730,12 @@ def webmanifest():
             "theme_color": "#12151c",
             "icons": [
                 {
-                    "src": (
-                        "/web-app-manifest-192x192.png"
-                        f"?v={ASSET_VERSIONS['web-app-manifest-192x192.png']}"
-                    ),
+                    "src": "/web-app-manifest-192x192.png",
                     "sizes": "192x192",
                     "type": "image/png",
                 },
                 {
-                    "src": (
-                        "/web-app-manifest-512x512.png"
-                        f"?v={ASSET_VERSIONS['web-app-manifest-512x512.png']}"
-                    ),
+                    "src": "/web-app-manifest-512x512.png",
                     "sizes": "512x512",
                     "type": "image/png",
                 },
@@ -1002,7 +932,6 @@ def api_theatres(
     try:
         search_zip, origin, place = api_search_location(zip_code, lat, lon)
         theatres = fandango_theatres(search_zip, radius, origin)
-        # The UI only needs names for its theatre picker.
         return {
             "place": place,
             "theatres": [{"name": theatre["name"]} for theatre in theatres],
@@ -1260,6 +1189,7 @@ def find_seat_matches(
 
         return {
             "matches": matches[page_start:page_end],
+            "zipCode": search_zip,
             "page": page,
             "pageSize": page_size,
             "hasPreviousPage": page > 1,
@@ -1331,12 +1261,16 @@ class PublicAssetFiles(StaticFiles):
     async def get_response(self, path, scope):
         normalized_path = path.replace("\\", "/")
         if normalized_path in BRANDING_ASSETS:
-            return await self.branding.get_response(normalized_path, scope)
-        if normalized_path in BACKEND_ASSETS:
-            return await self.backend_assets.get_response(normalized_path, scope)
-        if normalized_path not in PUBLIC_ASSETS:
+            assets = self.branding
+        elif normalized_path in BACKEND_ASSETS:
+            assets = self.backend_assets
+        elif normalized_path in PUBLIC_ASSETS:
+            assets = self
+        else:
             raise HTTPException(status_code=404, detail="Not found")
-        return await super().get_response(path, scope)
+        response = await StaticFiles.get_response(assets, normalized_path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 app.mount("/", PublicAssetFiles(), name="static")
