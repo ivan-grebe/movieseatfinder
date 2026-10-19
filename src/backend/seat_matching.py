@@ -166,13 +166,18 @@ def showtime_seat_match(
     showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader
 ):
     data = seat_map_loader(showtime.get("showtimeHashCode"))
-    if not data:
+    if not data or not data.get("seats"):
         return None
+    preview = seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible)
+    return preview if preview["matchingGroups"] else None
+
+
+def seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible):
     seats = data.get("seats") or []
     blocks = adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible)
-    if not blocks:
-        return None
-    matching_groups = ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells)
+    matching_groups = (
+        ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells) if blocks else []
+    )
     available_count = data.get("totalAvailableSeatCount")
     if available_count is None:
         available_count = sum(1 for seat in seats if seat.get("status") == "A")
@@ -184,6 +189,6 @@ def showtime_seat_match(
         "availableSeatCount": available_count,
         "totalSeatCount": total_count,
         "matchingGroups": matching_groups,
-        "bestGroup": matching_groups[0],
+        "bestGroup": matching_groups[0] if matching_groups else [],
         "layout": layout,
     }

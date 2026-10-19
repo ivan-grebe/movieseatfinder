@@ -34,6 +34,7 @@ from .location import (
 )
 from .seat_matching import (
     parse_seat_grid,
+    seat_map_preview,
     showtime_seat_match,
 )
 from .share_links import decode_share_link
@@ -644,11 +645,11 @@ async def unexpected_exception_handler(request, exc):
 @app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
 def index(request: Request):
-    shared = request.query_params.get("shared") == "1"
+    shared = request.url.path.startswith("/s/")
     return HTMLResponse(
         INDEX_TEMPLATE.replace(
             "__SHARED_SEARCH_CLASS__", "shared-search shared-loading" if shared else ""
-        ).replace("__INITIAL_SUMMARY__", "Loading shared search…" if shared else "")
+        ).replace("__INITIAL_SUMMARY__", "Loading shared showtime…" if shared else "")
     )
 
 
@@ -659,11 +660,61 @@ def index_html():
 
 @app.get("/s/{token}", include_in_schema=False)
 def shared_showtime(request: Request, token: str):
+    return index(request)
+
+
+@app.get("/api/shared-showtime/{token}", include_in_schema=False)
+def api_shared_showtime(request: Request, token: str):
     enforce_rate_limit(request, "/s")
     try:
-        return RedirectResponse(decode_share_link(token), status_code=302)
+        shared = decode_share_link(token)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    try:
+        raw_map = seat_map(shared.showtime)
+    except UPSTREAM_ERRORS as error:
+        upstream_error("Could not refresh this showtime’s seat map", error)
+    if not raw_map or not raw_map.get("seats"):
+        raise HTTPException(
+            status_code=404, detail="This showtime’s seat map is no longer available."
+        )
+    preview = seat_map_preview(
+        raw_map, shared.adjacent_seats, parse_seat_grid(shared.seat_grid), shared.exclude_accessible
+    )
+    poster = shared.poster
+    if not poster.startswith("https://images.fandango.com/"):
+        poster = ""
+    match = {
+        "movieTitle": shared.movie,
+        "theatre": {"name": shared.theatre, "address": shared.address},
+        "date": shared.show_date.isoformat(),
+        "displayTime": shared.time,
+        "format": shared.format,
+        "showtimeHashCode": shared.showtime,
+        "ticketUrl": safe_fandango_url(shared.ticket),
+        "poster": poster,
+        "rating": shared.rating,
+        "runtime": shared.runtime,
+        "genres": shared.genres.split(", ") if shared.genres else [],
+        "amenities": shared.amenities,
+        "seatMap": preview,
+    }
+    return {
+        "matches": [match],
+        "checkedShowtimes": 1,
+        "checkedSeatMaps": 1,
+        "failedSeatMaps": 0,
+        "page": 1,
+        "pageSize": 1,
+        "hasNextPage": False,
+        "hasPreviousPage": False,
+        "accessibleSeatsExcluded": shared.exclude_accessible,
+        "preferences": {
+            "adjacentSeats": str(shared.adjacent_seats),
+            "excludeAccessible": "1" if shared.exclude_accessible else "0",
+            "seatGrid": shared.seat_grid,
+        },
+    }
 
 
 @app.head("/faq", include_in_schema=False)
@@ -1076,7 +1127,6 @@ def find_seat_matches(
     page_size: PageSize = DEFAULT_PAGE_SIZE,
     lat: float | None = None,
     lon: float | None = None,
-    target_showtime: ShortText = "",
 ):
     """Run the shared live showtime and seat-map search operation."""
     try:
@@ -1154,26 +1204,6 @@ def find_seat_matches(
 
         matches = []
         checked_seat_maps = 0
-        if target_showtime:
-            page = 1
-            target_index = next(
-                (
-                    i
-                    for i, (_, item) in enumerate(candidates)
-                    if item["showtimeHashCode"] == target_showtime
-                ),
-                None,
-            )
-            if target_index is not None:
-                prefix = candidates[: target_index + 1]
-                matches, checked_seat_maps = seat_checked_matches(
-                    prefix, len(prefix), check_candidate
-                )
-                candidates = candidates[target_index + 1 :]
-                if matches and matches[-1]["showtimeHashCode"] == target_showtime:
-                    page = (len(matches) - 1) // page_size + 1
-            page_start = (page - 1) * page_size
-            page_end = page_start + page_size
         checked_showtimes = checked_seat_maps + len(candidates)
         if len(matches) <= page_end:
             remaining, checked = seat_checked_matches(
@@ -1223,7 +1253,6 @@ def api_search(
     sort: SearchSort = "earliest",
     page: PageNumber = 1,
     pageSize: PageSize = DEFAULT_PAGE_SIZE,
-    showtime: ShortText = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -1246,7 +1275,6 @@ def api_search(
         page_size=pageSize,
         lat=lat,
         lon=lon,
-        target_showtime=showtime,
     )
 
 

@@ -3,7 +3,17 @@ import { compactShareUrl } from "../src/frontend/scripts/sharing.js";
 import { inflateSync } from "node:zlib";
 import test from "node:test";
 
-test("compact links preserve public search data and strip private fields", () => {
+const match = {
+  date: "2026-10-25",
+  displayTime: "7 PM",
+  format: "IMAX",
+  genres: [],
+  movieTitle: "Spirited Away — 千と千尋",
+  showtimeHashCode: "showtime-123",
+  theatre: { address: "Main St", distanceMiles: 2.5, name: "Cinema" },
+};
+
+test("showtime links preserve public metadata and seat preferences without search location", () => {
   const url = new URL("https://movieseatfinder.com/");
   url.search = new URLSearchParams({
     adjacentSeats: "3",
@@ -19,24 +29,26 @@ test("compact links preserve public search data and strip private fields", () =>
     startDate: "2026-10-18",
     zip: "10001",
   }).toString();
-  const compact = new URL(compactShareUrl(url.href, "showtime-123"));
+  const compact = new URL(compactShareUrl(url.href, match));
   const decoded = inflateSync(Buffer.from(compact.pathname.slice(3), "base64url")).toString("utf8");
   const params = new URLSearchParams(decoded);
   assert.equal(params.has("lat"), false);
   assert.equal(params.has("lon"), false);
   assert.equal(params.has("privateNote"), false);
-  assert.equal(params.get("zip"), "10001");
+  assert.equal(params.has("zip"), false);
+  assert.equal(params.has("radius"), false);
+  assert.equal(params.has("distanceMiles"), false);
+  assert.equal(params.get("theatre"), "Cinema");
   assert.equal(params.get("movie"), "Spirited Away — 千と千尋");
   const bitmap = Buffer.from(params.get("seatGrid"), "base64url");
   assert.equal(bitmap.length, 29);
   assert.deepEqual([...bitmap], [...new Uint8Array(28).fill(255), 1]);
   assert.equal(params.get("showtime"), "showtime-123");
-  assert.equal(params.get("shared"), "1");
 });
 
-test("sharing requires a resolved ZIP instead of encoding precise coordinates", () => {
-  assert.throws(
-    () => compactShareUrl("https://movieseatfinder.com/?lat=40&lon=-73&movie=Test", "abc"),
-    /resolved ZIP/u,
+test("a sender ZIP is not required to share a showtime", () => {
+  assert.match(
+    new URL(compactShareUrl("https://movieseatfinder.com/?adjacentSeats=2", match)).pathname,
+    /^\/s\//u,
   );
 });

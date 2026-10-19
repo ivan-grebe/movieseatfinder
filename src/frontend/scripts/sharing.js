@@ -1,35 +1,28 @@
 import { strToU8, zlibSync } from "fflate";
 import { formatNiceDate } from "./utils.js";
 
-export function compactShareUrl(searchUrl, showtime) {
+export function compactShareUrl(searchUrl, match) {
   const source = new URL(searchUrl);
-  const fields = [
-    "zip",
-    "radius",
-    "movie",
-    "theatre",
-    "format",
-    "startDate",
-    "endDate",
-    "startTime",
-    "endTime",
-    "adjacentSeats",
-    "excludeAccessible",
-    "seatGrid",
-    "sort",
-    "page",
-  ];
-  const params = new URLSearchParams();
-  for (const field of fields) {
-    if (source.searchParams.has(field)) {
-      params.set(field, source.searchParams.get(field));
-    }
+  const params = new URLSearchParams({
+    address: match.theatre.address || "",
+    adjacentSeats: source.searchParams.get("adjacentSeats") || "2",
+    amenities: match.amenities || "",
+    date: match.date,
+    excludeAccessible: source.searchParams.get("excludeAccessible") || "1",
+    format: match.format,
+    genres: match.genres.join(", "),
+    movie: match.movieTitle,
+    poster: match.poster || "",
+    rating: match.rating || "",
+    runtime: match.runtime || "",
+    showtime: match.showtimeHashCode,
+    theatre: match.theatre.name,
+    ticket: match.ticketUrl || "",
+    time: match.displayTime,
+  });
+  if (source.searchParams.has("seatGrid")) {
+    params.set("seatGrid", source.searchParams.get("seatGrid"));
   }
-  if (!/^\d{5}$/u.test(params.get("zip") || "")) {
-    throw new Error("A resolved ZIP is required to share without precise coordinates.");
-  }
-  params.set("shared", "1");
-  params.set("showtime", showtime);
   if (params.get("seatGrid")) {
     const bitmap = new Uint8Array(29);
     for (const cell of params.get("seatGrid").split(",")) {
@@ -80,7 +73,7 @@ export function createShareButton(searchUrl, match) {
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const data = getSearchShareData(searchUrl, match);
-  data.url = compactShareUrl(searchUrl, match.showtimeHashCode);
+  data.url = compactShareUrl(searchUrl, match);
   const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
   const button = document.createElement("button");
   button.type = "button";
