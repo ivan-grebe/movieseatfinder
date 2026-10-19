@@ -9,16 +9,8 @@
   padding: clamp(24px, 5vw, 40px);
 }
 
-.mcp-card .eyebrow {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .mcp-card h1 {
-  margin: 14px 0 16px;
+  margin: 0 0 16px;
   font-size: clamp(32px, 6vw, 44px);
 }
 
