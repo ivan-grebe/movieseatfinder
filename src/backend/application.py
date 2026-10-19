@@ -55,7 +55,7 @@ FONT_ASSET = "inter-variable.woff2"
 VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 OG_IMAGE_CACHE_CONTROL = "public, max-age=0, must-revalidate"
 VERSIONED_ASSET_SUFFIXES = {".ico", ".js", ".png", ".svg", ".woff2"}
-PUBLIC_ASSETS = {"app.bundle.js"}
+PUBLIC_ASSETS = {"app.bundle.js", "dither.bundle.js"}
 BRANDING_ASSETS = {
     "apple-touch-icon-precomposed.png",
     "apple-touch-icon.png",
@@ -70,6 +70,7 @@ BACKEND_ASSETS = {FONT_ASSET}
 # Content-derived ?v= values, so cached assets roll over automatically on deploy
 # instead of relying on hand-bumped version strings.
 ASSET_VERSIONS = {
+    "dither.bundle.js": hashlib.sha256((STATIC_DIR / "dither.bundle.js").read_bytes()).hexdigest()[:12],
     "app.bundle.js": hashlib.sha256((STATIC_DIR / "app.bundle.js").read_bytes()).hexdigest()[:12],
     "apple-touch-icon-precomposed.png": hashlib.sha256(
         (BRANDING_DIR / "apple-touch-icon-precomposed.png").read_bytes()
@@ -103,6 +104,7 @@ INDEX_TEMPLATE = (
     (TEMPLATE_DIR / "index.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
+    .replace("__DITHER_VERSION__", ASSET_VERSIONS["dither.bundle.js"])
     .replace("__BUNDLE_VERSION__", ASSET_VERSIONS["app.bundle.js"])
     .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
     .replace(
@@ -117,6 +119,7 @@ FAQ_TEMPLATE = (
     (TEMPLATE_DIR / "faq.html")
     .read_text(encoding="utf-8")
     .replace("__INLINE_STYLES__", INLINE_STYLES)
+    .replace("__DITHER_VERSION__", ASSET_VERSIONS["dither.bundle.js"])
     .replace("__APPLE_TOUCH_ICON_VERSION__", ASSET_VERSIONS["apple-touch-icon.png"])
     .replace(
         "__APPLE_TOUCH_ICON_PRECOMPOSED_VERSION__",

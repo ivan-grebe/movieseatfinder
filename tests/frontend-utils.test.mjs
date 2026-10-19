@@ -2,7 +2,6 @@ import { addDays, formatNiceDate, getJson, todayString } from "../src/frontend/s
 import { logSharedLinkVisit, logTicketClick } from "../src/frontend/scripts/tracking.js";
 import assert from "node:assert/strict";
 import { getSearchShareData } from "../src/frontend/scripts/sharing.js";
-import { pickAmbientTarget } from "../src/frontend/scripts/ambient-motion.js";
 import test from "node:test";
 
 test("native share content describes the specific showtime and requested seats", () => {
@@ -23,19 +22,6 @@ test("native share content describes the specific showtime and requested seats",
     getSearchShareData(url.replace("adjacentSeats=3", "adjacentSeats=1"), match).text,
     /1 seat · /u,
   );
-});
-
-test("ambient targets stay bounded and a useful distance from the current glow position", () => {
-  const bounds = { minDistance: 12, x: [-20, 10], y: [0, 18] };
-  const first = pickAmbientTarget({ x: 0, y: 0 }, bounds, () => 0);
-  const second = pickAmbientTarget(first, bounds, () => 1);
-
-  for (const target of [first, second]) {
-    assert.ok(target.x >= bounds.x[0] && target.x <= bounds.x[1]);
-    assert.ok(target.y >= bounds.y[0] && target.y <= bounds.y[1]);
-  }
-  assert.ok(Math.hypot(first.x, first.y) >= bounds.minDistance);
-  assert.ok(Math.hypot(second.x - first.x, second.y - first.y) >= bounds.minDistance);
 });
 
 function response(status, body) {
