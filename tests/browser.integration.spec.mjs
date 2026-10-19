@@ -1,5 +1,26 @@
 import { addDays, formatNiceDate, todayString } from "../src/frontend/scripts/utils.js";
 import { expect, test } from "@playwright/test";
+import { inflateSync } from "node:zlib";
+
+function expandShareUrl(value) {
+  const url = new URL(value);
+  if (!url.pathname.startsWith("/s/")) {
+    throw new Error("Expected a compact share link");
+  }
+  const query = inflateSync(Buffer.from(url.pathname.slice(3), "base64url")).toString("utf8");
+  const expanded = new URL(`/?${query}`, url.origin);
+  if (expanded.searchParams.get("seatGrid")) {
+    const bitmap = Buffer.from(expanded.searchParams.get("seatGrid"), "base64url");
+    const cells = [];
+    for (let index = 0; index < 225; index += 1) {
+      if (bitmap[Math.floor(index / 8)] & (1 << (index % 8))) {
+        cells.push(`${Math.floor(index / 15)}:${index % 15}`);
+      }
+    }
+    expanded.searchParams.set("seatGrid", cells.join(","));
+  }
+  return expanded;
+}
 
 const emptySearch = {
   checkedSeatMaps: 1,
@@ -10,6 +31,7 @@ const emptySearch = {
   matches: [],
   page: 1,
   pageSize: 20,
+  zipCode: "10001",
 };
 
 function makeSimpleMatch(theatreName, time, amenities = "Reserved seating") {
@@ -124,7 +146,7 @@ for (const profile of [
     await original.getByRole("button", { name: "Copy showtime link" }).click();
     await expect(original.locator(".share-btn")).toHaveAccessibleName("Copied!");
     const url = await page.evaluate(() => globalThis.copiedSearchLink);
-    expect(new URL(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
+    expect(expandShareUrl(url).searchParams.get("showtime")).toBe("Cinema 3-7 PM");
     await page.goto(url);
     const target = page.locator(".shared-showtime");
     await expect(target).toHaveCount(1);
@@ -402,7 +424,7 @@ test("copy search links preserve result filters and restore them on reload and B
   await expect(shareButton).toHaveAccessibleName("Copied!");
   expect((await shareButton.boundingBox()).width).toBe(idleWidth);
   const copied = await page.evaluate(() => globalThis.copiedSearchLink);
-  expect(Object.fromEntries(new URL(copied).searchParams)).toEqual({
+  expect(Object.fromEntries(expandShareUrl(copied).searchParams)).toEqual({
     ...expected,
     shared: "1",
     showtime: "Shared Cinema-7 PM",
@@ -438,9 +460,7 @@ test("copy search links preserve result filters and restore them on reload and B
   await result.screenshot({ path: testInfo.outputPath("share-dark.png") });
 });
 
-test("shared coordinate searches restore the origin and clipboard failures allow retry", async ({
-  page,
-}) => {
+test("precise searches share only a ZIP and clipboard failures allow retry", async ({ page }) => {
   await page.addInitScript(() => {
     let attempts = 0;
     Object.defineProperty(navigator, "clipboard", {
@@ -471,9 +491,12 @@ test("shared coordinate searches restore the origin and clipboard failures allow
   await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
   expect(search.get("lat")).toBe("40.75");
   expect(search.get("lon")).toBe("-73.99");
-  const copied = new URL(await page.evaluate(() => globalThis.copiedSearchLink));
-  expect(copied.searchParams.get("lat")).toBe("40.75");
-  expect(copied.searchParams.get("lon")).toBe("-73.99");
+  const copied = expandShareUrl(await page.evaluate(() => globalThis.copiedSearchLink));
+  expect(copied.searchParams.has("lat")).toBe(false);
+  expect(copied.searchParams.has("lon")).toBe(false);
+  expect(copied.searchParams.get("zip")).toBe("10001");
+  expect(new URL(page.url()).searchParams.has("lat")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("lon")).toBe(false);
 });
 
 for (const device of [
@@ -585,17 +608,23 @@ for (const device of [
       await expect(shareButton).toHaveAccessibleName("Share showtime");
       const shares = await page.evaluate(() => globalThis.shareRequests);
       expect(shares).toHaveLength(3);
-      expect(shares[0]).toEqual({
+      expect(shares[0]).toMatchObject({
         text: `Test Movie\n2 seats together · ${formatNiceDate("2026-08-01")} · 7 PM · Standard · Share Cinema`,
         title: "Test Movie — Movie Seat Finder",
-        url: expectedSharedUrl.href,
       });
+      expect(Object.fromEntries(expandShareUrl(shares[0].url).searchParams)).toEqual(
+        Object.fromEntries(expectedSharedUrl.searchParams),
+      );
       expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBeNull();
     } else {
       await expect(shareButton).toHaveAccessibleName("Copy showtime link");
       await shareButton.click();
       await expect(shareButton).toHaveAccessibleName("Copied!");
-      expect(await page.evaluate(() => globalThis.copiedSearchLink)).toBe(expectedSharedUrl.href);
+      expect(
+        Object.fromEntries(
+          expandShareUrl(await page.evaluate(() => globalThis.copiedSearchLink)).searchParams,
+        ),
+      ).toEqual(Object.fromEntries(expectedSharedUrl.searchParams));
       expect(await page.evaluate(() => globalThis.shareRequests)).toEqual([]);
     }
   });
@@ -803,11 +832,14 @@ test("shared sorting and pagination preserve URL filters without loading options
   await page.locator("#sortInput").selectOption("latest");
   await expect(page.locator("#sortInput")).toBeEnabled();
   expect(requests).toHaveLength(2);
-  expect(requests[1]).toEqual({ ...requests[0], sort: "latest" });
+  const publicRequest = { ...requests[0], zip: "10001" };
+  delete publicRequest.lat;
+  delete publicRequest.lon;
+  expect(requests[1]).toEqual({ ...publicRequest, sort: "latest" });
   await page.getByRole("button", { exact: true, name: "Next page of results" }).click();
   await expect(page.locator(".pagination-label")).toHaveText("Page 2");
   expect(requests).toHaveLength(3);
-  expect(requests[2]).toEqual({ ...requests[0], page: "2", sort: "latest" });
+  expect(requests[2]).toEqual({ ...publicRequest, page: "2", sort: "latest" });
   expect(unexpected).toEqual([]);
   await expect(page.locator("#search")).toBeHidden();
 });
@@ -1635,4 +1667,79 @@ test("mobile results render the native seat map and update accessibility states"
     await expect(page.locator("#movieMeta")).toHaveText("1 showing");
     expect(await positions()).toEqual(before);
   });
+});
+
+// A CSS-only easter egg uses the extra desktop row height, never mobile space.
+test("HAL appears beside the expanded format guide only on desktop", async ({ page }) => {
+  await mockSearchDependencies(page, (route) => route.fulfill({ json: emptySearch }));
+  await page.setViewportSize({ height: 900, width: 1280 });
+  await page.goto("/");
+  await page.locator("#zipInput").fill("10001");
+  await expect(page.locator("#movieMeta")).toHaveText("1 showing");
+  const egg = page.locator(".hal-easter-egg");
+  const toggle = page.locator("#formatGuideButton");
+  await expect(egg).toBeHidden();
+  const image = egg.locator("img");
+  await expect
+    .poll(() => image.evaluate((el) => el.getBoundingClientRect().height))
+    .toBeGreaterThan(0);
+  const imageHeight = await image.evaluate((el) => el.getBoundingClientRect().height);
+  await toggle.click();
+  await expect(egg).toBeVisible();
+  expect(await image.evaluate((el) => el.getBoundingClientRect().height)).toBeCloseTo(
+    imageHeight,
+    1,
+  );
+  await expect
+    .poll(async () => {
+      const [windowHeight, fullImageHeight] = await Promise.all([
+        egg.evaluate((el) => el.getBoundingClientRect().height),
+        image.evaluate((el) => el.getBoundingClientRect().height),
+      ]);
+      return Math.abs(windowHeight - fullImageHeight - 24);
+    })
+    .toBeLessThan(1);
+  const layout = await page.evaluate(() => {
+    const eggElement = document.querySelector(".hal-easter-egg");
+    const movie = document.querySelector(".movie-group");
+    const withImage = movie.getBoundingClientRect().height;
+    eggElement.style.display = "none";
+    const withoutImage = movie.getBoundingClientRect().height;
+    eggElement.style.removeProperty("display");
+    return {
+      padding: getComputedStyle(document.querySelector(".location-group")).paddingBottom,
+      withImage,
+      withoutImage,
+    };
+  });
+  expect(layout.withImage).toBeCloseTo(layout.withoutImage, 1);
+  expect(layout.padding).toBe("14px");
+  const [imageBounds, revealBounds] = await Promise.all([image.boundingBox(), egg.boundingBox()]);
+  expect(imageBounds.y - revealBounds.y).toBeCloseTo(24, 1);
+  expect(imageBounds.y + imageBounds.height).toBeLessThanOrEqual(
+    revealBounds.y + revealBounds.height + 1,
+  );
+  const captionBounds = await egg.locator(".hal-caption").boundingBox();
+  expect(captionBounds.x).toBeGreaterThan(imageBounds.x + imageBounds.width);
+  expect(captionBounds.y + captionBounds.height / 2).toBeCloseTo(
+    imageBounds.y + imageBounds.height / 2,
+    1,
+  );
+  expect((imageBounds.x + captionBounds.x + captionBounds.width) / 2).toBeCloseTo(
+    revealBounds.x + revealBounds.width / 2,
+    1,
+  );
+  await expect(page.locator("#formatGuideContent")).toHaveAttribute("aria-hidden", "false");
+  const [eggBounds, locationBounds] = await Promise.all([
+    egg.boundingBox(),
+    page.locator(".location-group").boundingBox(),
+  ]);
+  expect(eggBounds.y + eggBounds.height).toBeLessThanOrEqual(
+    locationBounds.y + locationBounds.height,
+  );
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect(egg).toBeHidden();
+  await page.setViewportSize({ height: 900, width: 1280 });
+  await toggle.click();
+  await expect(egg).toBeHidden();
 });
