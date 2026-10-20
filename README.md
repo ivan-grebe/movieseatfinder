@@ -20,9 +20,8 @@ Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adj
 - Search by ZIP code or your precise browser location.
 - Filter by theatre, movie, multiple formats, dates, and times.
 - Find adjacent seats in a custom auditorium region.
-- Preview normalized seat maps and exclude accessible seats when needed.
-- Use guarded API routes with validation, rate limiting, and safe ticket URLs.
-- Connect messaging assistants through a public MCP movie-seat search tool with no authentication required.
+- Preview seat maps and exclude accessible seats when needed.
+- Connect messaging assistants through a public MCP.
 
 ## Run locally
 
@@ -46,18 +45,13 @@ src/backend/             Python website and MCP server
 src/frontend/scripts/    Browser JavaScript modules
 src/frontend/styles/     Authored stylesheets
 src/frontend/templates/  Server-rendered HTML templates
-src/frontend/dist/       Generated production bundles (ignored by Git)
 branding/                Repository and website brand assets
 tests/                   Python, frontend, and browser tests
 ```
 
 ## MCP integration
 
-The production app exposes a stateless Streamable HTTP MCP server at `/mcp`. It uses a discovery-first flow:
-
-- `get_location_and_movie_info` finds live theatres, titles, dates, and formats.
-- `find_movie_seats` searches a discovered title and normalized format using a compact rectangular seat region or an advanced arbitrary shape.
-- `show_movie_seat_map` refreshes a selected showtime and returns a dark image using the website seat-map layout, plus structured seat groups.
+The production app exposes a MCP server at `/mcp`.
 
 Agents can pass movie and format hints during discovery, proceed on an unambiguous normalized match, and offer compact nearest-first results with ranked seat groups, a seat map, or a ticket link.
 
@@ -67,8 +61,6 @@ For any MCP client, use:
 URL: https://movieseatfinder.com/mcp
 Authentication: None
 ```
-
-The MCP endpoint is public and requires no authentication. Requests are accepted on the production and local-development hosts; browser-originated requests are accepted only from localhost.
 
 ## Testing
 
