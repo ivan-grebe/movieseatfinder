@@ -541,7 +541,6 @@ def show_movie_seat_map(
             }
         )
     )
-    # MCPServer validates structuredContent against SeatMapOutput while preserving image content.
     return CallToolResult(
         content=[image_content, TextContent(text=caption)],
         structuredContent=output.model_dump(mode="json", by_alias=True),

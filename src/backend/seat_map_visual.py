@@ -263,5 +263,4 @@ def render_seat_map_svg(
 def render_svg_png(svg):
     """Rasterize an MCP seat-map SVG."""
     tree = usvg.Tree.from_str(svg, _render_options())
-    # resvg expects a row-major 2x3 affine matrix, not SVG's transform ordering.
     return bytes(render(tree, (1, 0, 0, 0, 1, 0)))

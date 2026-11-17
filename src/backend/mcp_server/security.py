@@ -9,8 +9,6 @@ from starlette.datastructures import Headers
 from starlette.responses import HTMLResponse, JSONResponse
 
 MCP_GLOBAL_RATE_LIMIT = RateLimitItemPerMinute(1200)
-# Stops one client from using the whole global budget. Kept generous because
-# hosted MCP clients (e.g. chat apps) send many users' calls from shared IPs.
 MCP_CLIENT_RATE_LIMIT = RateLimitItemPerMinute(300)
 MCP_RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 

@@ -23,8 +23,6 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       input.removeAttribute("aria-activedescendant");
       return;
     }
-    // Negative indexes wrap, so ArrowUp from the top lands on the last option
-    // Just as ArrowDown from the bottom lands on the first.
     activeIndex = ((index % choices.length) + choices.length) % choices.length;
     const active = choices[activeIndex];
     active.classList.add("is-active");
