@@ -52,7 +52,17 @@ def geocode_zip(zip_code):
 
 
 def reverse_geocode_zip(lat, lon):
-    """Find a ZIP for Fandango's ZIP-only API without retaining location data."""
+    """Find a ZIP for Fandango's ZIP-only API.
+
+    Nominatim allows at most 1 request/second, and one search hits several
+    endpoints with the same coordinates. Rounding to ~100 m lets those calls
+    share a cached ZIP; only the rounded point and its ZIP are kept in memory.
+    """
+    return _reverse_geocode_zip_cached(round(lat, 3), round(lon, 3))
+
+
+@lru_cache(maxsize=512)
+def _reverse_geocode_zip_cached(lat, lon):
     response = http_session().get(
         "https://nominatim.openstreetmap.org/reverse",
         # City-level results (zoom 10) omit postcodes in many places. Street/
