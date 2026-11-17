@@ -458,8 +458,7 @@ def show_movie_seat_map(
     showtime_hash_code: Annotated[
         str,
         Field(
-            min_length=1,
-            max_length=512,
+            pattern=r"^[A-Za-z0-9_-]{1,200}$",
             description="Exact showtime hash copied from the selected option's seatMapRequest",
         ),
     ],
