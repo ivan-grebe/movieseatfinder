@@ -67,7 +67,6 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Keep the dither grid fixed while its wave densities evolve. */
 .dither-background {
   position: absolute;
   inset: 0 0 auto;
@@ -133,7 +132,6 @@ h1 {
   margin: 0;
   font-family: var(--serif);
   font-size: clamp(36px, 4.8vw, 58px);
-  /* Extra leading prevents descenders such as the y in "buy" from clipping. */
   line-height: 1.14;
   padding-bottom: 0.08em;
   overflow: visible;
@@ -459,8 +457,6 @@ select {
   border-color: var(--accent-hover-border);
 }
 
-/* Selection is shown by fill only - no width change, so selecting chips never
-   reflows or re-wraps the row. */
 .format-option.is-selected {
   border-color: var(--accent-deep);
   color: #fff;
@@ -483,7 +479,6 @@ select {
     flex-direction: column;
   }
 
-  /* Only the tier list determines the row height. This is a clipping window. */
   .hal-easter-egg {
     display: block;
     position: relative;
@@ -1148,7 +1143,6 @@ a:focus-visible {
   transition-timing-function: ease-out;
 }
 
-/* A narrow backrest over a wider cushion reads as a seat even at 15 columns. */
 .seat-cell::before {
   inset: 1px 2px 4px;
   border-radius: 4px 4px 3px 3px;
@@ -1171,8 +1165,6 @@ a:focus-visible {
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
-/* Hover only on devices with a real pointer, so touch drags don't leave the
-   last seat stuck in a highlighted state after the finger lifts. */
 @media (hover: hover) {
   .seat-cell:hover::before {
     background: #fff1ef;
@@ -2022,11 +2014,6 @@ input[type="time"] {
   font-variant-numeric: tabular-nums;
 }
 
-/* The fade starts from .01 rather than 0 so the browser records the first
-   paint: content whose first paint happens at opacity 0 never registers an
-   LCP candidate, which breaks Lighthouse/PageSpeed (NO_LCP). Animating from a
-   "from" frame with backwards fill also leaves no lingering transform on the
-   hero or card once the entrance finishes. */
 .enter-item {
   animation: enter-up 440ms cubic-bezier(0.2, 0, 0, 1) backwards;
 }
@@ -2175,7 +2162,6 @@ input[type="time"] {
     min-height: 34px;
     padding: 6px 9px;
     border-radius: 10px;
-    /* iOS Safari zooms focused form controls below 16px. */
     font-size: 16px;
   }
 
@@ -2339,7 +2325,6 @@ input[type="time"] {
 }
 
 @media (max-width: 380px) {
-  /* Native date controls need more width than two columns provide on small phones. */
   .location-group .grid {
     grid-template-columns: 1fr;
   }

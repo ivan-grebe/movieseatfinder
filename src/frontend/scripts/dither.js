@@ -41,7 +41,6 @@ function drawDither() {
       const fade = Math.max(0, 1 - y / 0.9);
       const density = (wave * 0.62 + secondWave * 0.2) * fade * safeZone[row * width + column];
       const threshold = (BAYER[(row / 2) % 4][(column / 2) % 4] + 0.5) / 16;
-      // Ease pixels across the threshold so slow motion doesn't sparkle.
       const coverage = Math.max(0, Math.min(1, (density - threshold) / 0.045 + 0.5));
       const smoothCoverage = coverage * coverage * (3 - 2 * coverage);
       data[(row * width + column) * 4 + 3] = Math.round(255 * opacity * smoothCoverage);
@@ -51,7 +50,6 @@ function drawDither() {
 }
 
 function resizeDither() {
-  // One bitmap pixel becomes a 2px square; empty pixels keep the 4px grid crisp.
   canvas.width = Math.ceil(canvas.clientWidth / 2);
   canvas.height = Math.ceil(canvas.clientHeight / 2);
   pixels = context.createImageData(canvas.width, canvas.height);
@@ -71,7 +69,6 @@ function resizeDither() {
         const edge = Math.max(0, Math.min(1, (Math.hypot(dx, dy) - 0.65) / 0.8));
         density = edge * edge * (3 - 2 * edge);
       }
-      // Reduce density before Bayer thresholding: dots disappear, not darken.
       safeZone[row * pixels.width + column] = density;
       const offset = (row * pixels.width + column) * 4;
       pixels.data[offset] = Math.round(193 + 28 * x);

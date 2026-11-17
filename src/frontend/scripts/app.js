@@ -559,7 +559,6 @@ async function fetchSearchResults() {
   const data = await getJson(`/api/search?${params}`);
   params.set("page", data.page);
   params.delete("pageSize");
-  // Keep exact coordinates in memory/API calls only, never browser or share URLs.
   params.delete("lat");
   params.delete("lon");
   params.set("zip", data.zipCode);
@@ -587,8 +586,6 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
   const isCurrent = searchLoad.start();
   sortInput.disabled = true;
   setSummary(summary, "", false);
-  // A fresh search can supersede an in-flight page change; clear any
-  // Pagination loading state so it cannot outlive that request.
   resultsView.endPageLoading();
   sortStatus.replaceChildren();
   const stopLoadingStages = startLoadingStages((stage) => {
@@ -716,7 +713,6 @@ function applyQueryParams() {
   if (params.has("movie")) {
     selectedMovieTitle = params.get("movie").trim();
   }
-  // An unknown sort value would otherwise leave the select showing no option.
   if (sortInput.selectedIndex === -1) {
     sortInput.value = "earliest";
   }

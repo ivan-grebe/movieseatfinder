@@ -1,6 +1,5 @@
 """Pure seat-map normalization and matching rules."""
 
-# Must match GRID_SIZE in src/frontend/scripts/seat-grid.js.
 GRID_SIZE = 15
 
 ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}

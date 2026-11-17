@@ -68,7 +68,6 @@ function getSearchShareData(searchUrl, match) {
 }
 
 export function createShareButton(searchUrl, match) {
-  // An iPad can identify itself as a Mac; touch distinguishes it from a desktop Mac.
   const mobile =
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);

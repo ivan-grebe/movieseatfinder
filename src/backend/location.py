@@ -17,12 +17,7 @@ class ZipNotFoundError(ValueError):
 
 
 def http_session():
-    """One process-wide requests.Session so upstream connections are reused.
-
-    Searches fan out on short-lived thread pools, so a per-thread session would
-    open a fresh TLS connection on nearly every call. The pool is sized for the
-    largest fan-out (12 seat-map workers) with headroom for concurrent requests.
-    """
+    """One process-wide requests.Session so upstream connections are reused."""
     global _SESSION
     if _SESSION is None:
         with _SESSION_LOCK:
@@ -64,9 +59,8 @@ def geocode_zip(zip_code):
 def reverse_geocode_zip(lat, lon):
     """Find a ZIP for Fandango's ZIP-only API.
 
-    Nominatim allows at most 1 request/second, and one search hits several
-    endpoints with the same coordinates. Rounding to ~100 m lets those calls
-    share a cached ZIP; only the rounded point and its ZIP are kept in memory.
+    Nominatim allows 1 request/second, so lookups are cached per ~100 m. Zoom 16
+    is used because city-level results often omit the postcode.
     """
     return _reverse_geocode_zip_cached(round(lat, 3), round(lon, 3))
 
@@ -75,8 +69,6 @@ def reverse_geocode_zip(lat, lon):
 def _reverse_geocode_zip_cached(lat, lon):
     response = http_session().get(
         "https://nominatim.openstreetmap.org/reverse",
-        # City-level results (zoom 10) omit postcodes in many places. Street/
-        # neighbourhood detail reliably includes the ZIP needed by Fandango.
         params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 16},
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=10,

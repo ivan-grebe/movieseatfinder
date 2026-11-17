@@ -39,7 +39,6 @@ from .seat_matching import (
 )
 from .share_links import decode_share_link
 
-# The Mozilla prefix matters: Fandango's WAF rejects obviously non-browser UAs.
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
 SITE_NAME = "Movie Seat Finder"
@@ -68,11 +67,7 @@ FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
-# Fandango rarely lists showtimes further out than this; later dates only
-# waste an upstream call and a cache slot.
 MAX_DAYS_AHEAD = 180
-# Servers run in UTC, which is already "tomorrow" on US evenings. A fixed
-# UTC-8 offset (no tzdata dependency) keeps the default date on the US day.
 US_TIMEZONE = timezone(timedelta(hours=-8))
 MAX_TEXT_PARAM_LENGTH = 120
 ShortText = Annotated[
@@ -101,16 +96,12 @@ RATE_LIMITS = {
     "/s": RateLimitItemPerSecond(30, 60),
     "/api/events/shared-link-visit": RateLimitItemPerSecond(60, 60),
     "/api/events/ticket-click": RateLimitItemPerSecond(60, 60),
-    # Sort changes and pagination each re-run a full search, so a normal
-    # browsing session can issue a burst of these; upstream fetches are cached.
     "/api/search": RateLimitItemPerSecond(30, 60),
     "/api/formats": RateLimitItemPerSecond(30, 60),
     "/api/movies": RateLimitItemPerSecond(30, 60),
     "/api/theatres": RateLimitItemPerSecond(30, 60),
 }
 RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
-# Errors that mean an upstream service failed rather than a bug in this app.
-# AttributeError/TypeError cover upstream JSON with unexpected nulls or shapes.
 UPSTREAM_ERRORS = (requests.RequestException, KeyError, AttributeError, TypeError)
 LOGGER = logging.getLogger(__name__)
 if not LOGGER.handlers:
@@ -171,9 +162,6 @@ class TtlCache:
 
 
 SEAT_MAP_CACHE = TtlCache("seat_map", ttl_seconds=300, max_entries=200)
-# Raw theatre+showtime payloads keyed by (zip, fetch radius, date). Showtimes do
-# not change second to second, so a short TTL lets the theatres/movies/formats/
-# search endpoints share one fetch instead of each re-downloading the same data.
 THEATRES_CACHE = TtlCache("theatres", ttl_seconds=300, max_entries=240)
 
 
@@ -213,8 +201,7 @@ def date_range(start, end):
 def search_sort_key(distance, show_date, show_time, theatre_name, sort_order):
     """Return a deterministic key for supported result sort orders.
 
-    Date and time are fixed-width, so their digits concatenate into one
-    integer that sorts chronologically and negates cleanly for "latest".
+    Date and time digits concatenate into one integer, which negates for "latest".
     """
     chronology = int(show_date.replace("-", "") + show_time.replace(":", ""))
     if sort_order == "nearest":
@@ -317,14 +304,13 @@ def format_matches(format_name, requested):
 
 
 def fandango_theatres(zip_code, radius, origin, show_date=None):
-    # Fandango accepts a ZIP rather than coordinates. For a browser-location
-    # search, get a broad candidate set and enforce the exact circle locally.
-    # Over-fetch around the ZIP used by Fandango so an exact coordinate search
-    # still includes candidates near ZIP boundaries. Fandango accepts up to the
-    # same 100-mile maximum exposed by this application.
+    """Theatres within radius of origin, nearest first.
+
+    Fandango only searches by ZIP, so this over-fetches around the ZIP and
+    filters to the exact circle locally. The raw payload is cached without the
+    origin so nearby searches share it.
+    """
     fetch_radius = min(max(radius * 2, 25), 100)
-    # Cache the raw payload without the origin so nearby geolocation searches
-    # and the ZIP search share it; the exact-circle filter is cheap to redo.
     theatres = THEATRES_CACHE.get_or_fetch(
         (zip_code, fetch_radius, show_date or ""),
         lambda: _fetch_fandango_theatres(zip_code, fetch_radius, show_date),
@@ -592,8 +578,6 @@ def normalize_showtimes(movies):
                         continue
                     ticketing_date = showtime.get("ticketingDate") or ""
                     if "+" not in ticketing_date:
-                        # Without a ticketing date the showtime has no time and
-                        # could never pass the search's time-window filter.
                         continue
                     show_date, show_time = ticketing_date.split("+", 1)
                     format_label = showtime_format(format_name, group, showtime)
@@ -827,10 +811,9 @@ def webmanifest():
 def rate_limit_client_key(request):
     """Key limits by the real client, not the fronting proxy.
 
-    Behind Vercel/other proxies request.client.host is the proxy address, which
-    would make every user share one bucket. The platform sets the caller as the
-    first x-forwarded-for hop. Note the history still lives in process memory,
-    so on serverless it only bounds each instance rather than global traffic.
+    Behind a proxy request.client.host is the proxy, so use the first
+    x-forwarded-for hop. Limits live in memory, so each serverless instance
+    counts separately.
     """
     forwarded_for = request.headers.get("x-forwarded-for", "")
     first_hop = forwarded_for.split(",")[0].strip()
@@ -1120,9 +1103,7 @@ def collect_candidate_showtimes(
 def seat_checked_matches(candidates, page_end, check_candidate):
     """Seat-check candidates in parallel until a match beyond page_end is found.
 
-    Candidates must arrive pre-sorted. Matches keep the candidate order, so
-    stopping early is safe: every unchecked candidate sorts after every
-    checked one.
+    Candidates must be pre-sorted, so stopping early never skips a better match.
     """
     matches = []
     checked = 0

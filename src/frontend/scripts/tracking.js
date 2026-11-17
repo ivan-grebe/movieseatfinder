@@ -3,11 +3,9 @@ function logEvent(endpoint) {
     if (navigator.sendBeacon?.(endpoint)) {
       return;
     }
-    void fetch(endpoint, { keepalive: true, method: "POST" }).catch(() => {
-      // Tracking failures are intentionally ignored.
-    });
+    void fetch(endpoint, { keepalive: true, method: "POST" }).catch(() => undefined);
   } catch {
-    // Tracking must never interrupt the user flow.
+    return;
   }
 }
 
