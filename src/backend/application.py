@@ -104,7 +104,8 @@ RATE_LIMITS = {
 }
 RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 # Errors that mean an upstream service failed rather than a bug in this app.
-UPSTREAM_ERRORS = (requests.RequestException, KeyError)
+# AttributeError/TypeError cover upstream JSON with unexpected nulls or shapes.
+UPSTREAM_ERRORS = (requests.RequestException, KeyError, AttributeError, TypeError)
 LOGGER = logging.getLogger(__name__)
 if not LOGGER.handlers:
     LOGGER.addHandler(logging.StreamHandler(sys.stdout))
@@ -347,10 +348,10 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
                 ),
                 "distanceMiles": float(theatre.get("distance") or 0),
                 "latitude": float(theatre["geo"]["latitude"])
-                if theatre.get("geo", {}).get("latitude") is not None
+                if (theatre.get("geo") or {}).get("latitude") is not None
                 else None,
                 "longitude": float(theatre["geo"]["longitude"])
-                if theatre.get("geo", {}).get("longitude") is not None
+                if (theatre.get("geo") or {}).get("longitude") is not None
                 else None,
                 "rawMovies": theatre.get("movies") or [],
             }
@@ -819,7 +820,9 @@ def enforce_rate_limit(request, path):
 
 
 def upstream_error(message, error):
-    raise HTTPException(status_code=502, detail=f"{message}: {error}") from error
+    """Log upstream details server-side; show users only the friendly message."""
+    LOGGER.warning("Upstream error: %s: %r", message, error)
+    raise HTTPException(status_code=502, detail=f"{message}. Please try again.") from error
 
 
 def api_search_location(zip_code, lat, lon):
