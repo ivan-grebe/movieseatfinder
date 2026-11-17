@@ -66,7 +66,7 @@ let selectedMovieTitle = "";
 let movieCombo = null;
 let preciseLocation = null;
 let currentPage = 1;
-let reorderScrollY = null;
+let resultsActivity = { kind: "idle" };
 let locationReady = false;
 const sharedToken = /^\/s\/([^/]+)$/u.exec(globalThis.location.pathname)?.[1] || "";
 const sharedSearch = Boolean(sharedToken);
@@ -87,7 +87,6 @@ function createRunGuard() {
 const theatreLoad = createRunGuard();
 const movieLoad = createRunGuard();
 const formatLoad = createRunGuard();
-const searchLoad = createRunGuard();
 
 const formatPicker = createFormatPicker(formatOptions);
 const seatGrid = createSeatGrid(
@@ -477,18 +476,43 @@ function showResultsSpinner(message) {
   sortStatus.replaceChildren(spinner, announcement);
 }
 
-function finishReorder({ restoreScroll = true } = {}) {
-  if (reorderScrollY === null) {
+function startResultsActivity(activity) {
+  finishResultsActivity();
+  resultsActivity = activity;
+  sortInput.disabled = true;
+  sortStatus.replaceChildren();
+  if (activity.kind === "searching") {
+    resultsView.endPageLoading();
+    activity.stopLoadingStages = startLoadingStages((stage) => setSearchButtonBusy(true, stage));
+  } else if (activity.kind === "paging") {
+    resultsView.setPageLoading();
+    showResultsSpinner("Loading page");
+  } else if (activity.kind === "reordering") {
+    resultsView.beginReorder();
+    showResultsSpinner("Reordering results");
+  }
+  return () => resultsActivity === activity;
+}
+
+function finishResultsActivity({ pageError = "", restoreScroll = false, sortMessage = "" } = {}) {
+  const activity = resultsActivity;
+  if (activity.kind === "idle") {
     return;
   }
-  const scrollY = reorderScrollY;
-  reorderScrollY = null;
-  resultsView.endReorder();
-  sortInput.disabled = false;
-  sortStatus.textContent = "";
-  if (restoreScroll) {
-    globalThis.requestAnimationFrame(() => window.scrollTo(window.scrollX, scrollY));
+  resultsActivity = { kind: "idle" };
+  if (activity.kind === "searching") {
+    activity.stopLoadingStages();
+    setSearchButtonBusy(false);
+  } else if (activity.kind === "paging") {
+    resultsView.endPageLoading(pageError);
+  } else if (activity.kind === "reordering") {
+    resultsView.endReorder();
+    if (restoreScroll) {
+      globalThis.requestAnimationFrame(() => window.scrollTo(window.scrollX, activity.scrollY));
+    }
   }
+  sortInput.disabled = false;
+  sortStatus.textContent = sortMessage;
 }
 
 function validateTimeWindow() {
@@ -579,20 +603,11 @@ function rememberSearch(searchUrl, replaceHistory = false) {
 }
 
 async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
-  finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
   }
-  const isCurrent = searchLoad.start();
-  sortInput.disabled = true;
+  const isCurrent = startResultsActivity({ kind: "searching" });
   setSummary(summary, "", false);
-  resultsView.endPageLoading();
-  sortStatus.replaceChildren();
-  const stopLoadingStages = startLoadingStages((stage) => {
-    if (isCurrent()) {
-      setSearchButtonBusy(true, stage);
-    }
-  });
   try {
     const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
@@ -601,38 +616,28 @@ async function runNewSearch({ replaceHistory = false, scrollToResults = false } 
     rememberSearch(searchUrl, replaceHistory);
     currentPage = data.page;
     resultsView.render(data, { searchUrl });
-    document.body.classList.remove("shared-loading");
   } catch (error) {
     if (!isCurrent()) {
       return;
     }
     resultsView.renderError(error.message);
-  } finally {
-    stopLoadingStages();
-    if (isCurrent()) {
-      setSearchButtonBusy(false);
-      sortInput.disabled = false;
-      document.body.classList.remove("shared-loading");
-      if (scrollToResults) {
-        const section = results.closest("section");
-        section.focus({ preventScroll: true });
-        section.scrollIntoView({ behavior: "instant", block: "start" });
-      }
-    }
+  }
+  finishResultsActivity();
+  document.body.classList.remove("shared-loading");
+  if (scrollToResults) {
+    const section = results.closest("section");
+    section.focus({ preventScroll: true });
+    section.scrollIntoView({ behavior: "instant", block: "start" });
   }
 }
 
 async function runPageChange(page) {
-  finishReorder({ restoreScroll: false });
   if (!validateSearchInputs()) {
     return;
   }
   const previousPage = currentPage;
+  const isCurrent = startResultsActivity({ kind: "paging" });
   currentPage = page;
-  const isCurrent = searchLoad.start();
-  sortInput.disabled = true;
-  resultsView.setPageLoading();
-  showResultsSpinner("Loading page");
   try {
     const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
@@ -644,17 +649,13 @@ async function runPageChange(page) {
     firstResult.tabIndex = -1;
     firstResult.focus({ preventScroll: true });
     firstResult.scrollIntoView({ behavior: "instant", block: "start" });
+    finishResultsActivity();
   } catch {
     if (!isCurrent()) {
       return;
     }
     currentPage = previousPage;
-    resultsView.endPageLoading(`Couldn't load page ${page}`);
-  } finally {
-    if (isCurrent()) {
-      sortStatus.replaceChildren();
-      sortInput.disabled = false;
-    }
+    finishResultsActivity({ pageError: `Couldn't load page ${page}` });
   }
 }
 
@@ -662,12 +663,7 @@ async function runReorder() {
   if (!validateSearchInputs()) {
     return;
   }
-  const isCurrent = searchLoad.start();
-  reorderScrollY = window.scrollY;
-  resultsView.beginReorder();
-  sortInput.disabled = true;
-  showResultsSpinner("Reordering results");
-  let errorMessage = "";
+  const isCurrent = startResultsActivity({ kind: "reordering", scrollY: window.scrollY });
   try {
     const { data, searchUrl } = await fetchSearchResults();
     if (!isCurrent()) {
@@ -675,16 +671,12 @@ async function runReorder() {
     }
     rememberSearch(searchUrl);
     resultsView.render(data, { isUpdate: true, searchUrl });
+    finishResultsActivity({ restoreScroll: true });
   } catch {
     if (!isCurrent()) {
       return;
     }
-    errorMessage = "Try again";
-  } finally {
-    if (isCurrent()) {
-      finishReorder();
-      sortStatus.textContent = errorMessage;
-    }
+    finishResultsActivity({ restoreScroll: true, sortMessage: "Try again" });
   }
 }
 
@@ -867,7 +859,7 @@ function initializeHalReveal() {
 }
 
 async function loadSharedShowtime() {
-  const isCurrent = searchLoad.start();
+  const isCurrent = startResultsActivity({ kind: "loadingShared" });
   try {
     const data = await getJson(`/api/shared-showtime/${sharedToken}`);
     if (!isCurrent()) {
@@ -889,23 +881,17 @@ async function loadSharedShowtime() {
     if (isCurrent()) {
       resultsView.renderError(error.message);
     }
-  } finally {
-    if (isCurrent()) {
-      document.body.classList.remove("shared-loading");
-    }
+  }
+  if (isCurrent()) {
+    finishResultsActivity();
+    document.body.classList.remove("shared-loading");
   }
 }
 
 function bindEvents() {
   backToSearchButton.addEventListener("click", async () => {
-    searchLoad.cancel();
-    finishReorder({ restoreScroll: false });
+    finishResultsActivity();
     resultsView.endPageLoading();
-    sortStatus.replaceChildren();
-    sortInput.disabled = false;
-    if (searchButton.hasAttribute("aria-busy")) {
-      setSearchButtonBusy(false);
-    }
     if (results.childElementCount === 0) {
       setSummary(summary, "", true);
     }
