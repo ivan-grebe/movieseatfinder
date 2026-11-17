@@ -7,6 +7,7 @@ const DESKTOP_HELP =
 const MOBILE_LOCKED_HELP = "Tap Edit seat area to choose where you'd like to sit.";
 const MOBILE_EDITING_HELP =
   "Drag across the grid to highlight your preferred area. Top is the screen.";
+const IDLE = Object.freeze({ kind: "idle" });
 const GRID_MOVES = {
   ArrowDown: [1, 0],
   ArrowLeft: [0, -1],
@@ -36,23 +37,23 @@ export function createSeatGrid(
   let isMobileLayout = mobileLayout.matches;
   let isMobileEditing = false;
   let selectionBeforeMobileEdit = null;
-  let isPainting = false;
-  let paintMode = true;
-  let dragStart = null;
-  let selectionBeforeDrag = new Set();
-  let dragMoved = false;
+  let gesture = IDLE;
   let focus = { col: 0, row: 0 };
   let anchor = { col: 0, row: 0 };
-  let keyboardRectBase = null;
-  let suppressNextClick = false;
 
   function mobileInteractionLocked() {
     return isMobileLayout && !isMobileEditing;
   }
 
+  function endKeyboardRect() {
+    if (gesture.kind === "keyboardRect") {
+      gesture = IDLE;
+    }
+  }
+
   function setAnchor(row, col) {
     anchor = { col, row };
-    keyboardRectBase = null;
+    endKeyboardRect();
   }
 
   function updateStatus() {
@@ -172,27 +173,27 @@ export function createSeatGrid(
     editButton.focus();
   }
 
-  function applyRectangle(cell) {
+  function applyRectangle(drag, cell) {
     const current = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
-    restoreSelection(selectionBeforeDrag);
+    restoreSelection(drag.before);
     for (
-      let row = Math.min(dragStart.row, current.row);
-      row <= Math.max(dragStart.row, current.row);
+      let row = Math.min(drag.start.row, current.row);
+      row <= Math.max(drag.start.row, current.row);
       row += 1
     ) {
       for (
-        let col = Math.min(dragStart.col, current.col);
-        col <= Math.max(dragStart.col, current.col);
+        let col = Math.min(drag.start.col, current.col);
+        col <= Math.max(drag.start.col, current.col);
         col += 1
       ) {
-        setCell(row, col, paintMode);
+        setCell(row, col, drag.paint);
       }
     }
     updateStatus();
   }
 
   function handleCellClick(event) {
-    if (mobileInteractionLocked() || suppressNextClick) {
+    if (mobileInteractionLocked() || gesture.kind === "released") {
       return;
     }
     const button = event.currentTarget;
@@ -253,18 +254,19 @@ export function createSeatGrid(
       return;
     }
     event.preventDefault();
-    isPainting = true;
-    keyboardRectBase = null;
-    paintMode = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
-    dragStart = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
-    selectionBeforeDrag = new Set(selected);
-    dragMoved = false;
+    gesture = {
+      before: new Set(selected),
+      kind: "dragging",
+      moved: false,
+      paint: !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey),
+      start: { col: Number(cell.dataset.col), row: Number(cell.dataset.row) },
+    };
     grid.setPointerCapture(event.pointerId);
-    applyRectangle(cell);
+    applyRectangle(gesture, cell);
   });
 
   grid.addEventListener("pointermove", (event) => {
-    if (!isPainting) {
+    if (gesture.kind !== "dragging") {
       return;
     }
     event.preventDefault();
@@ -272,54 +274,52 @@ export function createSeatGrid(
     if (!cell) {
       return;
     }
-    if (Number(cell.dataset.row) !== dragStart.row || Number(cell.dataset.col) !== dragStart.col) {
-      dragMoved = true;
+    if (
+      Number(cell.dataset.row) !== gesture.start.row ||
+      Number(cell.dataset.col) !== gesture.start.col
+    ) {
+      gesture.moved = true;
     }
-    applyRectangle(cell);
+    applyRectangle(gesture, cell);
   });
 
   grid.addEventListener("pointerup", (event) => {
-    if (!isPainting) {
+    if (gesture.kind !== "dragging") {
       return;
     }
+    const drag = gesture;
     const cell = cellFromEvent(event);
-    if (!dragMoved) {
-      restoreSelection(selectionBeforeDrag);
-      const key = cellKey(dragStart.row, dragStart.col);
+    if (!drag.moved) {
+      restoreSelection(drag.before);
+      const key = cellKey(drag.start.row, drag.start.col);
       let shouldSelect = false;
-      if (paintMode) {
-        shouldSelect = !selectionBeforeDrag.has(key);
+      if (drag.paint) {
+        shouldSelect = !drag.before.has(key);
       }
-      setCell(dragStart.row, dragStart.col, shouldSelect);
+      setCell(drag.start.row, drag.start.col, shouldSelect);
       updateStatus();
     } else if (cell) {
-      applyRectangle(cell);
+      applyRectangle(drag, cell);
     }
-    isPainting = false;
-    dragStart = null;
-    selectionBeforeDrag = new Set();
-    dragMoved = false;
-    suppressNextClick = true;
+    gesture = { kind: "released" };
     if (grid.hasPointerCapture(event.pointerId)) {
       grid.releasePointerCapture(event.pointerId);
     }
   });
 
   grid.addEventListener("pointercancel", () => {
-    if (!isPainting) {
+    if (gesture.kind !== "dragging") {
       return;
     }
-    restoreSelection(selectionBeforeDrag);
+    restoreSelection(gesture.before);
     updateStatus();
-    isPainting = false;
-    dragStart = null;
-    selectionBeforeDrag = new Set();
-    dragMoved = false;
-    suppressNextClick = false;
+    gesture = IDLE;
   });
 
   grid.addEventListener("click", () => {
-    suppressNextClick = false;
+    if (gesture.kind === "released") {
+      gesture = IDLE;
+    }
   });
 
   grid.addEventListener("focusin", (event) => {
@@ -337,7 +337,9 @@ export function createSeatGrid(
     if (mobileInteractionLocked()) {
       return;
     }
-    suppressNextClick = false;
+    if (gesture.kind === "released") {
+      gesture = IDLE;
+    }
     if (event.key in GRID_MOVES) {
       event.preventDefault();
       const [deltaRow, deltaCol] = GRID_MOVES[event.key];
@@ -345,10 +347,10 @@ export function createSeatGrid(
       const col = Math.min(GRID_SIZE - 1, Math.max(0, focus.col + deltaCol));
       setRovingCell(row, col);
       if (event.shiftKey) {
-        if (!keyboardRectBase) {
-          keyboardRectBase = new Set(selected);
+        if (gesture.kind !== "keyboardRect") {
+          gesture = { before: new Set(selected), kind: "keyboardRect" };
         }
-        restoreSelection(keyboardRectBase);
+        restoreSelection(gesture.before);
         for (
           let boxRow = Math.min(anchor.row, row);
           boxRow <= Math.max(anchor.row, row);
@@ -388,7 +390,7 @@ export function createSeatGrid(
     setAnchor(start, start);
   });
   clearButton.addEventListener("click", () => {
-    keyboardRectBase = null;
+    endKeyboardRect();
     clear();
   });
   editButton.addEventListener("click", beginMobileEditing);
