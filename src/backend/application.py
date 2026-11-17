@@ -4,7 +4,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -68,6 +68,12 @@ FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
+# Fandango rarely lists showtimes further out than this; later dates only
+# waste an upstream call and a cache slot.
+MAX_DAYS_AHEAD = 180
+# Servers run in UTC, which is already "tomorrow" on US evenings. A fixed
+# UTC-8 offset (no tzdata dependency) keeps the default date on the US day.
+US_TIMEZONE = timezone(timedelta(hours=-8))
 MAX_TEXT_PARAM_LENGTH = 120
 ShortText = Annotated[
     str,
@@ -129,6 +135,7 @@ class TtlCache:
         self.name = name
         self._entries = TTLCache(maxsize=max_entries, ttl=ttl_seconds)
         self._lock = threading.Lock()
+        self._fetch_locks = {}
 
     def get(self, key):
         now = time.monotonic()
@@ -144,9 +151,27 @@ class TtlCache:
         with self._lock:
             self._entries[key] = (time.monotonic(), value)
 
+    def get_or_fetch(self, key, fetch):
+        """Return the cached value, letting only one thread fetch a missing key."""
+        value = self.get(key)
+        if value is not None:
+            return value
+        with self._lock:
+            key_lock = self._fetch_locks.setdefault(key, threading.Lock())
+        try:
+            with key_lock:
+                value = self.get(key)
+                if value is None:
+                    value = fetch()
+                    self.set(key, value)
+                return value
+        finally:
+            with self._lock:
+                self._fetch_locks.pop(key, None)
+
 
 SEAT_MAP_CACHE = TtlCache("seat_map", ttl_seconds=300, max_entries=200)
-# Theatre+showtime payloads keyed by (zip, radius, date, origin). Showtimes do
+# Raw theatre+showtime payloads keyed by (zip, fetch radius, date). Showtimes do
 # not change second to second, so a short TTL lets the theatres/movies/formats/
 # search endpoints share one fetch instead of each re-downloading the same data.
 THEATRES_CACHE = TtlCache("theatres", ttl_seconds=300, max_entries=240)
@@ -168,11 +193,17 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
     return response.json()
 
 
+def us_today():
+    return datetime.now(US_TIMEZONE).date()
+
+
 def date_range(start, end):
+    if end > us_today() + timedelta(days=MAX_DAYS_AHEAD):
+        raise ValueError(f"Dates must be within {MAX_DAYS_AHEAD} days from today.")
     if end < start:
         raise ValueError("End date must be on or after start date.")
     if (end - start).days > MAX_DATE_RANGE_DAYS:
-        raise ValueError(f"Date range must be {MAX_DATE_RANGE_DAYS} days or fewer.")
+        raise ValueError(f"End date must be within {MAX_DATE_RANGE_DAYS} days of the start date.")
     current = start
     while current <= end:
         yield current.isoformat()
@@ -286,20 +317,19 @@ def format_matches(format_name, requested):
 
 
 def fandango_theatres(zip_code, radius, origin, show_date=None):
-    key = (zip_code, radius, show_date or "", origin)
-    cached = THEATRES_CACHE.get(key)
-    if cached is not None:
-        return cached
     # Fandango accepts a ZIP rather than coordinates. For a browser-location
     # search, get a broad candidate set and enforce the exact circle locally.
     # Over-fetch around the ZIP used by Fandango so an exact coordinate search
     # still includes candidates near ZIP boundaries. Fandango accepts up to the
     # same 100-mile maximum exposed by this application.
     fetch_radius = min(max(radius * 2, 25), 100)
-    theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
-    theatres = filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
-    THEATRES_CACHE.set(key, theatres)
-    return theatres
+    # Cache the raw payload without the origin so nearby geolocation searches
+    # and the ZIP search share it; the exact-circle filter is cheap to redo.
+    theatres = THEATRES_CACHE.get_or_fetch(
+        (zip_code, fetch_radius, show_date or ""),
+        lambda: _fetch_fandango_theatres(zip_code, fetch_radius, show_date),
+    )
+    return filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
 
 
 def fandango_theatres_by_date(zip_code, radius, dates, origin):
@@ -586,15 +616,13 @@ def normalize_showtimes(movies):
 def seat_map(showtime_hash):
     if not showtime_hash:
         return None
-    cached = SEAT_MAP_CACHE.get(showtime_hash)
-    if cached is not None:
-        return cached
-    data = fandango_json(
-        f"/napi/seatMap/{showtime_hash}",
-        referer="https://www.fandango.com/",
+    return SEAT_MAP_CACHE.get_or_fetch(
+        showtime_hash,
+        lambda: fandango_json(
+            f"/napi/seatMap/{showtime_hash}",
+            referer="https://www.fandango.com/",
+        ),
     )
-    SEAT_MAP_CACHE.set(showtime_hash, data)
-    return data
 
 
 app = FastAPI(title="Movie Seat Finder")
@@ -1009,7 +1037,7 @@ def api_movies(
 ):
     enforce_rate_limit(request, "/api/movies")
     try:
-        start_date = startDate or date.today()
+        start_date = startDate or us_today()
         end_date = endDate or start_date
         theatre_query = theatre.lower()
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
@@ -1038,7 +1066,7 @@ def api_formats(
     enforce_rate_limit(request, "/api/formats")
     try:
         movie_query = movie
-        start_date = startDate or date.today()
+        start_date = startDate or us_today()
         end_date = endDate or start_date
         theatre_query = theatre.lower()
         if not movie_query:
@@ -1137,7 +1165,7 @@ def find_seat_matches(
             raise ValueError("Latest time must be on or after earliest time.")
         theatre_query = theatre.lower()
         movie_query = movie
-        start_date = start_date or date.today()
+        start_date = start_date or us_today()
         end_date = end_date or start_date
         min_adjacent = adjacent_seats
         selected_cells = parse_seat_grid(seat_grid)

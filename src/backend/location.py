@@ -8,7 +8,8 @@ import requests
 from geopy.distance import geodesic
 
 USER_AGENT = "MovieSeatFinder/1.0 (location lookup)"
-_LOCAL = threading.local()
+_SESSION = None
+_SESSION_LOCK = threading.Lock()
 
 
 class ZipNotFoundError(ValueError):
@@ -16,12 +17,21 @@ class ZipNotFoundError(ValueError):
 
 
 def http_session():
-    """One requests.Session per thread, shared by every upstream call."""
-    session = getattr(_LOCAL, "session", None)
-    if session is None:
-        session = requests.Session()
-        _LOCAL.session = session
-    return session
+    """One process-wide requests.Session so upstream connections are reused.
+
+    Searches fan out on short-lived thread pools, so a per-thread session would
+    open a fresh TLS connection on nearly every call. The pool is sized for the
+    largest fan-out (12 seat-map workers) with headroom for concurrent requests.
+    """
+    global _SESSION
+    if _SESSION is None:
+        with _SESSION_LOCK:
+            if _SESSION is None:
+                session = requests.Session()
+                adapter = requests.adapters.HTTPAdapter(pool_maxsize=32)
+                session.mount("https://", adapter)
+                _SESSION = session
+    return _SESSION
 
 
 def distance_miles(lat1, lon1, lat2, lon2):
