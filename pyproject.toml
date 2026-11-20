@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools==84.0.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "movieseatfinder"
 version = "0.1.0"
@@ -40,15 +36,8 @@ select = ["E4", "E7", "E9", "F", "I"]
 [tool.ruff.format]
 line-ending = "lf"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["backend*"]
-
-[tool.setuptools.package-data]
-backend = ["assets/*.ttf", "assets/*.woff2", "assets/*.png", "assets/OFL.txt"]
-
 [tool.vercel]
-entrypoint = "src.backend.server:app"
+entrypoint = "src.server:app"
 
 [tool.vercel.scripts]
-build = "npm ci --include=dev && npm run build:frontend"
+build = "npm ci --include=dev && npm run build"

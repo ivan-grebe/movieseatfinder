@@ -1,45 +1,42 @@
+import os
 import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import application, seat_matching
+from src import application, fandango, seat_matching
 
 
 class TicketUrlTests(unittest.TestCase):
     def test_ticket_urls_are_allowlisted(self):
         self.assertEqual(
-            application.safe_fandango_url("https://tickets.fandango.com/order"),
+            fandango.safe_fandango_url("https://tickets.fandango.com/order"),
             "https://tickets.fandango.com/order",
         )
-        self.assertEqual(application.safe_fandango_url("https://example.com"), "")
-        self.assertEqual(application.safe_fandango_url("javascript:alert(1)"), "")
+        self.assertEqual(fandango.safe_fandango_url("https://example.com"), "")
+        self.assertEqual(fandango.safe_fandango_url("javascript:alert(1)"), "")
 
 
 class MovieAndFormatTests(unittest.TestCase):
     def test_movie_matching_requires_the_selected_title(self):
-        self.assertTrue(
-            application.movie_matches("Spider-Man: Homecoming", "spider man homecoming")
-        )
-        self.assertFalse(application.movie_matches("Spider-Man: Homecoming", "spider man"))
-        self.assertFalse(application.movie_matches("", "spider man"))
+        self.assertTrue(fandango.movie_matches("Spider-Man: Homecoming", "spider man homecoming"))
+        self.assertFalse(fandango.movie_matches("Spider-Man: Homecoming", "spider man"))
+        self.assertFalse(fandango.movie_matches("", "spider man"))
 
     def test_format_matching_distinguishes_imax_variants(self):
-        self.assertTrue(application.format_matches("IMAX", "imax"))
-        self.assertFalse(application.format_matches("IMAX", "IMAX with Laser"))
-        self.assertFalse(application.format_matches("IMAX with Laser", "IMAX"))
-        self.assertFalse(application.format_matches("IMAX 70mm", "IMAX"))
-        self.assertTrue(application.format_matches("IMAX 70mm", "imax70"))
-        self.assertTrue(
-            application.format_matches("IMAX with Laser", "Dolby Cinema,IMAX with Laser")
-        )
+        self.assertTrue(fandango.format_matches("IMAX", "imax"))
+        self.assertFalse(fandango.format_matches("IMAX", "IMAX with Laser"))
+        self.assertFalse(fandango.format_matches("IMAX with Laser", "IMAX"))
+        self.assertFalse(fandango.format_matches("IMAX 70mm", "IMAX"))
+        self.assertTrue(fandango.format_matches("IMAX 70mm", "imax70"))
+        self.assertTrue(fandango.format_matches("IMAX with Laser", "Dolby Cinema,IMAX with Laser"))
 
     def test_format_matching_collapses_only_equivalent_labels(self):
-        self.assertTrue(application.format_matches("Dolby Cinema", "dolby"))
-        self.assertTrue(application.format_matches("70mm", "70MM Film"))
-        self.assertFalse(application.format_matches("IMAX 70mm", "70mm"))
-        self.assertFalse(application.format_matches("Dolby Atmos", "Dolby Cinema"))
-        self.assertFalse(application.format_matches("Standard", "dolby,imax"))
+        self.assertTrue(fandango.format_matches("Dolby Cinema", "dolby"))
+        self.assertTrue(fandango.format_matches("70mm", "70MM Film"))
+        self.assertFalse(fandango.format_matches("IMAX 70mm", "70mm"))
+        self.assertFalse(fandango.format_matches("Dolby Atmos", "Dolby Cinema"))
+        self.assertFalse(fandango.format_matches("Standard", "dolby,imax"))
 
 
 class SeatSelectionTests(unittest.TestCase):
@@ -210,8 +207,8 @@ class SearchTests(unittest.TestCase):
 
 
 class LocationTests(unittest.TestCase):
-    @patch("backend.location.reverse_geocode_zip", return_value="10001")
-    @patch.object(application, "fandango_json")
+    @patch("src.location.reverse_geocode_zip", return_value="10001")
+    @patch.object(fandango, "fandango_json")
     def test_radius_uses_coordinates_instead_of_upstream_distance(self, upstream, _zip):
         upstream.return_value = {
             "theaters": [
@@ -220,7 +217,7 @@ class LocationTests(unittest.TestCase):
             ]
         }
         application.RATE_LIMITER.storage.reset()
-        with patch.object(application, "THEATRES_CACHE", application.TtlCache("theatres", 300, 10)):
+        with patch.object(fandango, "THEATRES_CACHE", fandango.TtlCache("theatres", 300, 10)):
             response = TestClient(application.app).get(
                 "/api/theatres",
                 params={"lat": 40, "lon": -75, "radius": 5},
@@ -229,11 +226,14 @@ class LocationTests(unittest.TestCase):
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
 
 
+@unittest.skipUnless(
+    os.environ.get("LIVE_UPSTREAM_TESTS"), "set LIVE_UPSTREAM_TESTS=1 to call Fandango"
+)
 class LiveFandangoIntegrationTests(unittest.TestCase):
     """Contract check for the upstream endpoint used by production searches."""
 
     def test_theatre_endpoint_returns_live_theatre_payloads(self):
-        payload = application.fandango_json(
+        payload = fandango.fandango_json(
             "/napi/theaterswithshowtimes",
             {"zipCode": "10001", "radius": 5, "limit": 5},
             timeout=30,

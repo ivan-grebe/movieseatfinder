@@ -12,9 +12,9 @@ MCP_GLOBAL_RATE_LIMIT = RateLimitItemPerMinute(1200)
 MCP_CLIENT_RATE_LIMIT = RateLimitItemPerMinute(300)
 MCP_RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 
-MCP_BROWSER_PAGE = (
-    Path(__file__).resolve().parents[2] / "frontend" / "templates" / "mcp.html"
-).read_text(encoding="utf-8")
+MCP_BROWSER_PAGE = (Path(__file__).resolve().parents[1] / "templates" / "mcp.html").read_text(
+    encoding="utf-8"
+)
 
 
 def _is_browser_navigation(scope, headers):

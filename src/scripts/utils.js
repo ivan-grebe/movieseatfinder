@@ -43,11 +43,11 @@ export async function getJson(url) {
       data = JSON.parse(body);
     }
   } catch {
-    let message = "The search service is temporarily unavailable. Please try again.";
-    if (response.ok) {
-      message = "The server returned an unreadable response. Please try again.";
-    }
-    throw new Error(message);
+    throw new Error(
+      response.ok
+        ? "The server returned an unreadable response. Please try again."
+        : "The search service is temporarily unavailable. Please try again.",
+    );
   }
   if (!response.ok) {
     const error = new Error(data.error || "Request failed.");

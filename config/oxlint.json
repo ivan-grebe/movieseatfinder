@@ -10,7 +10,6 @@
     "eslint/no-empty-function": "error",
     "eslint/no-loop-func": "error",
     "eslint/no-nested-ternary": "error",
-    "eslint/no-ternary": "error",
     "eslint/prefer-const": "error",
     "eslint/prefer-template": "error",
     "eslint/require-await": "error",

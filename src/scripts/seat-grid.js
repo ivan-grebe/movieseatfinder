@@ -59,11 +59,7 @@ export function createSeatGrid(
   function updateStatus() {
     const count = selected.size;
     if (count) {
-      let suffix = "s";
-      if (count === 1) {
-        suffix = "";
-      }
-      setStatus(status, `${count} seat area${suffix} highlighted.`, "success");
+      setStatus(status, `${count} seat area${count === 1 ? "" : "s"} highlighted.`, "success");
     } else {
       setStatus(status, "No area highlighted - matching seats anywhere.");
     }
@@ -110,10 +106,7 @@ export function createSeatGrid(
   function setRovingCell(row, col) {
     focus = { col, row };
     cells.forEach((cell) => {
-      cell.tabIndex = -1;
-      if (cell.dataset.cell === cellKey(row, col)) {
-        cell.tabIndex = 0;
-      }
+      cell.tabIndex = cell.dataset.cell === cellKey(row, col) ? 0 : -1;
     });
     cells.get(cellKey(row, col)).focus();
   }
@@ -126,10 +119,7 @@ export function createSeatGrid(
 
     cells.forEach((cell) => {
       cell.toggleAttribute("aria-disabled", locked);
-      cell.tabIndex = -1;
-      if (!locked && cell.dataset.cell === cellKey(focus.row, focus.col)) {
-        cell.tabIndex = 0;
-      }
+      cell.tabIndex = !locked && cell.dataset.cell === cellKey(focus.row, focus.col) ? 0 : -1;
     });
 
     editButton.hidden = !locked;
@@ -139,14 +129,13 @@ export function createSeatGrid(
     doneButton.hidden = !isMobileLayout || !isMobileEditing;
     centerButton.disabled = locked;
     clearButton.disabled = locked;
-    let helpText = DESKTOP_HELP;
-    if (isMobileLayout) {
-      helpText = MOBILE_LOCKED_HELP;
-      if (isMobileEditing) {
-        helpText = MOBILE_EDITING_HELP;
-      }
+    if (!isMobileLayout) {
+      help.textContent = DESKTOP_HELP;
+    } else if (isMobileEditing) {
+      help.textContent = MOBILE_EDITING_HELP;
+    } else {
+      help.textContent = MOBILE_LOCKED_HELP;
     }
-    help.textContent = helpText;
   }
 
   function beginMobileEditing() {
@@ -218,10 +207,7 @@ export function createSeatGrid(
         button.title = `Row ${row + 1} of ${GRID_SIZE} from the screen, column ${col + 1} of ${GRID_SIZE}`;
         button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-pressed", "false");
-        button.tabIndex = -1;
-        if (row === 0 && col === 0) {
-          button.tabIndex = 0;
-        }
+        button.tabIndex = row === 0 && col === 0 ? 0 : -1;
         button.addEventListener("click", handleCellClick);
         cells.set(button.dataset.cell, button);
         grid.append(button);
@@ -292,11 +278,7 @@ export function createSeatGrid(
     if (!drag.moved) {
       restoreSelection(drag.before);
       const key = cellKey(drag.start.row, drag.start.col);
-      let shouldSelect = false;
-      if (drag.paint) {
-        shouldSelect = !drag.before.has(key);
-      }
-      setCell(drag.start.row, drag.start.col, shouldSelect);
+      setCell(drag.start.row, drag.start.col, drag.paint && !drag.before.has(key));
       updateStatus();
     } else if (cell) {
       applyRectangle(drag, cell);
@@ -326,10 +308,7 @@ export function createSeatGrid(
     const cell = event.target.closest(".seat-cell");
     focus = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
     cells.forEach((other) => {
-      other.tabIndex = -1;
-      if (other === cell) {
-        other.tabIndex = 0;
-      }
+      other.tabIndex = other === cell ? 0 : -1;
     });
   });
 
@@ -370,14 +349,8 @@ export function createSeatGrid(
       }
     } else if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
-      let col = GRID_SIZE - 1;
-      if (event.key === "Home") {
-        col = 0;
-      }
-      let row = focus.row;
-      if (event.ctrlKey) {
-        row = col;
-      }
+      const col = event.key === "Home" ? 0 : GRID_SIZE - 1;
+      const row = event.ctrlKey ? col : focus.row;
       setRovingCell(row, col);
       setAnchor(row, col);
     }

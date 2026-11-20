@@ -77,10 +77,7 @@ export function createShareButton(searchUrl, match) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "buy-btn share-btn";
-  let defaultLabel = "Copy showtime link";
-  if (nativeShare) {
-    defaultLabel = "Share showtime";
-  }
+  const defaultLabel = nativeShare ? "Share showtime" : "Copy showtime link";
   const label = document.createElement("span");
   label.className = "share-label";
   label.textContent = defaultLabel;

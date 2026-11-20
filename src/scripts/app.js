@@ -278,20 +278,17 @@ function hasValidRadius() {
 
 function enforceRadius(report = false) {
   const valid = hasValidRadius();
-  let validityMessage = "Enter a radius between 1 and 100 miles.";
-  let statusMessage = "Use a radius from 1 to 100 miles.";
-  let statusState = "error";
   if (valid) {
-    validityMessage = "";
-    statusMessage = "";
-    statusState = "";
+    radiusInput.setCustomValidity("");
+    setStatus(radiusStatus, "");
+    return true;
   }
-  radiusInput.setCustomValidity(validityMessage);
-  setStatus(radiusStatus, statusMessage, statusState);
-  if (!valid && report) {
+  radiusInput.setCustomValidity("Enter a radius between 1 and 100 miles.");
+  setStatus(radiusStatus, "Use a radius from 1 to 100 miles.", "error");
+  if (report) {
     radiusInput.reportValidity();
   }
-  return valid;
+  return false;
 }
 
 function hasSearchBasics() {
@@ -517,15 +514,10 @@ function finishResultsActivity({ pageError = "", restoreScroll = false, sortMess
 
 function validateTimeWindow() {
   const invalid = startTimeInput.value > endTimeInput.value;
-  let message = "";
-  let state = "";
-  if (invalid) {
-    message = "Latest time must be on or after earliest time.";
-    state = "error";
-  }
+  const message = invalid ? "Latest time must be on or after earliest time." : "";
   endTimeInput.setCustomValidity(message);
   endTimeInput.setAttribute("aria-invalid", String(invalid));
-  setStatus(timeStatus, message, state);
+  setStatus(timeStatus, message, invalid ? "error" : "");
   return !invalid;
 }
 
@@ -563,11 +555,7 @@ function searchParams() {
   params.set("startTime", startTimeInput.value);
   params.set("endTime", endTimeInput.value);
   params.set("adjacentSeats", adjacentSeatsInput.value);
-  let excludeAccessible = "0";
-  if (excludeAccessibleInput.checked) {
-    excludeAccessible = "1";
-  }
-  params.set("excludeAccessible", excludeAccessible);
+  params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
   const selectedCells = seatGrid.values();
   if (selectedCells.length > 0) {
     params.set("seatGrid", selectedCells.join(","));

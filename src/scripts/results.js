@@ -18,11 +18,7 @@ function createLegendItem(label, className) {
   const item = document.createElement("span");
   item.className = "legend-item";
   const swatch = document.createElement("span");
-  let swatchClass = "legend-swatch";
-  if (className) {
-    swatchClass += ` ${className}`;
-  }
-  swatch.className = swatchClass;
+  swatch.className = className ? `legend-swatch ${className}` : "legend-swatch";
   item.append(swatch, document.createTextNode(label));
   return item;
 }
@@ -69,31 +65,21 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   layout.seats.forEach((seat) => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    let accessibilityType = "";
-    if (ACCESSIBLE_SEAT_TYPES.has(seat.type)) {
-      accessibilityType = seat.type;
-    }
+    const accessibilityType = ACCESSIBLE_SEAT_TYPES.has(seat.type) ? seat.type : "";
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
-    let availabilityClass = "unavailable";
-    if (isAvailable && !isExcluded) {
-      availabilityClass = "available";
-    }
-    node.className = `real-seat ${availabilityClass}`;
+    node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
     if (accessibilityType) {
       node.classList.add("accessible");
     }
     if (seat.matched) {
       node.classList.add("matched");
     }
-    let availabilityLabel = "unavailable";
-    if (isAvailable) {
-      availabilityLabel = "available";
-    }
-    let exclusionLabel = "";
-    if (isExcluded) {
-      exclusionLabel = "excluded by filter";
-    }
-    node.title = [seat.id || "Seat", availabilityLabel, accessibilityType, exclusionLabel]
+    node.title = [
+      seat.id || "Seat",
+      isAvailable ? "available" : "unavailable",
+      accessibilityType,
+      isExcluded ? "excluded by filter" : "",
+    ]
       .filter(Boolean)
       .join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
@@ -110,12 +96,11 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   if (!accessibleSeatsExcluded) {
     legend.append(createLegendItem("Accessible", "accessible"));
   }
-  let unavailableLabel = "Unavailable";
-  if (accessibleSeatsExcluded) {
-    unavailableLabel = "Unavailable / excluded";
-  }
   legend.append(
-    createLegendItem(unavailableLabel, "unavailable"),
+    createLegendItem(
+      accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable",
+      "unavailable",
+    ),
     createLegendItem("Matches", "matched"),
   );
   wrapper.append(legend);
@@ -152,10 +137,7 @@ function makeTag(text, iconDefinition) {
 }
 
 function pluralSuffix(count) {
-  if (count === 1) {
-    return "";
-  }
-  return "s";
+  return count === 1 ? "" : "s";
 }
 
 export function createResultsView({

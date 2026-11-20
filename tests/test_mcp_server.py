@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import server as entrypoint
-from backend.mcp_server import server
+from src import server as entrypoint
+from src.mcp_server import server
 
 
 def sample_seat_layout():
@@ -175,7 +175,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(search["requested_format"], "IMAX,IMAX 70mm")
 
     @patch.object(
-        server.application,
+        server,
         "showtime_seat_match",
         return_value=sample_search_result()["matches"][0]["seatMap"],
     )

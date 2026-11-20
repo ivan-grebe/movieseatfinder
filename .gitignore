@@ -4,7 +4,6 @@ __pycache__/
 .DS_Store
 .venv/
 node_modules/
-test-results/
 .vercel/
 .env.local
-src/frontend/dist/
+src/dist/
