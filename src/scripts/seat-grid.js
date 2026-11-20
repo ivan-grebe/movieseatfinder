@@ -59,7 +59,8 @@ export function createSeatGrid(
   function updateStatus() {
     const count = selected.size;
     if (count) {
-      setStatus(status, `${count} seat area${count === 1 ? "" : "s"} highlighted.`, "success");
+      const areas = count === 1 ? "seat area" : "seat areas";
+      setStatus(status, `${count} ${areas} highlighted.`, "success");
     } else {
       setStatus(status, "No area highlighted - matching seats anywhere.");
     }
@@ -119,7 +120,10 @@ export function createSeatGrid(
 
     cells.forEach((cell) => {
       cell.toggleAttribute("aria-disabled", locked);
-      cell.tabIndex = !locked && cell.dataset.cell === cellKey(focus.row, focus.col) ? 0 : -1;
+      cell.tabIndex = -1;
+      if (!locked && cell.dataset.cell === cellKey(focus.row, focus.col)) {
+        cell.tabIndex = 0;
+      }
     });
 
     editButton.hidden = !locked;
@@ -350,6 +354,7 @@ export function createSeatGrid(
     } else if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
       const col = event.key === "Home" ? 0 : GRID_SIZE - 1;
+      // Ctrl+Home/End jump to the first/last cell of the grid, not just the row.
       const row = event.ctrlKey ? col : focus.row;
       setRovingCell(row, col);
       setAnchor(row, col);

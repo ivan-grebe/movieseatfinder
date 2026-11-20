@@ -84,7 +84,11 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       if (menu.hidden) {
         update();
       }
-      setActive(activeIndex === -1 ? -1 : activeIndex - 1);
+      if (activeIndex === -1) {
+        setActive(-1);
+      } else {
+        setActive(activeIndex - 1);
+      }
     } else if (event.key === "Enter") {
       if (!menu.hidden && activeIndex >= 0) {
         event.preventDefault();

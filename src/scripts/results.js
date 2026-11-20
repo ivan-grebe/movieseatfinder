@@ -67,21 +67,23 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
     const isAvailable = seat.status === "A";
     const accessibilityType = ACCESSIBLE_SEAT_TYPES.has(seat.type) ? seat.type : "";
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
-    node.className = `real-seat ${isAvailable && !isExcluded ? "available" : "unavailable"}`;
+    const isSelectable = isAvailable && !isExcluded;
+    node.className = isSelectable ? "real-seat available" : "real-seat unavailable";
     if (accessibilityType) {
       node.classList.add("accessible");
     }
     if (seat.matched) {
       node.classList.add("matched");
     }
-    node.title = [
-      seat.id || "Seat",
-      isAvailable ? "available" : "unavailable",
-      accessibilityType,
-      isExcluded ? "excluded by filter" : "",
-    ]
-      .filter(Boolean)
-      .join(" - ");
+    const titleParts = [seat.id || "Seat"];
+    titleParts.push(isAvailable ? "available" : "unavailable");
+    if (accessibilityType) {
+      titleParts.push(accessibilityType);
+    }
+    if (isExcluded) {
+      titleParts.push("excluded by filter");
+    }
+    node.title = titleParts.join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
     node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
     node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
@@ -96,11 +98,9 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   if (!accessibleSeatsExcluded) {
     legend.append(createLegendItem("Accessible", "accessible"));
   }
+  const unavailableLabel = accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable";
   legend.append(
-    createLegendItem(
-      accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable",
-      "unavailable",
-    ),
+    createLegendItem(unavailableLabel, "unavailable"),
     createLegendItem("Matches", "matched"),
   );
   wrapper.append(legend);

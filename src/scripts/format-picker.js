@@ -40,7 +40,10 @@ export function createFormatPicker(container) {
     const available = [...new Set(formats)];
     const retained = [...selected].filter((format) => available.includes(format));
     selected.clear();
-    (retained.length > 0 ? retained : ["any"]).forEach((format) => selected.add(format));
+    retained.forEach((format) => selected.add(format));
+    if (selected.size === 0) {
+      selected.add("any");
+    }
 
     container.replaceChildren();
     renderOption("Any available format", "any");
