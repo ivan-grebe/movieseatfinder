@@ -1,7 +1,7 @@
+import { createLoadingIndicator, setSummary } from "./ui.js";
 import { createShareButton } from "./sharing.js";
 import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
-import { setSummary } from "./ui.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ICON_FILM = [
@@ -18,11 +18,7 @@ function createLegendItem(label, className) {
   const item = document.createElement("span");
   item.className = "legend-item";
   const swatch = document.createElement("span");
-  let swatchClass = "legend-swatch";
-  if (className) {
-    swatchClass += ` ${className}`;
-  }
-  swatch.className = swatchClass;
+  swatch.className = className ? `legend-swatch ${className}` : "legend-swatch";
   item.append(swatch, document.createTextNode(label));
   return item;
 }
@@ -69,33 +65,25 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   layout.seats.forEach((seat) => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    let accessibilityType = "";
-    if (ACCESSIBLE_SEAT_TYPES.has(seat.type)) {
-      accessibilityType = seat.type;
-    }
+    const accessibilityType = ACCESSIBLE_SEAT_TYPES.has(seat.type) ? seat.type : "";
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
-    let availabilityClass = "unavailable";
-    if (isAvailable && !isExcluded) {
-      availabilityClass = "available";
-    }
-    node.className = `real-seat ${availabilityClass}`;
+    const isSelectable = isAvailable && !isExcluded;
+    node.className = isSelectable ? "real-seat available" : "real-seat unavailable";
     if (accessibilityType) {
       node.classList.add("accessible");
     }
     if (seat.matched) {
       node.classList.add("matched");
     }
-    let availabilityLabel = "unavailable";
-    if (isAvailable) {
-      availabilityLabel = "available";
+    const titleParts = [seat.id || "Seat"];
+    titleParts.push(isAvailable ? "available" : "unavailable");
+    if (accessibilityType) {
+      titleParts.push(accessibilityType);
     }
-    let exclusionLabel = "";
     if (isExcluded) {
-      exclusionLabel = "excluded by filter";
+      titleParts.push("excluded by filter");
     }
-    node.title = [seat.id || "Seat", availabilityLabel, accessibilityType, exclusionLabel]
-      .filter(Boolean)
-      .join(" - ");
+    node.title = titleParts.join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
     node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
     node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
@@ -110,10 +98,7 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   if (!accessibleSeatsExcluded) {
     legend.append(createLegendItem("Accessible", "accessible"));
   }
-  let unavailableLabel = "Unavailable";
-  if (accessibleSeatsExcluded) {
-    unavailableLabel = "Unavailable / excluded";
-  }
+  const unavailableLabel = accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable";
   legend.append(
     createLegendItem(unavailableLabel, "unavailable"),
     createLegendItem("Matches", "matched"),
@@ -152,10 +137,7 @@ function makeTag(text, iconDefinition) {
 }
 
 function pluralSuffix(count) {
-  if (count === 1) {
-    return "";
-  }
-  return "s";
+  return count === 1 ? "" : "s";
 }
 
 export function createResultsView({
@@ -221,13 +203,9 @@ export function createResultsView({
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
     pagination.setAttribute("aria-busy", "true");
-    const spinner = document.createElement("span");
-    spinner.className = "spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    const announcement = document.createElement("span");
-    announcement.className = "visually-hidden";
-    announcement.textContent = "Loading results. ";
-    pagination.querySelector(".pagination-label").prepend(spinner, announcement);
+    pagination
+      .querySelector(".pagination-label")
+      .prepend(...createLoadingIndicator("Loading results. "));
     pagination.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
     });

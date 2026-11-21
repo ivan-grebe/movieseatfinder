@@ -8,11 +8,13 @@ from pathlib import Path
 
 from resvg import render, usvg
 
+from .seat_matching import ACCESSIBLE_SEAT_TYPES
+
 OUTPUT_SCALE = 2
 CANVAS_WIDTH = 642
 CONTENT_WIDTH = 620
 WRAPPER_PADDING = 10
-ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}
+
 _FONT_PATH = Path(__file__).with_name("assets") / "inter-variable.ttf"
 _RENDER_STATE = threading.local()
 TITLE_TEXT_STYLE = (

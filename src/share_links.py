@@ -56,10 +56,7 @@ def decode_share_link(token):
         raw = decoder.decompress(compressed, 8193)
         if len(raw) > 8192 or not decoder.eof or decoder.unused_data:
             raise ValueError
-        pairs = parse_qsl(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=16)
-        params = dict(pairs)
-        if len(params) != len(pairs):
-            raise ValueError
+        params = dict(parse_qsl(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=16))
         shared = SharedShowtime.model_validate(params)
         shared.seat_grid = unpack_seat_grid(shared.seat_grid)
         return shared

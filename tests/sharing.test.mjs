@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { compactShareUrl } from "../src/frontend/scripts/sharing.js";
+import { compactShareUrl } from "../src/scripts/sharing.js";
 import { inflateSync } from "node:zlib";
 import test from "node:test";
 

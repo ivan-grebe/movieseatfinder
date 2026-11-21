@@ -1,6 +1,13 @@
 import { strToU8, zlibSync } from "fflate";
 import { formatNiceDate } from "./utils.js";
 
+function base64Url(bytes) {
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
 export function compactShareUrl(searchUrl, match) {
   const source = new URL(searchUrl);
   const params = new URLSearchParams({
@@ -33,19 +40,10 @@ export function compactShareUrl(searchUrl, match) {
       const index = row * 15 + column;
       bitmap[Math.floor(index / 8)] |= 1 << (index % 8);
     }
-    params.set(
-      "seatGrid",
-      btoa(String.fromCharCode(...bitmap))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", ""),
-    );
+    params.set("seatGrid", base64Url(bitmap));
   }
   const compressed = zlibSync(strToU8(params.toString()), { level: 9 });
-  const token = btoa(String.fromCharCode(...compressed))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
+  const token = base64Url(compressed);
   return new URL(`/s/${token}`, source.origin).href;
 }
 
@@ -77,10 +75,7 @@ export function createShareButton(searchUrl, match) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "buy-btn share-btn";
-  let defaultLabel = "Copy showtime link";
-  if (nativeShare) {
-    defaultLabel = "Share showtime";
-  }
+  const defaultLabel = nativeShare ? "Share showtime" : "Copy showtime link";
   const label = document.createElement("span");
   label.className = "share-label";
   label.textContent = defaultLabel;

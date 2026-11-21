@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="branding/movie-seat-finder-dark-4k.png" alt="Movie Seat Finder search form in dark mode" width="100%">
+  <img src="movie-seat-finder-dark-4k.png" alt="Movie Seat Finder search form in dark mode" width="100%">
 </p>
 
 <h1 align="center">Movie Seat Finder</h1>
@@ -25,29 +25,18 @@ Movie Seat Finder searches live Fandango showtimes and seat maps, then finds adj
 
 ## Run locally
 
-Requirements: Python 3.14+ and Node.js 22+.
+Requirements: Python 3.14+, [uv](https://docs.astral.sh/uv/), and Node.js 22+.
 
 ```bash
 git clone https://github.com/ivan-grebe/movieseatfinder.git
 cd movieseatfinder
-pip install -e ".[test,dev]"
+uv sync --extra test --extra dev
 npm ci
-npm run build:frontend
-uvicorn backend.server:app --reload --host 127.0.0.1 --port 4173
+npm run build
+uv run uvicorn src.server:app --reload --host 127.0.0.1 --port 4173
 ```
 
 Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) to use the app.
-
-## Project layout
-
-```text
-src/backend/             Python website and MCP server
-src/frontend/scripts/    Browser JavaScript modules
-src/frontend/styles/     Authored stylesheets
-src/frontend/templates/  Server-rendered HTML templates
-branding/                Repository and website brand assets
-tests/                   Python, frontend, and browser tests
-```
 
 ## MCP integration
 
@@ -65,22 +54,23 @@ Authentication: None
 ## Testing
 
 ```bash
-npm run build:frontend
-python -m unittest discover -s tests -v
-python -m ruff check .
-python -m ruff format --check .
+npm run build
+uv run python -m unittest discover -s tests -v
+npm test
+uv run ruff check .
+uv run ruff format --check .
 npm run format:check
 npm run lint
-npm run lint:frontend
-npm run test:frontend
-npm run test:browser
+npm run knip
 ```
+
+The Fandango contract test is skipped by default; run it with `LIVE_UPSTREAM_TESTS=1`.
 
 To apply automatic fixes and formatting before opening a pull request:
 
 ```bash
-python -m ruff check --fix .
-python -m ruff format .
+uv run ruff check --fix .
+uv run ruff format .
 npm run format
 ```
 

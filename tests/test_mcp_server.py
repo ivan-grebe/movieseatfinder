@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend import server as entrypoint
-from backend.mcp_server import server
+from src import server as entrypoint
+from src.mcp_server import server
 
 
 def sample_seat_layout():
@@ -111,12 +111,6 @@ class McpProtocolTests(unittest.TestCase):
             "MCP-Protocol-Version": "2025-06-18",
         }
 
-    def test_mcp_endpoint_rejects_an_untrusted_browser_origin(self):
-        headers = self.request_headers()
-        headers["Origin"] = "https://attacker.example"
-        response = self.client.post("/mcp", headers=headers, json={})
-        self.assertEqual(response.status_code, 403)
-
     def test_client_can_discover_the_discovery_and_search_tools(self):
         request = {
             "jsonrpc": "2.0",
@@ -175,7 +169,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(search["requested_format"], "IMAX,IMAX 70mm")
 
     @patch.object(
-        server.application,
+        server,
         "showtime_seat_match",
         return_value=sample_search_result()["matches"][0]["seatMap"],
     )

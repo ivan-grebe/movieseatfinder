@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import patch
 
+import requests
 from fastapi.testclient import TestClient
 
-from backend import application
+from src import application, fandango
 
 
 class SearchFailureTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(application.app)
-        application.RATE_LIMITER.storage.reset()
         self.params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
         self.location = self.enterContext(
             patch.object(application, "api_search_location", return_value=("10001", (0, 0), "Test"))
@@ -25,10 +25,10 @@ class SearchFailureTests(unittest.TestCase):
     def test_a_failed_date_is_not_silently_returned_as_an_empty_day(self):
         def theatres(_zip, _radius, _origin, show_date):
             if show_date == "2026-09-07":
-                raise application.requests.Timeout("upstream timeout")
+                raise requests.Timeout("upstream timeout")
             return []
 
-        with patch.object(application, "fandango_theatres", side_effect=theatres):
+        with patch.object(fandango, "fandango_theatres", side_effect=theatres):
             response = self.client.get(
                 "/api/search",
                 params={**self.params, "startDate": "2026-09-06", "endDate": "2026-09-07"},
@@ -61,7 +61,7 @@ class SearchFailureTests(unittest.TestCase):
 
     def test_total_seat_map_failure_returns_an_error(self):
         def unavailable(*_args):
-            raise application.requests.Timeout("upstream timeout")
+            raise requests.Timeout("upstream timeout")
 
         response = self.search_with_seat_check(unavailable)
         self.assertEqual(response.status_code, 502)
@@ -75,7 +75,7 @@ class SearchFailureTests(unittest.TestCase):
     def test_partial_failure_preserves_confirmed_matches_and_reports_failed_checks(self):
         def check(showtime, *_args):
             if showtime["showtimeHashCode"] == "first":
-                raise application.requests.Timeout("upstream timeout")
+                raise requests.Timeout("upstream timeout")
             return {"matchingGroups": [["H1"]], "bestGroup": ["H1"]}
 
         response = self.search_with_seat_check(check)

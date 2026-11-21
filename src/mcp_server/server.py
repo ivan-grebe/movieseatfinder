@@ -12,8 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import Route
 
 from .. import application
+from ..fandango import seat_map
 from ..seat_map_visual import render_seat_map_svg, render_svg_png
-from .security import McpSecurityMiddleware
+from ..seat_matching import parse_seat_grid, showtime_seat_match
+from .browser_page import BrowserPageMiddleware
 
 GridCell = Annotated[
     str,
@@ -97,7 +99,7 @@ def internal_seat_grid(seat_cells):
     return ",".join(converted)
 
 
-def compact_search_results(result, query, seat_map_request):
+def compact_search_results(result, query, seat_preferences):
     """Return only the details a messaging assistant needs to present options."""
     options = []
     for position, match in enumerate(result["matches"], start=1):
@@ -112,10 +114,7 @@ def compact_search_results(result, query, seat_map_request):
             "show_date": match["date"],
             "show_time": match["displayTime"],
             "movie_format": match["format"],
-            "seat_region": seat_map_request["seat_region"],
-            "seat_cells": seat_map_request["seat_cells"],
-            "adjacent_seats": seat_map_request["adjacent_seats"],
-            "exclude_accessible": seat_map_request["exclude_accessible"],
+            **seat_preferences,
         }
         options.append(
             {
@@ -159,45 +158,6 @@ def _public_error(error):
     if isinstance(detail, dict):
         return detail.get("error", "The seat search could not be completed.")
     return str(detail)
-
-
-def _run_seat_search(
-    movie,
-    start_date,
-    end_date,
-    zip_code,
-    movie_formats,
-    seat_cells,
-    adjacent_seats,
-    radius_miles,
-    start_time,
-    end_time,
-    theatre,
-    exclude_accessible,
-    sort,
-    page_size,
-):
-    requested_format = ",".join(movie_formats) or "any"
-    try:
-        return application.find_seat_matches(
-            radius=radius_miles,
-            movie=movie,
-            zip_code=zip_code,
-            theatre=theatre,
-            requested_format=requested_format,
-            start_date=start_date,
-            end_date=end_date,
-            start_time=start_time,
-            end_time=end_time,
-            adjacent_seats=adjacent_seats,
-            seat_grid=internal_seat_grid(seat_cells),
-            exclude_accessible=exclude_accessible,
-            sort=sort,
-            page=1,
-            page_size=page_size,
-        )
-    except HTTPException as error:
-        raise ValueError(_public_error(error)) from error
 
 
 MCP_INSTRUCTIONS = """
@@ -410,39 +370,32 @@ def find_movie_seats(
         "theatre": theatre,
         "excludeAccessible": exclude_accessible,
     }
-    seat_map_request = {
-        "movie": movie,
-        "start_date": start_date.isoformat(),
-        "end_date": search_end_date.isoformat(),
-        "zip_code": zip_code,
-        "movie_formats": list(movie_formats),
+    try:
+        result = application.find_seat_matches(
+            radius=radius_miles,
+            movie=movie,
+            zip_code=zip_code,
+            theatre=theatre,
+            requested_format=",".join(movie_formats) or "any",
+            start_date=start_date,
+            end_date=search_end_date,
+            start_time=start_time,
+            end_time=end_time,
+            adjacent_seats=adjacent_seats,
+            seat_grid=internal_seat_grid(selected_cells),
+            exclude_accessible=exclude_accessible,
+            sort="nearest",
+            page_size=5,
+        )
+    except HTTPException as error:
+        raise ValueError(_public_error(error)) from error
+    seat_preferences = {
         "seat_region": serialized_region,
         "seat_cells": list(seat_cells),
         "adjacent_seats": adjacent_seats,
-        "radius_miles": radius_miles,
-        "start_time": start_time,
-        "end_time": end_time,
-        "theatre": theatre,
         "exclude_accessible": exclude_accessible,
-        "sort": "nearest",
     }
-    result = _run_seat_search(
-        movie,
-        start_date,
-        search_end_date,
-        zip_code,
-        movie_formats,
-        selected_cells,
-        adjacent_seats,
-        radius_miles,
-        start_time,
-        end_time,
-        theatre,
-        exclude_accessible,
-        "nearest",
-        5,
-    )
-    return compact_search_results(result, query, seat_map_request)
+    return compact_search_results(result, query, seat_preferences)
 
 
 @movie_seat_mcp.tool(
@@ -489,20 +442,20 @@ def show_movie_seat_map(
 ) -> SeatMapOutput:
     """Refresh only the selected showtime and return its live layout as MCP image content."""
     selected_cells = resolved_seat_cells(seat_region, seat_cells)
-    seat_map = application.showtime_seat_match(
+    seat_match = showtime_seat_match(
         {"showtimeHashCode": showtime_hash_code},
         adjacent_seats,
-        application.parse_seat_grid(internal_seat_grid(selected_cells)),
+        parse_seat_grid(internal_seat_grid(selected_cells)),
         exclude_accessible,
-        application.seat_map,
+        seat_map,
     )
-    if not seat_map:
+    if not seat_match:
         raise ValueError(
             "Those seats are no longer available for that exact showtime. Run find_movie_seats again."
         )
 
-    matching_groups = seat_map["matchingGroups"][:12]
-    best_group = seat_map["bestGroup"]
+    matching_groups = seat_match["matchingGroups"][:12]
+    best_group = seat_match["bestGroup"]
     recommended_summary = "-".join(best_group) or "none currently highlighted"
     caption = (
         f"Display the attached seat-map image directly to the user. "
@@ -513,9 +466,9 @@ def show_movie_seat_map(
     )
     image = render_svg_png(
         render_seat_map_svg(
-            seat_map["layout"],
-            available_count=seat_map["availableSeatCount"],
-            total_count=seat_map["totalSeatCount"],
+            seat_match["layout"],
+            available_count=seat_match["availableSeatCount"],
+            total_count=seat_match["totalSeatCount"],
             accessible_seats_excluded=exclude_accessible,
         )
     )
@@ -528,8 +481,8 @@ def show_movie_seat_map(
         format=movie_format,
         matchingGroups=matching_groups,
         bestGroup=best_group,
-        availableSeatCount=seat_map["availableSeatCount"],
-        totalSeatCount=seat_map["totalSeatCount"],
+        availableSeatCount=seat_match["availableSeatCount"],
+        totalSeatCount=seat_match["totalSeatCount"],
         seatMapAvailable=True,
     )
     image_content = (
@@ -547,30 +500,17 @@ def show_movie_seat_map(
     )
 
 
-transport_security = TransportSecuritySettings(
-    enable_dns_rebinding_protection=True,
-    allowed_hosts=[
-        "movieseatfinder.com",
-        "www.movieseatfinder.com",
-        "movieseatfinder.vercel.app",
-        "testserver",
-        "localhost:*",
-        "127.0.0.1:*",
-    ],
-    allowed_origins=[
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-    ],
-)
-
 mcp_protocol_app = movie_seat_mcp.streamable_http_app(
     streamable_http_path="/mcp",
     json_response=True,
     stateless_http=True,
     max_request_body_size=64 * 1024,
-    transport_security=transport_security,
+    # The SDK otherwise enables localhost-only DNS-rebinding protection, which rejects every
+    # request to the public site. That protection is for local servers; this one is public
+    # and unauthenticated.
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 mcp_route = Route(
     "/mcp",
-    endpoint=McpSecurityMiddleware(mcp_protocol_app.routes[0].endpoint),
+    endpoint=BrowserPageMiddleware(mcp_protocol_app.routes[0].endpoint),
 )

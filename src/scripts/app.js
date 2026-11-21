@@ -1,6 +1,12 @@
 import { addDays, debounce, getJson, todayString } from "./utils.js";
 import { closeCombo, setupCombo } from "./combo.js";
-import { setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js";
+import {
+  createLoadingIndicator,
+  setButtonBusy,
+  setStatus,
+  setSummary,
+  startLoadingStages,
+} from "./ui.js";
 import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
@@ -136,20 +142,23 @@ function syncPreferencesReady() {
   setGroupReady(preferencesGroup, locationReady && selectedMovie !== null);
 }
 
-function setLocationReady(ready) {
-  locationReady = ready;
-  setGroupReady(movieGroup, ready);
-  syncPreferencesReady();
+/** Enable the search button once inputs are ready, unless a search is running. */
+function syncSearchButton() {
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
 }
 
+function setLocationReady(ready) {
+  locationReady = ready;
+  setGroupReady(movieGroup, ready);
+  syncPreferencesReady();
+  syncSearchButton();
+}
+
 function setSearchButtonBusy(busy, label) {
   setButtonBusy(searchButton, busy, label);
-  if (!busy) {
-    searchButton.disabled = !searchInputsReady();
-  }
+  syncSearchButton();
 }
 
 function normalizedTitle(value) {
@@ -179,9 +188,7 @@ function setComboLoading(input, menu, disabled, busy = disabled) {
   if (disabled) {
     closeCombo(input, menu);
   }
-  if (!searchButton.hasAttribute("aria-busy")) {
-    searchButton.disabled = !searchInputsReady();
-  }
+  syncSearchButton();
 }
 
 function setMovieCountMeta() {
@@ -278,20 +285,17 @@ function hasValidRadius() {
 
 function enforceRadius(report = false) {
   const valid = hasValidRadius();
-  let validityMessage = "Enter a radius between 1 and 100 miles.";
-  let statusMessage = "Use a radius from 1 to 100 miles.";
-  let statusState = "error";
   if (valid) {
-    validityMessage = "";
-    statusMessage = "";
-    statusState = "";
+    radiusInput.setCustomValidity("");
+    setStatus(radiusStatus, "");
+    return true;
   }
-  radiusInput.setCustomValidity(validityMessage);
-  setStatus(radiusStatus, statusMessage, statusState);
-  if (!valid && report) {
+  radiusInput.setCustomValidity("Enter a radius between 1 and 100 miles.");
+  setStatus(radiusStatus, "Use a radius from 1 to 100 miles.", "error");
+  if (report) {
     radiusInput.reportValidity();
   }
-  return valid;
+  return false;
 }
 
 function hasSearchBasics() {
@@ -467,13 +471,7 @@ async function loadFormats() {
 }
 
 function showResultsSpinner(message) {
-  const spinner = document.createElement("span");
-  spinner.className = "spinner";
-  spinner.setAttribute("aria-hidden", "true");
-  const announcement = document.createElement("span");
-  announcement.className = "visually-hidden";
-  announcement.textContent = message;
-  sortStatus.replaceChildren(spinner, announcement);
+  sortStatus.replaceChildren(...createLoadingIndicator(message));
 }
 
 function startResultsActivity(activity) {
@@ -517,15 +515,10 @@ function finishResultsActivity({ pageError = "", restoreScroll = false, sortMess
 
 function validateTimeWindow() {
   const invalid = startTimeInput.value > endTimeInput.value;
-  let message = "";
-  let state = "";
-  if (invalid) {
-    message = "Latest time must be on or after earliest time.";
-    state = "error";
-  }
+  const message = invalid ? "Latest time must be on or after earliest time." : "";
   endTimeInput.setCustomValidity(message);
   endTimeInput.setAttribute("aria-invalid", String(invalid));
-  setStatus(timeStatus, message, state);
+  setStatus(timeStatus, message, invalid ? "error" : "");
   return !invalid;
 }
 
@@ -563,11 +556,7 @@ function searchParams() {
   params.set("startTime", startTimeInput.value);
   params.set("endTime", endTimeInput.value);
   params.set("adjacentSeats", adjacentSeatsInput.value);
-  let excludeAccessible = "0";
-  if (excludeAccessibleInput.checked) {
-    excludeAccessible = "1";
-  }
-  params.set("excludeAccessible", excludeAccessible);
+  params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
   const selectedCells = seatGrid.values();
   if (selectedCells.length > 0) {
     params.set("seatGrid", selectedCells.join(","));

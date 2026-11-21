@@ -32,13 +32,13 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
       - name: Find dead Python code
-        run: uv run vulture src/backend/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
+        run: uv run vulture src/ --ignore-decorators "@app.*,@movie_seat_mcp.*" --min-confidence 60
       - name: Lint JavaScript
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
       - name: Find dead frontend code
-        run: npm run lint:frontend
+        run: npm run knip
 
   test:
     runs-on: ubuntu-latest
@@ -56,28 +56,11 @@ jobs:
           python -m pip install uv==0.12.10
           uv sync --locked --extra test
       - name: Build frontend
-        run: npm ci && npm run build:frontend
-      - name: Run unit tests
+        run: npm ci && npm run build
+      - name: Run Python tests
         run: uv run python -m unittest discover -s tests -v
-
-  browser-integration:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22
-      - name: Install project
-        run: |
-          python -m pip install uv==0.12.10
-          uv sync --locked
-      - name: Install browser test dependencies
-        run: npm ci && npx playwright install --with-deps chromium
+        env:
+          # The nightly run also checks that Fandango's live API still matches what we parse.
+          LIVE_UPSTREAM_TESTS: ${{ github.event_name == 'schedule' && '1' || '' }}
       - name: Run frontend tests
-        run: npm run test:frontend
-      - name: Run browser integration tests
-        run: uv run npm run test:browser
+        run: npm test

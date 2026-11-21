@@ -40,11 +40,10 @@ export function createFormatPicker(container) {
     const available = [...new Set(formats)];
     const retained = [...selected].filter((format) => available.includes(format));
     selected.clear();
-    let formatsToSelect = ["any"];
-    if (retained.length > 0) {
-      formatsToSelect = retained;
+    retained.forEach((format) => selected.add(format));
+    if (selected.size === 0) {
+      selected.add("any");
     }
-    formatsToSelect.forEach((format) => selected.add(format));
 
     container.replaceChildren();
     renderOption("Any available format", "any");
@@ -63,11 +62,6 @@ export function createFormatPicker(container) {
   return {
     select,
     setOptions,
-    value: () => {
-      if (selected.has("any")) {
-        return "any";
-      }
-      return [...selected].join(",");
-    },
+    value: () => (selected.has("any") ? "any" : [...selected].join(",")),
   };
 }

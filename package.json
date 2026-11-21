@@ -1,20 +1,17 @@
 {
-  "name": "movieseatfinder-frontend-tests",
+  "name": "movieseatfinder",
   "private": true,
   "type": "module",
   "scripts": {
-    "build:frontend": "esbuild src/frontend/scripts/app.js src/frontend/scripts/dither.js src/frontend/styles/styles.css src/frontend/styles/mcp.css --bundle --format=esm --minify --legal-comments=none --external:/*.woff2 --outdir=src/frontend/dist --entry-names=[name].bundle",
+    "build": "esbuild src/scripts/app.js src/scripts/dither.js src/styles/styles.css src/styles/mcp.css --bundle --format=esm --minify --legal-comments=none --external:/*.woff2 --outdir=src/dist --entry-names=[name].bundle",
+    "test": "node --test tests/sharing.test.mjs",
     "format": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --write .",
     "format:check": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --check .",
-    "lint": "oxlint --config config/oxlint.json --deny-warnings src/frontend/scripts tests",
-    "lint:fix": "oxlint --config config/oxlint.json --fix src/frontend/scripts tests",
-    "lint:frontend": "knip --config config/knip.json --no-config-hints",
-    "test:frontend": "node --test tests/sharing.test.mjs",
-    "pretest:browser": "npm run build:frontend",
-    "test:browser": "playwright test --config=tests/playwright.browser.config.mjs"
+    "lint": "oxlint --config config/oxlint.json --deny-warnings src/scripts tests",
+    "lint:fix": "oxlint --config config/oxlint.json --fix src/scripts tests",
+    "knip": "knip --config config/knip.json --no-config-hints"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
     "esbuild": "0.28.1",
     "knip": "6.31.0",
     "oxlint": "1.80.0",

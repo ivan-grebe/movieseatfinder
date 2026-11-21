@@ -59,11 +59,8 @@ export function createSeatGrid(
   function updateStatus() {
     const count = selected.size;
     if (count) {
-      let suffix = "s";
-      if (count === 1) {
-        suffix = "";
-      }
-      setStatus(status, `${count} seat area${suffix} highlighted.`, "success");
+      const areas = count === 1 ? "seat area" : "seat areas";
+      setStatus(status, `${count} ${areas} highlighted.`, "success");
     } else {
       setStatus(status, "No area highlighted - matching seats anywhere.");
     }
@@ -89,14 +86,15 @@ export function createSeatGrid(
     updateStatus();
   }
 
-  function selectBox(rowStart, rowEnd, colStart, colEnd) {
-    clear();
-    for (let row = rowStart; row <= rowEnd; row += 1) {
-      for (let col = colStart; col <= colEnd; col += 1) {
-        setCell(row, col, true);
+  /** Set every cell in the rectangle between two corners, in any order. */
+  function fillRectangle(corner, otherCorner, isSelected) {
+    const rowEnd = Math.max(corner.row, otherCorner.row);
+    const colEnd = Math.max(corner.col, otherCorner.col);
+    for (let row = Math.min(corner.row, otherCorner.row); row <= rowEnd; row += 1) {
+      for (let col = Math.min(corner.col, otherCorner.col); col <= colEnd; col += 1) {
+        setCell(row, col, isSelected);
       }
     }
-    updateStatus();
   }
 
   function restoreSelection(snapshot) {
@@ -110,10 +108,7 @@ export function createSeatGrid(
   function setRovingCell(row, col) {
     focus = { col, row };
     cells.forEach((cell) => {
-      cell.tabIndex = -1;
-      if (cell.dataset.cell === cellKey(row, col)) {
-        cell.tabIndex = 0;
-      }
+      cell.tabIndex = cell.dataset.cell === cellKey(row, col) ? 0 : -1;
     });
     cells.get(cellKey(row, col)).focus();
   }
@@ -139,14 +134,13 @@ export function createSeatGrid(
     doneButton.hidden = !isMobileLayout || !isMobileEditing;
     centerButton.disabled = locked;
     clearButton.disabled = locked;
-    let helpText = DESKTOP_HELP;
-    if (isMobileLayout) {
-      helpText = MOBILE_LOCKED_HELP;
-      if (isMobileEditing) {
-        helpText = MOBILE_EDITING_HELP;
-      }
+    if (!isMobileLayout) {
+      help.textContent = DESKTOP_HELP;
+    } else if (isMobileEditing) {
+      help.textContent = MOBILE_EDITING_HELP;
+    } else {
+      help.textContent = MOBILE_LOCKED_HELP;
     }
-    help.textContent = helpText;
   }
 
   function beginMobileEditing() {
@@ -176,19 +170,7 @@ export function createSeatGrid(
   function applyRectangle(drag, cell) {
     const current = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
     restoreSelection(drag.before);
-    for (
-      let row = Math.min(drag.start.row, current.row);
-      row <= Math.max(drag.start.row, current.row);
-      row += 1
-    ) {
-      for (
-        let col = Math.min(drag.start.col, current.col);
-        col <= Math.max(drag.start.col, current.col);
-        col += 1
-      ) {
-        setCell(row, col, drag.paint);
-      }
-    }
+    fillRectangle(drag.start, current, drag.paint);
     updateStatus();
   }
 
@@ -218,10 +200,7 @@ export function createSeatGrid(
         button.title = `Row ${row + 1} of ${GRID_SIZE} from the screen, column ${col + 1} of ${GRID_SIZE}`;
         button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-pressed", "false");
-        button.tabIndex = -1;
-        if (row === 0 && col === 0) {
-          button.tabIndex = 0;
-        }
+        button.tabIndex = row === 0 && col === 0 ? 0 : -1;
         button.addEventListener("click", handleCellClick);
         cells.set(button.dataset.cell, button);
         grid.append(button);
@@ -292,11 +271,7 @@ export function createSeatGrid(
     if (!drag.moved) {
       restoreSelection(drag.before);
       const key = cellKey(drag.start.row, drag.start.col);
-      let shouldSelect = false;
-      if (drag.paint) {
-        shouldSelect = !drag.before.has(key);
-      }
-      setCell(drag.start.row, drag.start.col, shouldSelect);
+      setCell(drag.start.row, drag.start.col, drag.paint && !drag.before.has(key));
       updateStatus();
     } else if (cell) {
       applyRectangle(drag, cell);
@@ -326,10 +301,7 @@ export function createSeatGrid(
     const cell = event.target.closest(".seat-cell");
     focus = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
     cells.forEach((other) => {
-      other.tabIndex = -1;
-      if (other === cell) {
-        other.tabIndex = 0;
-      }
+      other.tabIndex = other === cell ? 0 : -1;
     });
   });
 
@@ -351,33 +323,16 @@ export function createSeatGrid(
           gesture = { before: new Set(selected), kind: "keyboardRect" };
         }
         restoreSelection(gesture.before);
-        for (
-          let boxRow = Math.min(anchor.row, row);
-          boxRow <= Math.max(anchor.row, row);
-          boxRow += 1
-        ) {
-          for (
-            let boxCol = Math.min(anchor.col, col);
-            boxCol <= Math.max(anchor.col, col);
-            boxCol += 1
-          ) {
-            setCell(boxRow, boxCol, true);
-          }
-        }
+        fillRectangle(anchor, { col, row }, true);
         updateStatus();
       } else {
         setAnchor(row, col);
       }
     } else if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
-      let col = GRID_SIZE - 1;
-      if (event.key === "Home") {
-        col = 0;
-      }
-      let row = focus.row;
-      if (event.ctrlKey) {
-        row = col;
-      }
+      const col = event.key === "Home" ? 0 : GRID_SIZE - 1;
+      // Ctrl+Home/End jump to the first/last cell of the grid, not just the row.
+      const row = event.ctrlKey ? col : focus.row;
       setRovingCell(row, col);
       setAnchor(row, col);
     }
@@ -386,7 +341,9 @@ export function createSeatGrid(
   centerButton.addEventListener("click", () => {
     const start = Math.floor(GRID_SIZE / 3);
     const end = GRID_SIZE - start - 1;
-    selectBox(start, end, start, end);
+    clear();
+    fillRectangle({ col: start, row: start }, { col: end, row: end }, true);
+    updateStatus();
     setAnchor(start, start);
   });
   clearButton.addEventListener("click", () => {

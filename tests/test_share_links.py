@@ -4,10 +4,11 @@ import zlib
 from unittest.mock import patch
 from urllib.parse import urlencode
 
+import requests
 from fastapi.testclient import TestClient
 
-from backend import application
-from backend.share_links import decode_share_link
+from src import application
+from src.share_links import decode_share_link
 
 
 def token_for(query):
@@ -17,7 +18,6 @@ def token_for(query):
 class ShareLinkTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(application.app)
-        application.RATE_LIMITER.storage.reset()
         self.details = {
             "movie": "Test Movie",
             "theatre": "Cinema",
@@ -94,7 +94,7 @@ class ShareLinkTests(unittest.TestCase):
         self.assertEqual(len(preview["layout"]["seats"]), 2)
 
     def test_unavailable_seat_map_is_an_error_instead_of_a_match(self):
-        with patch.object(application, "seat_map", side_effect=application.requests.Timeout()):
+        with patch.object(application, "seat_map", side_effect=requests.Timeout()):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(self.details))}")
         self.assertEqual(response.status_code, 502)
 
