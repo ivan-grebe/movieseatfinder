@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     HTMLResponse,
@@ -19,10 +19,8 @@ from fastapi.responses import (
     Response,
 )
 from fastapi.staticfiles import StaticFiles
-from limits import RateLimitItemPerSecond
-from limits.storage import MemoryStorage
-from limits.strategies import MovingWindowRateLimiter
 from pydantic import StringConstraints
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .fandango import (
     UPSTREAM_ERRORS,
@@ -53,20 +51,6 @@ SRC_DIR = Path(__file__).resolve().parent
 STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
 ASSET_DIR = SRC_DIR / "assets"
-# Only these files are served; everything else in src/ (and the TTF/license in assets/) is not.
-BUNDLE_FILES = {"app.bundle.js", "dither.bundle.js", "styles.bundle.css", "mcp.bundle.css"}
-ASSET_FILES = {
-    "apple-touch-icon-precomposed.png",
-    "apple-touch-icon.png",
-    "favicon-96x96.png",
-    "favicon.ico",
-    "favicon.svg",
-    "hal-9000.png",
-    "inter-variable.woff2",
-    "og-image.png",
-    "web-app-manifest-192x192.png",
-    "web-app-manifest-512x512.png",
-}
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
@@ -97,16 +81,6 @@ PageSize = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
 SearchSort = Literal["earliest", "latest", "nearest"]
 
-RATE_LIMITS = {
-    "/s": RateLimitItemPerSecond(30, 60),
-    "/api/events/shared-link-visit": RateLimitItemPerSecond(60, 60),
-    "/api/events/ticket-click": RateLimitItemPerSecond(60, 60),
-    "/api/search": RateLimitItemPerSecond(30, 60),
-    "/api/formats": RateLimitItemPerSecond(30, 60),
-    "/api/movies": RateLimitItemPerSecond(30, 60),
-    "/api/theatres": RateLimitItemPerSecond(30, 60),
-}
-RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
 LOGGER = logging.getLogger("movieseatfinder")
 if not LOGGER.handlers:
     LOGGER.addHandler(logging.StreamHandler(sys.stdout))
@@ -257,8 +231,7 @@ def shared_showtime():
 
 
 @app.get("/api/shared-showtime/{token}", include_in_schema=False)
-def api_shared_showtime(request: Request, token: str):
-    enforce_rate_limit(request, "/s")
+def api_shared_showtime(token: str):
     with api_errors("Could not refresh this showtime’s seat map"):
         shared = decode_share_link(token)
         raw_map = seat_map(shared.showtime)
@@ -381,28 +354,6 @@ def webmanifest():
             ],
         }
     )
-
-
-def rate_limit_client_key(request):
-    """Key limits by the real client, not the fronting proxy.
-
-    Behind a proxy request.client.host is the proxy, so use the first
-    x-forwarded-for hop. Limits live in memory, so each serverless instance
-    counts separately.
-    """
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    first_hop = forwarded_for.split(",")[0].strip()
-    if first_hop:
-        return first_hop
-    return request.client.host if request.client else "unknown"
-
-
-def enforce_rate_limit(request, path):
-    if not RATE_LIMITER.hit(RATE_LIMITS[path], path, rate_limit_client_key(request)):
-        raise HTTPException(
-            status_code=429,
-            detail="Too many requests. Please wait a moment and try again.",
-        )
 
 
 @contextmanager
@@ -542,28 +493,24 @@ def location_movie_info(
 
 
 @app.post("/api/events/ticket-click", status_code=204)
-def ticket_click(request: Request):
-    enforce_rate_limit(request, "/api/events/ticket-click")
+def ticket_click():
     LOGGER.info("event=ticket_click")
     return Response(status_code=204)
 
 
 @app.post("/api/events/shared-link-visit", status_code=204)
-def shared_link_visit(request: Request):
-    enforce_rate_limit(request, "/api/events/shared-link-visit")
+def shared_link_visit():
     LOGGER.info("event=shared_link_visit")
     return Response(status_code=204)
 
 
 @app.get("/api/theatres")
 def api_theatres(
-    request: Request,
     radius: Radius,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    enforce_rate_limit(request, "/api/theatres")
     with api_errors("Could not load real theatre data"):
         search_zip, origin, place = api_search_location(zip_code, lat, lon)
         theatres = fandango_theatres(search_zip, radius, origin)
@@ -572,7 +519,6 @@ def api_theatres(
 
 @app.get("/api/movies")
 def api_movies(
-    request: Request,
     radius: Radius,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     startDate: date | None = None,
@@ -581,7 +527,6 @@ def api_movies(
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    enforce_rate_limit(request, "/api/movies")
     with api_errors("Could not load real movie data"):
         start_date = startDate or us_today()
         dates = date_range(start_date, endDate or start_date)
@@ -592,7 +537,6 @@ def api_movies(
 
 @app.get("/api/formats")
 def api_formats(
-    request: Request,
     radius: Radius,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     movie: ShortText = "",
@@ -602,7 +546,6 @@ def api_formats(
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    enforce_rate_limit(request, "/api/formats")
     if not movie:
         return {"formats": []}
     with api_errors("Could not load real format data"):
@@ -772,7 +715,6 @@ def find_seat_matches(
 
 @app.get("/api/search")
 def api_search(
-    request: Request,
     radius: Radius,
     movie: RequiredShortText,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
@@ -791,7 +733,6 @@ def api_search(
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    enforce_rate_limit(request, "/api/search")
     return find_seat_matches(
         radius=radius,
         movie=movie,
@@ -813,24 +754,22 @@ def api_search(
     )
 
 
-class PublicAssetFiles(StaticFiles):
-    """Serve only the allowlisted production assets, never the source files beside them."""
+class PublicFiles(StaticFiles):
+    """Serve built bundles from dist/, falling back to fonts and images in assets/."""
 
     def __init__(self):
         super().__init__(directory=STATIC_DIR)
         self.assets = StaticFiles(directory=ASSET_DIR)
 
     async def get_response(self, path, scope):
-        normalized_path = path.replace("\\", "/")
-        if normalized_path in ASSET_FILES:
-            files = self.assets
-        elif normalized_path in BUNDLE_FILES:
-            files = self
-        else:
-            raise HTTPException(status_code=404, detail="Not found")
-        response = await StaticFiles.get_response(files, normalized_path, scope)
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as error:
+            if error.status_code != 404:
+                raise
+            response = await self.assets.get_response(path, scope)
         response.headers["Cache-Control"] = "no-cache"
         return response
 
 
-app.mount("/", PublicAssetFiles(), name="static")
+app.mount("/", PublicFiles(), name="static")

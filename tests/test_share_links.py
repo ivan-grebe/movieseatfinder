@@ -18,7 +18,6 @@ def token_for(query):
 class ShareLinkTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(application.app)
-        application.RATE_LIMITER.storage.reset()
         self.details = {
             "movie": "Test Movie",
             "theatre": "Cinema",

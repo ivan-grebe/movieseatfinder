@@ -1,7 +1,7 @@
+import { createLoadingIndicator, setSummary } from "./ui.js";
 import { createShareButton } from "./sharing.js";
 import { formatNiceDate } from "./utils.js";
 import { logTicketClick } from "./tracking.js";
-import { setSummary } from "./ui.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ICON_FILM = [
@@ -203,13 +203,9 @@ export function createResultsView({
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
     pagination.setAttribute("aria-busy", "true");
-    const spinner = document.createElement("span");
-    spinner.className = "spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    const announcement = document.createElement("span");
-    announcement.className = "visually-hidden";
-    announcement.textContent = "Loading results. ";
-    pagination.querySelector(".pagination-label").prepend(spinner, announcement);
+    pagination
+      .querySelector(".pagination-label")
+      .prepend(...createLoadingIndicator("Loading results. "));
     pagination.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
     });

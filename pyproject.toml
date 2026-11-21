@@ -9,7 +9,6 @@ dependencies = [
     "cachetools>=7.1.0",
     "fastapi>=0.117.1",
     "geopy>=2.5.0",
-    "limits>=5.8.0",
     "mcp>=2.0.0,<3.0.0",
     "pydantic>=2.13.0",
     "requests>=2.32.0",

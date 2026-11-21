@@ -10,7 +10,6 @@ from src import application, fandango
 class SearchFailureTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(application.app)
-        application.RATE_LIMITER.storage.reset()
         self.params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
         self.location = self.enterContext(
             patch.object(application, "api_search_location", return_value=("10001", (0, 0), "Test"))

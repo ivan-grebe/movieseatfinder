@@ -15,7 +15,7 @@ from .. import application
 from ..fandango import seat_map
 from ..seat_map_visual import render_seat_map_svg, render_svg_png
 from ..seat_matching import parse_seat_grid, showtime_seat_match
-from .security import McpSecurityMiddleware
+from .browser_page import BrowserPageMiddleware
 
 GridCell = Annotated[
     str,
@@ -500,30 +500,17 @@ def show_movie_seat_map(
     )
 
 
-transport_security = TransportSecuritySettings(
-    enable_dns_rebinding_protection=True,
-    allowed_hosts=[
-        "movieseatfinder.com",
-        "www.movieseatfinder.com",
-        "movieseatfinder.vercel.app",
-        "testserver",
-        "localhost:*",
-        "127.0.0.1:*",
-    ],
-    allowed_origins=[
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-    ],
-)
-
 mcp_protocol_app = movie_seat_mcp.streamable_http_app(
     streamable_http_path="/mcp",
     json_response=True,
     stateless_http=True,
     max_request_body_size=64 * 1024,
-    transport_security=transport_security,
+    # The SDK otherwise enables localhost-only DNS-rebinding protection, which rejects every
+    # request to the public site. That protection is for local servers; this one is public
+    # and unauthenticated.
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 mcp_route = Route(
     "/mcp",
-    endpoint=McpSecurityMiddleware(mcp_protocol_app.routes[0].endpoint),
+    endpoint=BrowserPageMiddleware(mcp_protocol_app.routes[0].endpoint),
 )

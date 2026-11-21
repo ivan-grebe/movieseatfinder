@@ -111,12 +111,6 @@ class McpProtocolTests(unittest.TestCase):
             "MCP-Protocol-Version": "2025-06-18",
         }
 
-    def test_mcp_endpoint_rejects_an_untrusted_browser_origin(self):
-        headers = self.request_headers()
-        headers["Origin"] = "https://attacker.example"
-        response = self.client.post("/mcp", headers=headers, json={})
-        self.assertEqual(response.status_code, 403)
-
     def test_client_can_discover_the_discovery_and_search_tools(self):
         request = {
             "jsonrpc": "2.0",

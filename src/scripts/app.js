@@ -1,6 +1,12 @@
 import { addDays, debounce, getJson, todayString } from "./utils.js";
 import { closeCombo, setupCombo } from "./combo.js";
-import { setButtonBusy, setStatus, setSummary, startLoadingStages } from "./ui.js";
+import {
+  createLoadingIndicator,
+  setButtonBusy,
+  setStatus,
+  setSummary,
+  startLoadingStages,
+} from "./ui.js";
 import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
@@ -136,20 +142,23 @@ function syncPreferencesReady() {
   setGroupReady(preferencesGroup, locationReady && selectedMovie !== null);
 }
 
-function setLocationReady(ready) {
-  locationReady = ready;
-  setGroupReady(movieGroup, ready);
-  syncPreferencesReady();
+/** Enable the search button once inputs are ready, unless a search is running. */
+function syncSearchButton() {
   if (!searchButton.hasAttribute("aria-busy")) {
     searchButton.disabled = !searchInputsReady();
   }
 }
 
+function setLocationReady(ready) {
+  locationReady = ready;
+  setGroupReady(movieGroup, ready);
+  syncPreferencesReady();
+  syncSearchButton();
+}
+
 function setSearchButtonBusy(busy, label) {
   setButtonBusy(searchButton, busy, label);
-  if (!busy) {
-    searchButton.disabled = !searchInputsReady();
-  }
+  syncSearchButton();
 }
 
 function normalizedTitle(value) {
@@ -179,9 +188,7 @@ function setComboLoading(input, menu, disabled, busy = disabled) {
   if (disabled) {
     closeCombo(input, menu);
   }
-  if (!searchButton.hasAttribute("aria-busy")) {
-    searchButton.disabled = !searchInputsReady();
-  }
+  syncSearchButton();
 }
 
 function setMovieCountMeta() {
@@ -464,13 +471,7 @@ async function loadFormats() {
 }
 
 function showResultsSpinner(message) {
-  const spinner = document.createElement("span");
-  spinner.className = "spinner";
-  spinner.setAttribute("aria-hidden", "true");
-  const announcement = document.createElement("span");
-  announcement.className = "visually-hidden";
-  announcement.textContent = message;
-  sortStatus.replaceChildren(spinner, announcement);
+  sortStatus.replaceChildren(...createLoadingIndicator(message));
 }
 
 function startResultsActivity(activity) {

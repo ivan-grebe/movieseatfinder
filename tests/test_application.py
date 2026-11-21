@@ -132,7 +132,6 @@ def showtime_group(format_name, code, time):
 class SearchTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(application.app)
-        application.RATE_LIMITER.storage.reset()
         self.params = {
             "zip": "10001",
             "radius": 25,
@@ -216,7 +215,6 @@ class LocationTests(unittest.TestCase):
                 {"name": "Too far", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75}},
             ]
         }
-        application.RATE_LIMITER.storage.reset()
         with patch.object(fandango, "THEATRES_CACHE", fandango.TtlCache("theatres", 300, 10)):
             response = TestClient(application.app).get(
                 "/api/theatres",

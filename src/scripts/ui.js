@@ -1,5 +1,20 @@
 const STATE_CLASSES = ["is-loading", "is-error", "is-success"];
 
+function createSpinner() {
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  return spinner;
+}
+
+/** A spinner plus text that only screen readers announce. */
+export function createLoadingIndicator(message) {
+  const announcement = document.createElement("span");
+  announcement.className = "visually-hidden";
+  announcement.textContent = message;
+  return [createSpinner(), announcement];
+}
+
 export function setStatus(element, text, state = "") {
   element.title = text;
   element.classList.remove(...STATE_CLASSES);
@@ -12,9 +27,7 @@ export function setStatus(element, text, state = "") {
   }
 
   if (state === "loading") {
-    const spinner = document.createElement("span");
-    spinner.className = "spinner";
-    element.append(spinner);
+    element.append(createSpinner());
   }
   element.append(document.createTextNode(text));
 }
@@ -61,9 +74,7 @@ export function setButtonBusy(button, busy, busyLabel) {
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
     button.textContent = "";
-    const spinner = document.createElement("span");
-    spinner.className = "spinner";
-    button.append(spinner);
+    button.append(createSpinner());
     appendAnimatedLabel(button, busyLabel);
     return;
   }

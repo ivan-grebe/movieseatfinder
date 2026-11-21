@@ -81,6 +81,19 @@ def normalized_seat_layout(data, matching_blocks):
     return layout
 
 
+def seat_positioner(seats):
+    """Return a function giving a seat's (row, x) position, each scaled to 0..1 across the map."""
+    rows = [seat.get("row", 0) for seat in seats]
+    xs = [seat.get("x", 0) for seat in seats]
+    min_row, row_span = min(rows), max(max(rows) - min(rows), 1)
+    min_x, x_span = min(xs), max(max(xs) - min(xs), 1)
+
+    def position(seat):
+        return (seat.get("row", 0) - min_row) / row_span, (seat.get("x", 0) - min_x) / x_span
+
+    return position
+
+
 def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     """Return runs of adjacent available seat ids, one list per run."""
     available = [
@@ -92,15 +105,10 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     if not available:
         return []
 
-    rows = [seat.get("row", 0) for seat in seats]
-    xs = [seat.get("x", 0) for seat in seats]
-    min_row, row_span = min(rows), max(max(rows) - min(rows), 1)
-    min_x, x_span = min(xs), max(max(xs) - min(xs), 1)
-
+    position = seat_positioner(seats)
     by_row = {}
     for seat in available:
-        row_position = (seat.get("row", 0) - min_row) / row_span
-        x_position = (seat.get("x", 0) - min_x) / x_span
+        row_position, x_position = position(seat)
         if not seat_matches_grid(row_position, x_position, selected_cells):
             continue
         by_row.setdefault(seat.get("row", 0), []).append(seat)
@@ -128,10 +136,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
 def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     """Return exact-size adjacent groups, closest to the requested region first."""
     seat_by_id = {seat.get("id", ""): seat for seat in seats if seat.get("id")}
-    rows = [seat.get("row", 0) for seat in seats]
-    xs = [seat.get("x", 0) for seat in seats]
-    min_row, row_span = min(rows), max(max(rows) - min(rows), 1)
-    min_x, x_span = min(xs), max(max(xs) - min(xs), 1)
+    position = seat_positioner(seats)
 
     if selected_cells:
         target_row = sum((row + 0.5) / GRID_SIZE for row, _ in selected_cells) / len(selected_cells)
@@ -148,12 +153,9 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
             group_seats = [seat_by_id[seat_id] for seat_id in group if seat_id in seat_by_id]
             if len(group_seats) != group_size:
                 continue
-            row_position = (
-                sum((seat.get("row", 0) - min_row) / row_span for seat in group_seats) / group_size
-            )
-            x_position = (
-                sum((seat.get("x", 0) - min_x) / x_span for seat in group_seats) / group_size
-            )
+            positions = [position(seat) for seat in group_seats]
+            row_position = sum(row for row, _ in positions) / group_size
+            x_position = sum(x for _, x in positions) / group_size
             distance = (row_position - target_row) ** 2 + (x_position - target_x) ** 2
             groups.append((distance, group))
 

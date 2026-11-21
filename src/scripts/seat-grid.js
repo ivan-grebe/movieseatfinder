@@ -86,14 +86,15 @@ export function createSeatGrid(
     updateStatus();
   }
 
-  function selectBox(rowStart, rowEnd, colStart, colEnd) {
-    clear();
-    for (let row = rowStart; row <= rowEnd; row += 1) {
-      for (let col = colStart; col <= colEnd; col += 1) {
-        setCell(row, col, true);
+  /** Set every cell in the rectangle between two corners, in any order. */
+  function fillRectangle(corner, otherCorner, isSelected) {
+    const rowEnd = Math.max(corner.row, otherCorner.row);
+    const colEnd = Math.max(corner.col, otherCorner.col);
+    for (let row = Math.min(corner.row, otherCorner.row); row <= rowEnd; row += 1) {
+      for (let col = Math.min(corner.col, otherCorner.col); col <= colEnd; col += 1) {
+        setCell(row, col, isSelected);
       }
     }
-    updateStatus();
   }
 
   function restoreSelection(snapshot) {
@@ -169,19 +170,7 @@ export function createSeatGrid(
   function applyRectangle(drag, cell) {
     const current = { col: Number(cell.dataset.col), row: Number(cell.dataset.row) };
     restoreSelection(drag.before);
-    for (
-      let row = Math.min(drag.start.row, current.row);
-      row <= Math.max(drag.start.row, current.row);
-      row += 1
-    ) {
-      for (
-        let col = Math.min(drag.start.col, current.col);
-        col <= Math.max(drag.start.col, current.col);
-        col += 1
-      ) {
-        setCell(row, col, drag.paint);
-      }
-    }
+    fillRectangle(drag.start, current, drag.paint);
     updateStatus();
   }
 
@@ -334,19 +323,7 @@ export function createSeatGrid(
           gesture = { before: new Set(selected), kind: "keyboardRect" };
         }
         restoreSelection(gesture.before);
-        for (
-          let boxRow = Math.min(anchor.row, row);
-          boxRow <= Math.max(anchor.row, row);
-          boxRow += 1
-        ) {
-          for (
-            let boxCol = Math.min(anchor.col, col);
-            boxCol <= Math.max(anchor.col, col);
-            boxCol += 1
-          ) {
-            setCell(boxRow, boxCol, true);
-          }
-        }
+        fillRectangle(anchor, { col, row }, true);
         updateStatus();
       } else {
         setAnchor(row, col);
@@ -364,7 +341,9 @@ export function createSeatGrid(
   centerButton.addEventListener("click", () => {
     const start = Math.floor(GRID_SIZE / 3);
     const end = GRID_SIZE - start - 1;
-    selectBox(start, end, start, end);
+    clear();
+    fillRectangle({ col: start, row: start }, { col: end, row: end }, true);
+    updateStatus();
     setAnchor(start, start);
   });
   clearButton.addEventListener("click", () => {
