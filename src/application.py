@@ -53,19 +53,20 @@ SRC_DIR = Path(__file__).resolve().parent
 STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
 ASSET_DIR = SRC_DIR / "assets"
-BRANDING_DIR = SRC_DIR.parent / "branding"
-PUBLIC_ASSETS = {"app.bundle.js", "dither.bundle.js", "styles.bundle.css", "mcp.bundle.css"}
-BRANDING_ASSETS = {
+# Only these files are served; everything else in src/ (and the TTF/license in assets/) is not.
+BUNDLE_FILES = {"app.bundle.js", "dither.bundle.js", "styles.bundle.css", "mcp.bundle.css"}
+ASSET_FILES = {
     "apple-touch-icon-precomposed.png",
     "apple-touch-icon.png",
     "favicon-96x96.png",
     "favicon.ico",
     "favicon.svg",
+    "hal-9000.png",
+    "inter-variable.woff2",
     "og-image.png",
     "web-app-manifest-192x192.png",
     "web-app-manifest-512x512.png",
 }
-SERVED_ASSETS = {"inter-variable.woff2", "hal-9000.png"}
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
@@ -817,20 +818,17 @@ class PublicAssetFiles(StaticFiles):
 
     def __init__(self):
         super().__init__(directory=STATIC_DIR)
-        self.branding = StaticFiles(directory=BRANDING_DIR)
         self.assets = StaticFiles(directory=ASSET_DIR)
 
     async def get_response(self, path, scope):
         normalized_path = path.replace("\\", "/")
-        if normalized_path in BRANDING_ASSETS:
-            assets = self.branding
-        elif normalized_path in SERVED_ASSETS:
-            assets = self.assets
-        elif normalized_path in PUBLIC_ASSETS:
-            assets = self
+        if normalized_path in ASSET_FILES:
+            files = self.assets
+        elif normalized_path in BUNDLE_FILES:
+            files = self
         else:
             raise HTTPException(status_code=404, detail="Not found")
-        response = await StaticFiles.get_response(assets, normalized_path, scope)
+        response = await StaticFiles.get_response(files, normalized_path, scope)
         response.headers["Cache-Control"] = "no-cache"
         return response
 
