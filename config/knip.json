@@ -1,5 +1,5 @@
 {
   "entry": ["src/scripts/app.js", "src/scripts/dither.js"],
   "project": ["src/scripts/**/*.js"],
-  "ignore": ["src/dist/*.bundle.js"]
+  "ignore": ["public/*.bundle.js"]
 }
