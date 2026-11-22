@@ -1,7 +1,6 @@
 """Website routes and the showtime/seat search shared with the MCP server."""
 
 import logging
-import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +20,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import StringConstraints
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .fandango import (
     UPSTREAM_ERRORS,
@@ -48,8 +48,9 @@ SITE_NAME = "Movie Seat Finder"
 SITE_DESCRIPTION = "Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets."
 PUBLIC_SITE_URL = "https://movieseatfinder.com"
 SRC_DIR = Path(__file__).resolve().parent
-PUBLIC_DIR = SRC_DIR.parent / "public"
+STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
+ASSET_DIR = SRC_DIR / "assets"
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
@@ -753,7 +754,22 @@ def api_search(
     )
 
 
-# `npm run build` writes bundles, fonts and images to public/. Vercel serves that folder from
-# its CDN without invoking this function, so only local servers need to mount it.
-if "VERCEL" not in os.environ:
-    app.mount("/", StaticFiles(directory=PUBLIC_DIR), name="static")
+class PublicFiles(StaticFiles):
+    """Serve built bundles from dist/, falling back to fonts and images in assets/."""
+
+    def __init__(self):
+        super().__init__(directory=STATIC_DIR)
+        self.assets = StaticFiles(directory=ASSET_DIR)
+
+    async def get_response(self, path, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as error:
+            if error.status_code != 404:
+                raise
+            response = await self.assets.get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", PublicFiles(), name="static")

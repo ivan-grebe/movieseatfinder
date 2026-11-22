@@ -6,4 +6,4 @@ __pycache__/
 node_modules/
 .vercel/
 .env.local
-public/
+src/dist/
