@@ -20,7 +20,6 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import StringConstraints
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .fandango import (
     UPSTREAM_ERRORS,
@@ -50,7 +49,6 @@ PUBLIC_SITE_URL = "https://movieseatfinder.com"
 SRC_DIR = Path(__file__).resolve().parent
 STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
-ASSET_DIR = SRC_DIR / "assets"
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 DEFAULT_PAGE_SIZE = 20
@@ -754,22 +752,6 @@ def api_search(
     )
 
 
-class PublicFiles(StaticFiles):
-    """Serve built bundles from dist/, falling back to fonts and images in assets/."""
-
-    def __init__(self):
-        super().__init__(directory=STATIC_DIR)
-        self.assets = StaticFiles(directory=ASSET_DIR)
-
-    async def get_response(self, path, scope):
-        try:
-            response = await super().get_response(path, scope)
-        except StarletteHTTPException as error:
-            if error.status_code != 404:
-                raise
-            response = await self.assets.get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache"
-        return response
-
-
-app.mount("/", PublicFiles(), name="static")
+# `npm run build` puts bundles, fonts and images in dist/. Vercel promotes a plain StaticFiles
+# mount to its CDN at build time, so these requests never invoke the function there.
+app.mount("/", StaticFiles(directory=STATIC_DIR), name="static")

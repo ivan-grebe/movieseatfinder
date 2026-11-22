@@ -40,3 +40,7 @@ entrypoint = "src.server:app"
 
 [tool.vercel.scripts]
 build = "npm ci --include=dev && npm run build"
+
+[tool.vercel.fastapi.static]
+# Serve the StaticFiles mount from the CDN even though the app has security-header middleware.
+cdn = true
