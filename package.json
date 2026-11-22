@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/scripts/app.js src/scripts/dither.js src/styles/styles.css src/styles/mcp.css --bundle --format=esm --minify --legal-comments=none --external:/*.woff2 --outdir=src/dist --entry-names=[name].bundle",
+    "build": "esbuild src/scripts/app.js src/scripts/dither.js src/styles/styles.css src/styles/mcp.css --bundle --format=esm --minify --legal-comments=none --external:/*.woff2 --outdir=public --entry-names=[name].bundle && node -e \"require('node:fs').cpSync('src/assets', 'public', { recursive: true })\"",
     "test": "node --test tests/sharing.test.mjs",
     "format": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --write .",
     "format:check": "prettier --config config/prettier.json --ignore-path .gitignore --ignore-path config/prettierignore --check .",
