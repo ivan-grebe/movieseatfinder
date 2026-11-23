@@ -7,6 +7,7 @@ import {
   setSummary,
   startLoadingStages,
 } from "./ui.js";
+import { loadSavedLocation, saveLocation } from "./saved-location.js";
 import { createFilterDropdown } from "./filter-dropdown.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
@@ -956,10 +957,15 @@ function bindEvents() {
     } else if (!preciseLocation) {
       setStatus(locationStatus, "");
     }
+    if (hasValidZip()) {
+      saveLocation({ zip });
+    }
     queueCriteriaRefresh();
   });
   radiusInput.addEventListener("input", () => {
-    enforceRadius();
+    if (enforceRadius()) {
+      saveLocation({ radius: Number(radiusInput.value) });
+    }
     queueCriteriaRefresh();
   });
   [startDateInput, endDateInput].forEach((input) =>
@@ -1019,6 +1025,10 @@ async function initialize() {
 
   let shouldSearchFromUrl = false;
   if (!sharedSearch) {
+    // Saved values fill the form first, so a link's own ZIP or radius still wins.
+    const { radius, zip } = loadSavedLocation();
+    zipInput.value = zip || zipInput.value;
+    radiusInput.value = radius || radiusInput.value;
     shouldSearchFromUrl = applyQueryParams();
   }
   document.body.classList.toggle("shared-search", sharedSearch);
