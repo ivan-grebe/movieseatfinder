@@ -95,14 +95,21 @@ def seat_positioner(seats):
     return position
 
 
+def neighbor_ids(seat):
+    return {seat.get(key) for key in NEIGHBOR_KEYS}
+
+
 def seats_touch(left, right, use_links):
+    """Whether `right` sits directly to the right of `left` in the same row.
+
+    Some AMC and Regal maps number columns straight across an aisle; only their neighbor links
+    show the gap (checked on live maps, 2026-11-22).
+    """
     if right.get("column", 0) != left.get("column", 0) + 1:
         return False
     if not use_links:
         return True
-    return left.get("id") in {right.get(key) for key in NEIGHBOR_KEYS} or right.get("id") in {
-        left.get(key) for key in NEIGHBOR_KEYS
-    }
+    return left.get("id") in neighbor_ids(right) or right.get("id") in neighbor_ids(left)
 
 
 def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
@@ -116,6 +123,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     if not available:
         return []
 
+    # Maps without any neighbor links fall back to consecutive columns alone.
     use_links = any(seat.get(key) for seat in seats for key in NEIGHBOR_KEYS)
     position = seat_positioner(seats)
     by_row = {}
