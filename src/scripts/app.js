@@ -1,146 +1,83 @@
-import { addDays, debounce, getJson, todayString } from "./utils.js";
-import { closeCombo, setupCombo } from "./combo.js";
-import {
-  createLoadingIndicator,
-  setButtonBusy,
-  setStatus,
-  setSummary,
-  startLoadingStages,
-} from "./ui.js";
-import { loadSavedLocation, saveLocation } from "./saved-location.js";
-import { createFilterDropdown } from "./filter-dropdown.js";
-import { createResultsView } from "./results.js";
-import { createSeatGrid } from "./seat-grid.js";
+import { setButtonBusy, setStatus } from "./ui.js";
+import { createFormatPicker } from "./format-picker.js";
+import { createLocationFields } from "./location-fields.js";
+import { createMoviePicker } from "./movie-picker.js";
+import { createSearchFlow } from "./search-flow.js";
+import { createSeatPreferences } from "./seat-preferences.js";
+import { createTheatrePicker } from "./theatre-picker.js";
+import { debounce } from "./utils.js";
 import { elements } from "./dom.js";
+import { initializeHalReveal } from "./hal-reveal.js";
 import { logSharedLinkVisit } from "./tracking.js";
+import { setupRegionNotice } from "./region-notice.js";
+
+/*
+ * Wires the search form's sections together: each step unlocks the next, and changing an
+ * earlier step reloads what depends on it.
+ */
 
 const {
   backToSearchButton,
-  regionNotice,
-  dismissRegionNoticeButton,
-  searchForm,
-  zipInput,
-  useLocationButton,
-  locationStatus,
-  radiusInput,
-  radiusStatus,
-  startDateInput,
-  endDateInput,
-  theatreMeta,
-  theatreStatus,
-  theatreFilterContainer,
-  movieGroup,
-  movieMeta,
-  movieStatus,
-  movieInput,
-  movieMenu,
-  formatFilterContainer,
-  formatMeta,
-  formatStatus,
   formatGuide,
   formatGuideButton,
   formatGuideContent,
-  startTimeInput,
-  endTimeInput,
-  timeStatus,
-  adjacentSeatsInput,
-  excludeAccessibleInput,
+  movieGroup,
   preferencesGroup,
-  seatPreferenceHelp,
-  seatPreferenceGrid,
-  editSeatGridButton,
-  selectCenterGridButton,
-  clearGridButton,
-  cancelSeatGridButton,
-  doneSeatGridButton,
-  gridStatus,
   searchButton,
-  summary,
-  resultsToolbar,
+  searchForm,
   sortInput,
-  sortStatus,
-  results,
-  pagination,
 } = elements;
 
-const PAGE_SIZE = 20;
-// The server skips the outside-the-U.S. notice while this cookie is set.
-const REGION_NOTICE_DISMISSED_COOKIE =
-  "regionNoticeDismissed=1; Max-Age=31536000; Path=/; SameSite=Lax";
-const MAX_DATE_RANGE_DAYS = 14;
-let movies = [];
-let selectedMovie = null;
-let selectedMovieTitle = "";
-let movieCombo = null;
-let preciseLocation = null;
-let currentPage = 1;
-let resultsActivity = { kind: "idle" };
-let locationReady = false;
 const sharedToken = /^\/s\/([^/]+)$/u.exec(globalThis.location.pathname)?.[1] || "";
 const sharedSearch = Boolean(sharedToken);
+let locationReady = false;
 
-function createRunGuard() {
-  let current = 0;
-  return {
-    cancel() {
-      current += 1;
-    },
-    start() {
-      const id = ++current;
-      return () => id === current;
-    },
-  };
-}
-
-const theatreLoad = createRunGuard();
-const movieLoad = createRunGuard();
-const formatLoad = createRunGuard();
-
-const theatreFilter = createFilterDropdown(theatreFilterContainer, {
-  allLabel: (count) => `All ${count} nearby theatres`,
-  noun: "theatres",
-  onChange: queueTheatreFilterRefresh,
-  placeholder: "Enter a location first",
-});
-const formatFilter = createFilterDropdown(formatFilterContainer, {
-  allLabel: () => "Any format",
-  noun: "formats",
-  onChange: () => setStatus(formatStatus, ""),
-  placeholder: "Pick a movie first",
-});
-const seatGrid = createSeatGrid(
-  seatPreferenceGrid,
-  gridStatus,
-  selectCenterGridButton,
-  clearGridButton,
-  {
-    cancelButton: cancelSeatGridButton,
-    doneButton: doneSeatGridButton,
-    editButton: editSeatGridButton,
-    help: seatPreferenceHelp,
+const locationFields = createLocationFields({
+  elements,
+  onCriteriaChange: queueCriteriaRefresh,
+  onLocated: () => {
+    setLocationReady(false);
+    refreshTheatresAndMovies();
   },
-);
-const resultsView = createResultsView({
-  getPage: () => currentPage,
-  onPageChange: (page) => runPageChange(page),
-  pagination,
-  results,
-  resultsToolbar,
-  summary,
+  onLocationInvalidated: () => setLocationReady(false),
 });
-
-function hasValidZip() {
-  return /^\d{5}$/u.test(zipInput.value.trim());
-}
-
-function searchInputsReady() {
-  return (
-    locationReady &&
-    selectedMovie !== null &&
-    !theatreFilter.isBusy() &&
-    !movieInput.hasAttribute("aria-busy")
-  );
-}
+const theatres = createTheatrePicker({
+  container: elements.theatreFilterContainer,
+  meta: elements.theatreMeta,
+  onChange: queueTheatreFilterRefresh,
+  onLoadError: showLoaderError,
+  status: elements.theatreStatus,
+});
+const movies = createMoviePicker({
+  input: elements.movieInput,
+  menu: elements.movieMenu,
+  meta: elements.movieMeta,
+  onBusyChange: syncSearchButton,
+  onLoadError: showLoaderError,
+  onPick: loadFormats,
+  onSelectionChange: () => {
+    syncPreferencesReady();
+    syncSearchButton();
+    formats.reset();
+  },
+  status: elements.movieStatus,
+});
+const formats = createFormatPicker({
+  container: elements.formatFilterContainer,
+  meta: elements.formatMeta,
+  onLoadError: showLoaderError,
+  status: elements.formatStatus,
+});
+const preferences = createSeatPreferences(elements);
+const search = createSearchFlow({
+  ...elements,
+  searchParams,
+  setSearchBusy: (busy, label) => {
+    setButtonBusy(searchButton, busy, label);
+    syncSearchButton();
+  },
+  validate: validateSearchInputs,
+});
 
 function setGroupReady(group, ready) {
   group.classList.toggle("is-locked", !ready);
@@ -153,14 +90,20 @@ function setGroupReady(group, ready) {
 }
 
 function syncPreferencesReady() {
-  setGroupReady(preferencesGroup, locationReady && selectedMovie !== null);
+  setGroupReady(preferencesGroup, locationReady && movies.selected() !== null);
 }
 
 /** Enable the search button once inputs are ready, unless a search is running. */
 function syncSearchButton() {
-  if (!searchButton.hasAttribute("aria-busy")) {
-    searchButton.disabled = !searchInputsReady();
+  if (searchButton.hasAttribute("aria-busy")) {
+    return;
   }
+  searchButton.disabled = !(
+    locationReady &&
+    movies.selected() !== null &&
+    !theatres.isBusy() &&
+    !movies.isBusy()
+  );
 }
 
 function setLocationReady(ready) {
@@ -170,740 +113,173 @@ function setLocationReady(ready) {
   syncSearchButton();
 }
 
-function setSearchButtonBusy(busy, label) {
-  setButtonBusy(searchButton, busy, label);
-  syncSearchButton();
-}
-
-function normalizedTitle(value) {
-  return value
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/gu, " ")
-    .trim();
-}
-
-function movieWithTitle(title) {
-  const normalized = normalizedTitle(title);
-  return movies.find((movie) => normalizedTitle(movie.title) === normalized) || null;
-}
-
-function setComboLoading(input, menu, disabled, busy = disabled) {
-  input.disabled = disabled;
-  if (busy) {
-    input.setAttribute("aria-busy", "true");
-  } else {
-    input.removeAttribute("aria-busy");
-  }
-  if (disabled) {
-    closeCombo(input, menu);
-  }
-  syncSearchButton();
-}
-
-function setMovieCountMeta() {
-  setStatus(movieMeta, `${movies.length} showing`);
-}
-
-function resetFormats() {
-  formatLoad.cancel();
-  formatFilter.setOptions([]);
-  setStatus(formatMeta, "");
-  setStatus(formatStatus, "");
-}
-
-function clearMovieSelection({ rememberTitle = false } = {}) {
-  selectedMovie = null;
-  syncPreferencesReady();
-  syncSearchButton();
-  if (!rememberTitle) {
-    selectedMovieTitle = "";
-  }
-  resetFormats();
-}
-
-function selectMovie(movie) {
-  selectedMovie = movie;
-  syncPreferencesReady();
-  syncSearchButton();
-  selectedMovieTitle = movie.title;
-  movieInput.value = movie.title;
-  movieInput.setCustomValidity("");
-  resetFormats();
-  setMovieCountMeta();
-  setStatus(movieStatus, "");
-}
-
-function resolveTypedMovie() {
-  const typedMovie = movieInput.value.trim();
-  const exactMovie = movieWithTitle(typedMovie);
-  if (exactMovie) {
-    selectMovie(exactMovie);
-    return true;
-  }
-  clearMovieSelection();
-  movieInput.setCustomValidity("Select an exact movie from the list before searching.");
-  setStatus(movieStatus, "Choose one of the movies shown in the list.", "error");
-  return false;
-}
-
-function hasSearchLocation() {
-  return hasValidZip() || preciseLocation !== null;
-}
-
-function reportRequiredField(input, message) {
-  input.setCustomValidity(message);
-  input.reportValidity();
-}
-
-function hasValidRadius() {
-  const radius = Number(radiusInput.value);
-  return radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100;
-}
-
-function enforceRadius(report = false) {
-  const valid = hasValidRadius();
-  if (valid) {
-    radiusInput.setCustomValidity("");
-    setStatus(radiusStatus, "");
-    return true;
-  }
-  radiusInput.setCustomValidity("Enter a radius between 1 and 100 miles.");
-  setStatus(radiusStatus, "Use a radius from 1 to 100 miles.", "error");
-  if (report) {
-    radiusInput.reportValidity();
-  }
-  return false;
-}
-
-function hasSearchBasics() {
-  return hasSearchLocation() && enforceRadius();
-}
-
-function locationParams(params) {
-  if (preciseLocation) {
-    params.set("lat", preciseLocation.latitude);
-    params.set("lon", preciseLocation.longitude);
-  }
-  return params;
-}
-
-function baseParams() {
-  const params = locationParams(
-    new URLSearchParams({
-      endDate: endDateInput.value,
-      radius: radiusInput.value,
-      startDate: startDateInput.value,
-      zip: zipInput.value.trim(),
-    }),
-  );
-  const { include, exclude } = theatreFilter.params();
-  include.forEach((name) => params.append("includeTheatre", name));
-  exclude.forEach((name) => params.append("excludeTheatre", name));
-  return params;
-}
-
-function formatParam() {
-  return formatFilter.isAll() ? "any" : formatFilter.checked().join(",");
-}
-
+/** Show a lookup error on its field, or on the ZIP when the location itself is the problem. */
 function showLoaderError(error, status) {
   if (error.code === "location") {
     setLocationReady(false);
-    zipInput.setCustomValidity(error.message);
-    setStatus(locationStatus, error.message, "error");
+    locationFields.showError(error.message);
     setStatus(status, "");
     return;
   }
   setStatus(status, error.message, "error");
 }
 
-async function loadTheatres() {
-  const isCurrent = theatreLoad.start();
-  if (!hasSearchBasics()) {
-    theatreFilter.setOptions([]);
-    theatreFilter.setBusy(false);
-    setComboLoading(movieInput, movieMenu, true, false);
-    setStatus(theatreMeta, "");
-    setStatus(theatreStatus, "");
-    return false;
-  }
+/** Where and when to search, narrowed to the chosen theatres. */
+function criteriaParams() {
+  return theatres.appendParams(locationFields.criteriaParams());
+}
 
-  theatreFilter.setBusy(true);
-  setComboLoading(movieInput, movieMenu, true);
-  setStatus(theatreMeta, "Loading…", "loading");
-  setStatus(theatreStatus, "");
-  try {
-    const params = locationParams(
-      new URLSearchParams({
-        radius: radiusInput.value,
-        zip: zipInput.value.trim(),
-      }),
-    );
-    const data = await getJson(`/api/theatres?${params}`);
-    if (!isCurrent()) {
-      return null;
-    }
-    theatreFilter.setOptions(data.theatres.map((theatre) => theatre.name));
-    theatreFilter.setBusy(false);
-    setLocationReady(true);
-    zipInput.setCustomValidity("");
-    if (!preciseLocation) {
-      setStatus(locationStatus, "");
-    }
-    setStatus(theatreMeta, `${data.theatres.length} nearby`);
-    setStatus(theatreStatus, "");
-    return true;
-  } catch (error) {
-    if (!isCurrent()) {
-      return null;
-    }
-    theatreFilter.setOptions([]);
-    theatreFilter.setBusy(false);
-    setComboLoading(movieInput, movieMenu, true, false);
-    setStatus(theatreMeta, "");
-    showLoaderError(error, theatreStatus);
+async function loadTheatres() {
+  if (!locationFields.hasSearchBasics()) {
+    theatres.clear();
+    movies.setLoading(true, false);
     return false;
   }
+  movies.setLoading(true);
+  const loaded = await theatres.loadNear(locationFields.areaParams());
+  if (loaded) {
+    setLocationReady(true);
+    locationFields.markResolved();
+  } else if (loaded === false) {
+    movies.setLoading(true, false);
+  }
+  return loaded;
 }
 
 async function loadMovies() {
-  const isCurrent = movieLoad.start();
-  if (!hasSearchBasics()) {
-    movies = [];
-    setComboLoading(movieInput, movieMenu, true, false);
-    setStatus(movieMeta, "");
-    clearMovieSelection();
-    setStatus(movieStatus, "");
-    return;
-  }
-
-  setComboLoading(movieInput, movieMenu, true);
-  setStatus(movieMeta, "Loading…", "loading");
-  setStatus(movieStatus, "");
-  movies = [];
-  clearMovieSelection({ rememberTitle: true });
-  try {
-    const data = await getJson(`/api/movies?${baseParams()}`);
-    if (!isCurrent()) {
-      return;
-    }
-    movies = data.movies;
-    setComboLoading(movieInput, movieMenu, false);
-    setMovieCountMeta();
-    selectedMovie = movieWithTitle(selectedMovieTitle);
-    const typedMovie = movieInput.value.trim();
-    if (selectedMovie) {
-      selectMovie(selectedMovie);
-      closeCombo(movieInput, movieMenu);
-    } else if (typedMovie) {
-      if (!resolveTypedMovie() && document.activeElement === movieInput) {
-        movieCombo.refresh();
-      }
-    } else {
-      setStatus(movieStatus, "");
-      closeCombo(movieInput, movieMenu);
-    }
-  } catch (error) {
-    if (!isCurrent()) {
-      return;
-    }
-    setComboLoading(movieInput, movieMenu, true, false);
-    setStatus(movieMeta, "");
-    showLoaderError(error, movieStatus);
+  if (locationFields.hasSearchBasics()) {
+    await movies.loadFor(criteriaParams());
+  } else {
+    movies.disable();
   }
 }
 
 async function loadFormats() {
-  const movieTitle = selectedMovie?.title;
-  const isCurrent = formatLoad.start();
-  setStatus(formatMeta, "");
-  setStatus(formatStatus, "");
-  if (!movieTitle || !hasSearchBasics()) {
-    formatFilter.setOptions([]);
+  const movie = movies.selected();
+  if (!movie || !locationFields.hasSearchBasics()) {
+    formats.reset();
     return;
   }
-
-  try {
-    setStatus(formatMeta, "Loading…", "loading");
-    const params = baseParams();
-    params.set("movie", movieTitle);
-    const data = await getJson(`/api/formats?${params}`);
-    if (!isCurrent() || selectedMovie?.title !== movieTitle) {
-      return;
-    }
-    formatFilter.setOptions(data.formats);
-    setStatus(formatMeta, "");
-    setStatus(formatStatus, "");
-  } catch (error) {
-    if (!isCurrent() || selectedMovie?.title !== movieTitle) {
-      return;
-    }
-    formatFilter.setOptions([]);
-    setStatus(formatMeta, "");
-    showLoaderError(error, formatStatus);
-  }
-}
-
-function showResultsSpinner(message) {
-  sortStatus.replaceChildren(...createLoadingIndicator(message));
-}
-
-function startResultsActivity(activity) {
-  finishResultsActivity();
-  resultsActivity = activity;
-  sortInput.disabled = true;
-  sortStatus.replaceChildren();
-  if (activity.kind === "searching") {
-    resultsView.endPageLoading();
-    activity.stopLoadingStages = startLoadingStages((stage) => setSearchButtonBusy(true, stage));
-  } else if (activity.kind === "paging") {
-    resultsView.setPageLoading();
-    showResultsSpinner("Loading page");
-  } else if (activity.kind === "reordering") {
-    resultsView.beginReorder();
-    showResultsSpinner("Reordering results");
-  }
-  return () => resultsActivity === activity;
-}
-
-function finishResultsActivity({ pageError = "", restoreScroll = false, sortMessage = "" } = {}) {
-  const activity = resultsActivity;
-  if (activity.kind === "idle") {
-    return;
-  }
-  resultsActivity = { kind: "idle" };
-  if (activity.kind === "searching") {
-    activity.stopLoadingStages();
-    setSearchButtonBusy(false);
-  } else if (activity.kind === "paging") {
-    resultsView.endPageLoading(pageError);
-  } else if (activity.kind === "reordering") {
-    resultsView.endReorder();
-    if (restoreScroll) {
-      globalThis.requestAnimationFrame(() => window.scrollTo(window.scrollX, activity.scrollY));
-    }
-  }
-  sortInput.disabled = false;
-  sortStatus.textContent = sortMessage;
-}
-
-function validateTimeWindow() {
-  const invalid = startTimeInput.value > endTimeInput.value;
-  const message = invalid ? "Latest time must be on or after earliest time." : "";
-  endTimeInput.setCustomValidity(message);
-  endTimeInput.setAttribute("aria-invalid", String(invalid));
-  setStatus(timeStatus, message, invalid ? "error" : "");
-  return !invalid;
-}
-
-function validateSearchInputs() {
-  syncEndDateBounds();
-  if (!validateTimeWindow()) {
-    endTimeInput.reportValidity();
-    return false;
-  }
-  if (!hasSearchLocation()) {
-    reportRequiredField(zipInput, "Enter a ZIP code or allow location access first.");
-    return false;
-  }
-  if (!enforceRadius(true)) {
-    return false;
-  }
-  if (theatreFilter.isBusy() || movieInput.hasAttribute("aria-busy")) {
-    return false;
-  }
-  if (theatreFilter.isEmpty()) {
-    setStatus(theatreStatus, "Pick at least one theatre.", "error");
-    return false;
-  }
-  if (!selectedMovie && !resolveTypedMovie()) {
-    reportRequiredField(movieInput, "Select an exact movie from the list before searching.");
-    return false;
-  }
-  if (formatFilter.isEmpty()) {
-    setStatus(formatStatus, "Pick at least one format.", "error");
-    return false;
-  }
-  return true;
-}
-
-function searchParams() {
-  const params = baseParams();
-  params.set("movie", selectedMovie.title);
-  params.set("format", formatParam());
-  params.set("startTime", startTimeInput.value);
-  params.set("endTime", endTimeInput.value);
-  params.set("adjacentSeats", adjacentSeatsInput.value);
-  params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
-  const selectedCells = seatGrid.values();
-  if (selectedCells.length > 0) {
-    params.set("seatGrid", selectedCells.join(","));
-  }
-  return params;
-}
-
-async function fetchSearchResults() {
-  const params = searchParams();
-  params.set("page", currentPage);
-  params.set("pageSize", PAGE_SIZE);
-  params.set("sort", sortInput.value);
-  const data = await getJson(`/api/search?${params}`);
-  params.set("page", data.page);
-  params.delete("pageSize");
-  params.delete("lat");
-  params.delete("lon");
-  params.set("zip", data.zipCode);
-  const url = new URL("/", globalThis.location.origin);
-  url.search = params.toString();
-  return { data, searchUrl: url.href };
-}
-
-function rememberSearch(searchUrl, replaceHistory = false) {
-  const url = new URL(searchUrl);
-  if (globalThis.location.href !== url.href) {
-    if (replaceHistory) {
-      globalThis.history.replaceState(null, "", url.href);
-    } else {
-      globalThis.history.pushState(null, "", url.href);
-    }
-  }
-}
-
-async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
-  if (!validateSearchInputs()) {
-    return;
-  }
-  const isCurrent = startResultsActivity({ kind: "searching" });
-  setSummary(summary, "", false);
-  try {
-    const { data, searchUrl } = await fetchSearchResults();
-    if (!isCurrent()) {
-      return;
-    }
-    rememberSearch(searchUrl, replaceHistory);
-    currentPage = data.page;
-    resultsView.render(data, { searchUrl });
-  } catch (error) {
-    if (!isCurrent()) {
-      return;
-    }
-    resultsView.renderError(error.message);
-  }
-  finishResultsActivity();
-  document.body.classList.remove("shared-loading");
-  if (scrollToResults) {
-    const section = results.closest("section");
-    section.focus({ preventScroll: true });
-    section.scrollIntoView({ behavior: "instant", block: "start" });
-  }
-}
-
-async function runPageChange(page) {
-  if (!validateSearchInputs()) {
-    return;
-  }
-  const previousPage = currentPage;
-  const isCurrent = startResultsActivity({ kind: "paging" });
-  currentPage = page;
-  try {
-    const { data, searchUrl } = await fetchSearchResults();
-    if (!isCurrent()) {
-      return;
-    }
-    rememberSearch(searchUrl);
-    resultsView.render(data, { isUpdate: true, searchUrl });
-    const firstResult = results.firstElementChild;
-    firstResult.tabIndex = -1;
-    firstResult.focus({ preventScroll: true });
-    firstResult.scrollIntoView({ behavior: "instant", block: "start" });
-    finishResultsActivity();
-  } catch {
-    if (!isCurrent()) {
-      return;
-    }
-    currentPage = previousPage;
-    finishResultsActivity({ pageError: `Couldn't load page ${page}` });
-  }
-}
-
-async function runReorder() {
-  if (!validateSearchInputs()) {
-    return;
-  }
-  const isCurrent = startResultsActivity({ kind: "reordering", scrollY: window.scrollY });
-  try {
-    const { data, searchUrl } = await fetchSearchResults();
-    if (!isCurrent()) {
-      return;
-    }
-    rememberSearch(searchUrl);
-    resultsView.render(data, { isUpdate: true, searchUrl });
-    finishResultsActivity({ restoreScroll: true });
-  } catch {
-    if (!isCurrent()) {
-      return;
-    }
-    finishResultsActivity({ restoreScroll: true, sortMessage: "Try again" });
-  }
-}
-
-function applyQueryParams() {
-  const params = new URLSearchParams(globalThis.location.search);
-  const inputParams = {
-    adjacentSeats: adjacentSeatsInput,
-    endDate: endDateInput,
-    endTime: endTimeInput,
-    movie: movieInput,
-    radius: radiusInput,
-    sort: sortInput,
-    startDate: startDateInput,
-    startTime: startTimeInput,
-    zip: zipInput,
-  };
-  Object.entries(inputParams).forEach(([name, input]) => {
-    if (params.has(name)) {
-      input.value = params.get(name);
-    }
-  });
-  const includedTheatres = params.getAll("includeTheatre");
-  if (params.get("theatre")) {
-    // Older links name a single theatre.
-    includedTheatres.push(params.get("theatre").trim());
-  }
-  theatreFilter.select({
-    exclude: params.getAll("excludeTheatre"),
-    include: includedTheatres,
-  });
-  if (params.has("movie")) {
-    selectedMovieTitle = params.get("movie").trim();
-  }
-  if (sortInput.selectedIndex === -1) {
-    sortInput.value = "earliest";
-  }
-  if (params.has("excludeAccessible")) {
-    excludeAccessibleInput.checked = params.get("excludeAccessible") === "1";
-  }
-  if (params.has("seatGrid")) {
-    seatGrid.select(params.get("seatGrid").split(","));
-  }
-  if (params.has("lat") && params.has("lon")) {
-    const latitude = Number(params.get("lat"));
-    const longitude = Number(params.get("lon"));
-    if (
-      Number.isFinite(latitude) &&
-      Math.abs(latitude) <= 90 &&
-      Number.isFinite(longitude) &&
-      Math.abs(longitude) <= 180
-    ) {
-      preciseLocation = { latitude, longitude };
-      setStatus(locationStatus, "Using location");
-    }
-  }
-  const page = Number(params.get("page"));
-  if (Number.isSafeInteger(page) && page > 0) {
-    currentPage = page;
-  }
-  return params.has("movie");
-}
-
-function syncEndDateBounds() {
-  const today = todayString();
-  startDateInput.min = today;
-  if (startDateInput.value && startDateInput.value < today) {
-    startDateInput.value = today;
-  }
-  endDateInput.min = startDateInput.value;
-  endDateInput.max = addDays(startDateInput.value, MAX_DATE_RANGE_DAYS);
-  if (endDateInput.value && endDateInput.value < startDateInput.value) {
-    endDateInput.value = startDateInput.value;
-  }
-  if (endDateInput.value && endDateInput.value > endDateInput.max) {
-    endDateInput.value = endDateInput.max;
-  }
+  await formats.loadFor(
+    criteriaParams(),
+    movie.title,
+    () => movies.selected()?.title === movie.title,
+  );
 }
 
 async function refreshTheatresAndMovies() {
-  if (!hasSearchLocation() || !hasValidRadius()) {
-    if (!hasSearchLocation()) {
+  if (!locationFields.hasSearchLocation() || !locationFields.hasValidRadius()) {
+    if (!locationFields.hasSearchLocation()) {
       setLocationReady(false);
     }
-    theatreLoad.cancel();
-    movieLoad.cancel();
-    formatLoad.cancel();
-    theatreFilter.setOptions([]);
-    theatreFilter.setBusy(false);
-    movies = [];
-    setComboLoading(movieInput, movieMenu, true, false);
-    setStatus(theatreMeta, "");
-    setStatus(movieMeta, "");
-    clearMovieSelection();
-    [theatreStatus, movieStatus, formatStatus].forEach((status) => setStatus(status, ""));
+    theatres.clear();
+    movies.disable();
     return;
   }
-  clearMovieSelection({ rememberTitle: true });
+  movies.clearSelection({ rememberTitle: true });
   const theatresLoaded = await loadTheatres();
   if (theatresLoaded === null) {
     return;
   }
   if (!theatresLoaded) {
-    movieLoad.cancel();
-    movies = [];
-    setStatus(movieMeta, "");
-    setStatus(movieStatus, "");
+    movies.disable({ rememberTitle: true });
     return;
   }
   await loadMovies();
-  if (selectedMovie) {
+  if (movies.selected()) {
     await loadFormats();
   }
 }
 
-function requestLocation() {
-  if (!navigator.geolocation) {
-    setStatus(locationStatus, "Location unavailable — use ZIP.", "error");
-    return;
-  }
-  setStatus(locationStatus, "Requesting your location…", "loading");
-  useLocationButton.disabled = true;
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      preciseLocation = position.coords;
-      setLocationReady(false);
-      zipInput.value = "";
-      zipInput.setCustomValidity("");
-      setStatus(locationStatus, "Using location", "");
-      useLocationButton.disabled = false;
-      refreshTheatresAndMovies();
-    },
-    () => {
-      preciseLocation = null;
-      setStatus(locationStatus, "Location blocked — use ZIP.", "error");
-      useLocationButton.disabled = false;
-    },
-    { enableHighAccuracy: true, maximumAge: 300_000, timeout: 10_000 },
-  );
-}
-
 const autoRefresh = debounce(refreshTheatresAndMovies, 650);
 
+/** Reload theatres and movies once ZIP, radius or date edits settle. */
 function queueCriteriaRefresh() {
-  setStatus(theatreMeta, "");
-  setStatus(movieMeta, "");
-  clearMovieSelection({ rememberTitle: true });
-  theatreFilter.setBusy(true);
-  setComboLoading(movieInput, movieMenu, true);
+  theatres.waitForReload();
+  movies.waitForReload();
   autoRefresh();
 }
 
 const theatreFilterRefresh = debounce(async () => {
   await loadMovies();
-  if (selectedMovie) {
+  if (movies.selected()) {
     await loadFormats();
   }
 }, 400);
 
 /** Reload the movies (and formats) nearby once the theatre choice settles. */
 function queueTheatreFilterRefresh() {
-  setStatus(theatreStatus, "");
-  setStatus(movieMeta, "");
-  clearMovieSelection({ rememberTitle: true });
-  setComboLoading(movieInput, movieMenu, true);
+  movies.waitForReload();
   theatreFilterRefresh();
 }
 
-function initializeHalReveal() {
-  const revealWindow = document.querySelector(".hal-easter-egg");
-  const locationFields = document.querySelector(".location-group > .grid");
-  const movieGroup = document.querySelector(".movie-group");
-  const movieFields = movieGroup.querySelector(".grid");
-  const guideBody = document.querySelector(".format-guide-body");
-
-  function sizeImage() {
-    const bottom = guideBody.getBoundingClientRect().bottom;
-    const padding = Number.parseFloat(getComputedStyle(movieGroup).paddingBottom);
-    const sectionPadding = Number.parseFloat(
-      getComputedStyle(locationFields.parentElement).paddingBottom,
-    );
-    const offset = Number.parseFloat(
-      getComputedStyle(revealWindow).getPropertyValue("--hal-offset"),
-    );
-    const height = Math.max(
-      0,
-      bottom + padding - sectionPadding - revealWindow.getBoundingClientRect().top - offset,
-    );
-    revealWindow.style.setProperty("--hal-height", `${height}px`);
-  }
-
-  const observer = new ResizeObserver(sizeImage);
-  observer.observe(locationFields);
-  observer.observe(movieFields);
-  observer.observe(guideBody);
+function validateSearchInputs() {
+  locationFields.syncEndDateBounds();
+  return (
+    preferences.validate() &&
+    locationFields.validate() &&
+    !theatres.isBusy() &&
+    !movies.isBusy() &&
+    theatres.validate() &&
+    movies.validate() &&
+    formats.validate()
+  );
 }
 
-async function loadSharedShowtime() {
-  const isCurrent = startResultsActivity({ kind: "loadingShared" });
-  try {
-    const data = await getJson(`/api/shared-showtime/${sharedToken}`);
-    if (!isCurrent()) {
-      return;
-    }
-    const match = data.matches[0];
-    movieInput.value = match.movieTitle;
-    selectedMovieTitle = match.movieTitle;
-    startDateInput.value = match.date;
-    endDateInput.value = match.date;
-    adjacentSeatsInput.value = data.preferences.adjacentSeats;
-    excludeAccessibleInput.checked = data.preferences.excludeAccessible === "1";
-    seatGrid.select(data.preferences.seatGrid.split(",").filter(Boolean));
-    const url = new URL("/", globalThis.location.origin);
-    url.search = new URLSearchParams(data.preferences).toString();
-    resultsView.render(data, { searchUrl: url.href, shared: true });
-    resultsView.focusShowtime(match.showtimeHashCode);
-  } catch (error) {
-    if (isCurrent()) {
-      resultsView.renderError(error.message);
-    }
-  }
-  if (isCurrent()) {
-    finishResultsActivity();
-    document.body.classList.remove("shared-loading");
-  }
+function searchParams() {
+  const params = criteriaParams();
+  params.set("movie", movies.selected().title);
+  params.set("format", formats.param());
+  return preferences.appendParams(params);
 }
 
-/** Remember the dismissal, then close the dialog once its fade-out finishes. */
-function dismissRegionNotice() {
-  if (regionNotice.classList.contains("is-closing")) {
-    return;
+/** Load theatres, movies and formats for the form's current values. */
+async function loadSearchOptions() {
+  locationFields.syncEndDateBounds();
+  if (!locationFields.hasSearchBasics()) {
+    return false;
   }
-  document.cookie = REGION_NOTICE_DISMISSED_COOKIE;
-  regionNotice.classList.add("is-closing");
-  const fadeOut = regionNotice
-    .getAnimations({ subtree: true })
-    .map((animation) => animation.finished);
-  Promise.allSettled(fadeOut).then(() => {
-    regionNotice.close();
-    regionNotice.classList.remove("is-closing");
-  });
+  if (!(await loadTheatres())) {
+    return false;
+  }
+  await loadMovies();
+  if (!movies.selected()) {
+    return false;
+  }
+  await loadFormats();
+  formats.restore(new URLSearchParams(globalThis.location.search));
+  return true;
+}
+
+/** Fill the form from a search link. Returns whether the link names a movie to search. */
+function applyQueryParams() {
+  const params = new URLSearchParams(globalThis.location.search);
+  locationFields.restore(params);
+  theatres.restore(params);
+  preferences.restore(params);
+  if (params.has("movie")) {
+    movies.remember(params.get("movie"));
+  }
+  if (params.has("sort")) {
+    sortInput.value = params.get("sort");
+  }
+  if (sortInput.selectedIndex === -1) {
+    sortInput.value = "earliest";
+  }
+  search.setPage(Number(params.get("page")));
+  return params.has("movie");
+}
+
+function applySharedShowtime(match, sharedPreferences) {
+  movies.remember(match.movieTitle);
+  locationFields.setDates(match.date, match.date);
+  preferences.restore(new URLSearchParams(sharedPreferences));
 }
 
 function bindEvents() {
-  dismissRegionNoticeButton.addEventListener("click", dismissRegionNotice);
-  regionNotice.addEventListener("cancel", (event) => {
-    event.preventDefault();
-    dismissRegionNotice();
-  });
-  regionNotice.addEventListener("click", (event) => {
-    // Clicks on the dimmed backdrop target the dialog itself, not its content.
-    if (event.target === regionNotice) {
-      dismissRegionNotice();
-    }
-  });
+  setupRegionNotice(elements.regionNotice, elements.dismissRegionNoticeButton);
   backToSearchButton.addEventListener("click", async () => {
-    finishResultsActivity();
-    resultsView.endPageLoading();
-    if (results.childElementCount === 0) {
-      setSummary(summary, "", true);
-    }
+    search.stop();
     document.body.classList.remove("shared-search", "shared-loading");
     globalThis.history.replaceState(null, "", "/");
     const section = searchForm.closest("section");
@@ -920,129 +296,30 @@ function bindEvents() {
     formatGuideContent.setAttribute("aria-hidden", String(!expanded));
     formatGuide.classList.toggle("is-open", expanded);
   });
-  movieCombo = setupCombo(
-    movieInput,
-    movieMenu,
-    () => movies,
-    (movie) => movie.title,
-    (movie) => {
-      selectMovie(movie);
-      loadFormats();
-    },
-  );
   searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    currentPage = 1;
-    runNewSearch();
+    search.searchFromStart();
   });
-  sortInput.addEventListener("change", () => {
-    currentPage = 1;
-    runReorder();
-  });
-  useLocationButton.addEventListener("click", requestLocation);
-  [startTimeInput, endTimeInput].forEach((input) =>
-    input.addEventListener("input", validateTimeWindow),
-  );
-  zipInput.addEventListener("input", () => {
-    setLocationReady(false);
-    zipInput.setCustomValidity("");
-    const zip = zipInput.value.trim();
-    if (zip) {
-      preciseLocation = null;
-      if (/^\d{0,5}$/u.test(zip)) {
-        setStatus(locationStatus, "");
-      } else {
-        setStatus(locationStatus, "Use a 5-digit US ZIP code.", "error");
-      }
-    } else if (!preciseLocation) {
-      setStatus(locationStatus, "");
-    }
-    if (hasValidZip()) {
-      saveLocation({ zip });
-    }
-    queueCriteriaRefresh();
-  });
-  radiusInput.addEventListener("input", () => {
-    if (enforceRadius()) {
-      saveLocation({ radius: Number(radiusInput.value) });
-    }
-    queueCriteriaRefresh();
-  });
-  [startDateInput, endDateInput].forEach((input) =>
-    input.addEventListener("change", () => {
-      syncEndDateBounds();
-      queueCriteriaRefresh();
-    }),
-  );
-  movieInput.addEventListener("change", () => {
-    if (movieInput.value.trim() && !selectedMovie && resolveTypedMovie()) {
-      loadFormats();
-    }
-  });
-  movieInput.addEventListener("input", () => {
-    movieInput.setCustomValidity("");
-    clearMovieSelection();
-    const exactMovie = movieWithTitle(movieInput.value.trim());
-    if (exactMovie) {
-      selectMovie(exactMovie);
-      loadFormats();
-    }
-  });
-}
-
-async function loadSearchOptions() {
-  syncEndDateBounds();
-  if (!hasSearchBasics()) {
-    return false;
-  }
-  const theatresLoaded = await loadTheatres();
-  if (!theatresLoaded) {
-    return false;
-  }
-  await loadMovies();
-  if (!selectedMovie) {
-    return false;
-  }
-  await loadFormats();
-  const formats = new URLSearchParams(globalThis.location.search).get("format");
-  if (formats) {
-    formatFilter.select({
-      include: formats.split(",").filter((format) => format && format !== "any"),
-    });
-  }
-  return true;
+  sortInput.addEventListener("change", () => search.runReorder());
 }
 
 async function initialize() {
   setLocationReady(false);
-  const today = todayString();
-  startDateInput.value = today;
-  endDateInput.value = addDays(today, 7);
   bindEvents();
-  if ("show" in regionNotice.dataset) {
-    regionNotice.showModal();
-  }
-
   let shouldSearchFromUrl = false;
   if (!sharedSearch) {
-    // Saved values fill the form first, so a link's own ZIP or radius still wins.
-    const { radius, zip } = loadSavedLocation();
-    zipInput.value = zip || zipInput.value;
-    radiusInput.value = radius || radiusInput.value;
     shouldSearchFromUrl = applyQueryParams();
   }
   document.body.classList.toggle("shared-search", sharedSearch);
   document.body.classList.toggle("shared-loading", sharedSearch);
   if (sharedSearch) {
     logSharedLinkVisit();
-    results.replaceChildren();
-    setSummary(summary, "Loading shared showtime…", true);
-    await loadSharedShowtime();
+    await search.loadSharedShowtime(sharedToken, applySharedShowtime);
     return;
   }
   const optionsLoaded = await loadSearchOptions();
   if (optionsLoaded && shouldSearchFromUrl) {
-    await runNewSearch({ replaceHistory: true, scrollToResults: true });
+    await search.runNewSearch({ replaceHistory: true, scrollToResults: true });
   }
 }
 

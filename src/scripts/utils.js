@@ -24,6 +24,20 @@ export function formatNiceDate(dateString) {
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short", weekday: "short" });
 }
 
+/** Track the latest run of an async task, so stale results can be ignored. */
+export function createRunGuard() {
+  let current = 0;
+  return {
+    cancel() {
+      current += 1;
+    },
+    start() {
+      const id = ++current;
+      return () => id === current;
+    },
+  };
+}
+
 export function debounce(fn, ms) {
   let timer = 0;
   return (...args) => {
