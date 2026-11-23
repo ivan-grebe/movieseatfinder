@@ -19,26 +19,21 @@ export function createFormatPicker({ container, meta, status, onLoadError }) {
     setStatus(status, "");
   }
 
-  /**
-   * Load formats for a movie. `isStillPicked` guards against the movie changing while the
-   * request is in flight.
-   */
-  async function loadFor(criteriaParams, movieTitle, isStillPicked) {
+  /** Load the formats a movie shows in. Picking another movie resets and cancels this. */
+  async function loadFor(criteriaParams, movieTitle) {
     const isCurrent = load.start();
-    setStatus(meta, "");
+    setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
+    criteriaParams.set("movie", movieTitle);
     try {
-      setStatus(meta, "Loading…", "loading");
-      criteriaParams.set("movie", movieTitle);
       const data = await getJson(`/api/formats?${criteriaParams}`);
-      if (!isCurrent() || !isStillPicked()) {
+      if (!isCurrent()) {
         return;
       }
       filter.setOptions(data.formats);
       setStatus(meta, "");
-      setStatus(status, "");
     } catch (error) {
-      if (!isCurrent() || !isStillPicked()) {
+      if (!isCurrent()) {
         return;
       }
       filter.setOptions([]);

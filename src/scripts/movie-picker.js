@@ -146,7 +146,6 @@ export function createMoviePicker({
     if (selected || resolveTyped()) {
       return true;
     }
-    input.setCustomValidity("Select an exact movie from the list before searching.");
     input.reportValidity();
     return false;
   }

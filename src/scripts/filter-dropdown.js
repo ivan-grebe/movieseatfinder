@@ -149,11 +149,9 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
   }
 
   function setOpen(open) {
-    const isOpen = open && options.length > 0 && !button.disabled;
-    popover.hidden = !isOpen;
-    button.setAttribute("aria-expanded", String(isOpen));
-    container.classList.toggle("is-open", isOpen);
-    if (isOpen && search) {
+    popover.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    if (open && search) {
       search.hidden = options.length <= SEARCHABLE_OPTION_COUNT;
       search.value = "";
       query = "";

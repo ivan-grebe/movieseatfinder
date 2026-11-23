@@ -144,9 +144,9 @@ export function createLocationFields({
     const { radius, zip } = loadSavedLocation();
     zipInput.value = zip || zipInput.value;
     radiusInput.value = radius || radiusInput.value;
-    ["endDate", "radius", "startDate", "zip"].forEach((name) => {
+    Object.entries(inputsByParam).forEach(([name, input]) => {
       if (params.has(name)) {
-        elementsByParam[name].value = params.get(name);
+        input.value = params.get(name);
       }
     });
     if (params.has("lat") && params.has("lon")) {
@@ -194,7 +194,7 @@ export function createLocationFields({
     );
   }
 
-  const elementsByParam = {
+  const inputsByParam = {
     endDate: endDateInput,
     radius: radiusInput,
     startDate: startDateInput,

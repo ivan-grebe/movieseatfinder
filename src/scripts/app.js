@@ -44,6 +44,7 @@ const locationFields = createLocationFields({
 const theatres = createTheatrePicker({
   container: elements.theatreFilterContainer,
   meta: elements.theatreMeta,
+  onBusyChange: syncSearchButton,
   onChange: queueTheatreFilterRefresh,
   onLoadError: showLoaderError,
   status: elements.theatreStatus,
@@ -160,11 +161,12 @@ async function loadFormats() {
     formats.reset();
     return;
   }
-  await formats.loadFor(
-    criteriaParams(),
-    movie.title,
-    () => movies.selected()?.title === movie.title,
-  );
+  await formats.loadFor(criteriaParams(), movie.title);
+}
+
+async function loadMoviesAndFormats() {
+  await loadMovies();
+  await loadFormats();
 }
 
 async function refreshTheatresAndMovies() {
@@ -185,10 +187,7 @@ async function refreshTheatresAndMovies() {
     movies.disable({ rememberTitle: true });
     return;
   }
-  await loadMovies();
-  if (movies.selected()) {
-    await loadFormats();
-  }
+  await loadMoviesAndFormats();
 }
 
 const autoRefresh = debounce(refreshTheatresAndMovies, 650);
@@ -200,12 +199,7 @@ function queueCriteriaRefresh() {
   autoRefresh();
 }
 
-const theatreFilterRefresh = debounce(async () => {
-  await loadMovies();
-  if (movies.selected()) {
-    await loadFormats();
-  }
-}, 400);
+const theatreFilterRefresh = debounce(loadMoviesAndFormats, 400);
 
 /** Reload the movies (and formats) nearby once the theatre choice settles. */
 function queueTheatreFilterRefresh() {

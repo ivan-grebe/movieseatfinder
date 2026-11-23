@@ -61,9 +61,9 @@ export function createSeatPreferences({
 
   /** Fill the preferences from a link or a shared showtime's saved preferences. */
   function restore(params) {
-    ["adjacentSeats", "startTime", "endTime"].forEach((name) => {
+    Object.entries(inputsByParam).forEach(([name, input]) => {
       if (params.has(name)) {
-        inputsByParam[name].value = params.get(name);
+        input.value = params.get(name);
       }
     });
     if (params.has("excludeAccessible")) {

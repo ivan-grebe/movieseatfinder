@@ -3,7 +3,14 @@ import { createFilterDropdown } from "./filter-dropdown.js";
 import { setStatus } from "./ui.js";
 
 /** The Theatres dropdown and the nearby-theatre lookup that fills it. */
-export function createTheatrePicker({ container, meta, status, onChange, onLoadError }) {
+export function createTheatrePicker({
+  container,
+  meta,
+  status,
+  onBusyChange,
+  onChange,
+  onLoadError,
+}) {
   const load = createRunGuard();
   const filter = createFilterDropdown(container, {
     allLabel: (count) => `All ${count} nearby theatres`,
@@ -15,11 +22,16 @@ export function createTheatrePicker({ container, meta, status, onChange, onLoadE
     placeholder: "Enter a location first",
   });
 
+  function setBusy(busy) {
+    filter.setBusy(busy);
+    onBusyChange();
+  }
+
   /** Empty the list, cancelling any lookup in flight. */
   function clear() {
     load.cancel();
     filter.setOptions([]);
-    filter.setBusy(false);
+    setBusy(false);
     setStatus(meta, "");
     setStatus(status, "");
   }
@@ -30,7 +42,7 @@ export function createTheatrePicker({ container, meta, status, onChange, onLoadE
    */
   async function loadNear(areaParams) {
     const isCurrent = load.start();
-    filter.setBusy(true);
+    setBusy(true);
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     try {
@@ -39,7 +51,7 @@ export function createTheatrePicker({ container, meta, status, onChange, onLoadE
         return null;
       }
       filter.setOptions(data.theatres.map((theatre) => theatre.name));
-      filter.setBusy(false);
+      setBusy(false);
       setStatus(meta, `${data.theatres.length} nearby`);
       return true;
     } catch (error) {
@@ -47,7 +59,7 @@ export function createTheatrePicker({ container, meta, status, onChange, onLoadE
         return null;
       }
       filter.setOptions([]);
-      filter.setBusy(false);
+      setBusy(false);
       setStatus(meta, "");
       onLoadError(error, status);
       return false;
@@ -57,7 +69,7 @@ export function createTheatrePicker({ container, meta, status, onChange, onLoadE
   /** Show the dropdown as waiting while ZIP, radius or date edits settle. */
   function waitForReload() {
     setStatus(meta, "");
-    filter.setBusy(true);
+    setBusy(true);
   }
 
   /** Add the theatre choice to request params, as an include or exclude list. */
