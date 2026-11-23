@@ -1,78 +1,26 @@
 """Fandango upstream client: cached theatre/seat-map fetches and showtime normalization."""
 
-import logging
 import re
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from urllib.parse import urlsplit
 
 import requests
-from cachetools import TTLCache
+from cachetools import TTLCache, cached
 
 from .location import filter_theatres_within_radius, http_session
 
-LOGGER = logging.getLogger("movieseatfinder")
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
 # Fandango payloads are untyped JSON, so a missing or reshaped field surfaces as one of these.
 UPSTREAM_ERRORS = (requests.RequestException, KeyError, AttributeError, TypeError)
 
 
-def log_cache_hit(cache_name, age_seconds):
-    """Log cache usage without including a request's search data."""
-    LOGGER.info(
-        "event=cache_hit cache=%s age_ms=%d",
-        cache_name,
-        max(0, round(age_seconds * 1000)),
-    )
-
-
-class TtlCache:
-    """Thread-safe TTL + LRU cache for upstream payloads."""
-
-    def __init__(self, name, ttl_seconds, max_entries):
-        self.name = name
-        self._entries = TTLCache(maxsize=max_entries, ttl=ttl_seconds)
-        self._lock = threading.Lock()
-        self._fetch_locks = {}
-
-    def get(self, key):
-        now = time.monotonic()
-        with self._lock:
-            try:
-                stored_at, value = self._entries[key]
-            except KeyError:
-                return None
-        log_cache_hit(self.name, now - stored_at)
-        return value
-
-    def set(self, key, value):
-        with self._lock:
-            self._entries[key] = (time.monotonic(), value)
-
-    def get_or_fetch(self, key, fetch):
-        """Return the cached value, letting only one thread fetch a missing key."""
-        value = self.get(key)
-        if value is not None:
-            return value
-        with self._lock:
-            key_lock = self._fetch_locks.setdefault(key, threading.Lock())
-        try:
-            with key_lock:
-                value = self.get(key)
-                if value is None:
-                    value = fetch()
-                    self.set(key, value)
-                return value
-        finally:
-            with self._lock:
-                self._fetch_locks.pop(key, None)
-
-
-SEAT_MAP_CACHE = TtlCache("seat_map", ttl_seconds=300, max_entries=200)
-THEATRES_CACHE = TtlCache("theatres", ttl_seconds=300, max_entries=240)
+def upstream_cache(maxsize):
+    """Cache upstream payloads for five minutes; concurrent calls for one key share a fetch."""
+    condition = threading.Condition()
+    return cached(TTLCache(maxsize=maxsize, ttl=300), lock=condition, condition=condition)
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
@@ -286,10 +234,7 @@ def fandango_theatres(zip_code, radius, origin, show_date=None):
     origin so nearby searches share it.
     """
     fetch_radius = min(max(radius * 2, 25), 100)
-    theatres = THEATRES_CACHE.get_or_fetch(
-        (zip_code, fetch_radius, show_date or ""),
-        lambda: _fetch_fandango_theatres(zip_code, fetch_radius, show_date),
-    )
+    theatres = _fetch_fandango_theatres(zip_code, fetch_radius, show_date)
     return filter_theatres_within_radius(theatres, origin[0], origin[1], radius)
 
 
@@ -312,6 +257,7 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin):
     return results
 
 
+@upstream_cache(maxsize=240)
 def _fetch_fandango_theatres(zip_code, radius, show_date=None):
     radius_value = int(radius) if float(radius).is_integer() else radius
     params = {"zipCode": zip_code, "radius": radius_value, "limit": 100}
@@ -421,10 +367,9 @@ def normalize_showtimes(movies):
 def seat_map(showtime_hash):
     if not showtime_hash:
         return None
-    return SEAT_MAP_CACHE.get_or_fetch(
-        showtime_hash,
-        lambda: fandango_json(
-            f"/napi/seatMap/{showtime_hash}",
-            referer="https://www.fandango.com/",
-        ),
-    )
+    return _fetch_seat_map(showtime_hash)
+
+
+@upstream_cache(maxsize=200)
+def _fetch_seat_map(showtime_hash):
+    return fandango_json(f"/napi/seatMap/{showtime_hash}", referer="https://www.fandango.com/")

@@ -265,11 +265,11 @@ class LocationTests(unittest.TestCase):
                 {"name": "Too far", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75}},
             ]
         }
-        with patch.object(fandango, "THEATRES_CACHE", fandango.TtlCache("theatres", 300, 10)):
-            response = TestClient(application.app).get(
-                "/api/theatres",
-                params={"lat": 40, "lon": -75, "radius": 5},
-            )
+        fandango._fetch_fandango_theatres.cache_clear()
+        response = TestClient(application.app).get(
+            "/api/theatres",
+            params={"lat": 40, "lon": -75, "radius": 5},
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
 
