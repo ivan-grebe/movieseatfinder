@@ -147,13 +147,15 @@
                   <span id="theatreFilterLabel">Theatres</span>
                   <span id="theatreMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
-                <button class="filter-button" type="button" aria-expanded="false" aria-controls="theatreFilterPopover" aria-labelledby="theatreFilterLabel theatreFilterValue" aria-describedby="theatreStatus" disabled>
-                  <span id="theatreFilterValue" class="filter-button-label">Enter a location first</span>
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
-                </button>
-                <div id="theatreFilterPopover" class="combo-menu filter-popover" hidden>
-                  <input class="filter-search" type="search" placeholder="Search theatres" aria-label="Search theatres" hidden>
-                  <div class="filter-list" role="group" aria-labelledby="theatreFilterLabel"></div>
+                <div class="filter-anchor">
+                  <button class="filter-button" type="button" aria-expanded="false" aria-controls="theatreFilterPopover" aria-labelledby="theatreFilterLabel theatreFilterValue" aria-describedby="theatreStatus" disabled>
+                    <span id="theatreFilterValue" class="filter-button-label">Enter a location first</span>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                  </button>
+                  <div id="theatreFilterPopover" class="combo-menu filter-popover" hidden>
+                    <input class="filter-search" type="search" placeholder="Search theatres" aria-label="Search theatres" hidden>
+                    <div class="filter-list" role="group" aria-labelledby="theatreFilterLabel"></div>
+                  </div>
                 </div>
                 <div id="theatreStatus" class="status field-status" aria-live="polite"></div>
             </div>
@@ -188,12 +190,14 @@
                   <span id="formatFilterLabel">Format</span>
                   <span id="formatMeta" class="field-meta" aria-live="polite" aria-atomic="true"></span>
                 </span>
-                <button class="filter-button" type="button" aria-expanded="false" aria-controls="formatFilterPopover" aria-labelledby="formatFilterLabel formatFilterValue" aria-describedby="formatStatus" disabled>
-                  <span id="formatFilterValue" class="filter-button-label">Pick a movie first</span>
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
-                </button>
-                <div id="formatFilterPopover" class="combo-menu filter-popover" hidden>
-                  <div class="filter-list" role="group" aria-labelledby="formatFilterLabel"></div>
+                <div class="filter-anchor">
+                  <button class="filter-button" type="button" aria-expanded="false" aria-controls="formatFilterPopover" aria-labelledby="formatFilterLabel formatFilterValue" aria-describedby="formatStatus" disabled>
+                    <span id="formatFilterValue" class="filter-button-label">Pick a movie first</span>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                  </button>
+                  <div id="formatFilterPopover" class="combo-menu filter-popover" hidden>
+                    <div class="filter-list" role="group" aria-labelledby="formatFilterLabel"></div>
+                  </div>
                 </div>
                 <div id="formatStatus" class="status field-status" aria-live="polite"></div>
               <div id="formatGuide" class="format-guide">
