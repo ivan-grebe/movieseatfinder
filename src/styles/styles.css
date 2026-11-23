@@ -2671,6 +2671,20 @@ input[type="time"] {
       0 22px 42px rgba(0, 0, 0, 0.5);
   }
 
+  /* Dark red text is unreadable on the dark menu, so highlighted items stay white. */
+  .combo-option:hover,
+  .combo-option:focus,
+  .combo-option.is-active,
+  .combo-option[aria-selected="true"],
+  .filter-row:hover {
+    background: rgba(var(--accent-rgb), 0.3);
+    color: var(--ink);
+  }
+
+  .filter-only {
+    color: #f27b83;
+  }
+
   .seat-grid {
     border-color: rgba(255, 255, 255, 0.05);
     background: linear-gradient(180deg, rgba(32, 31, 31, 0.9), rgba(24, 24, 25, 0.86));
