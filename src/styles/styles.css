@@ -608,20 +608,10 @@ select {
   background: #fff;
 }
 
+/* Some, but not all, options picked: a lighter fill than a checked box. */
 .check input:indeterminate + .check-box {
   border-color: var(--button-deep);
-  background: var(--button-red);
-}
-
-.check input:indeterminate + .check-box::after {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 3.5px;
-  width: 8px;
-  height: 2px;
-  border-radius: 1px;
-  background: #fff;
+  background: rgba(var(--accent-rgb), 0.4);
 }
 
 .filter-search {
@@ -1090,18 +1080,6 @@ a:focus-visible {
 .check input:focus-visible + .check-box {
   outline: 2px solid var(--accent-deep);
   outline-offset: 2px;
-}
-
-.check input:checked + .check-box::after {
-  content: "";
-  position: absolute;
-  left: 5.5px;
-  top: 2px;
-  width: 5px;
-  height: 9px;
-  border-right: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  transform: rotate(42deg);
 }
 
 .status {
@@ -2406,11 +2384,6 @@ input[type="time"] {
     width: 18px;
     height: 18px;
     border-radius: 7px;
-  }
-
-  .check input:checked + .check-box::after {
-    left: 5px;
-    top: 2px;
   }
 
   .preferences-group .seat-help {
