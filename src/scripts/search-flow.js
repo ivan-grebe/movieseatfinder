@@ -1,8 +1,16 @@
+import {
+  canServePage,
+  narrowedResults,
+  pageOf,
+  resortedResults,
+  streamSearch,
+} from "./result-stream.js";
 import { createLoadingIndicator, setSummary, startLoadingStages } from "./ui.js";
 import { createResultsView } from "./results.js";
 import { getJson } from "./utils.js";
 
 const PAGE_SIZE = 20;
+const LOADING_MORE = "Checking more showtimes…";
 
 function rememberSearch(searchUrl, replaceHistory = false) {
   const url = new URL(searchUrl);
@@ -16,9 +24,23 @@ function rememberSearch(searchUrl, replaceHistory = false) {
   }
 }
 
+function searchUrlFor(params, page, sort, zipCode) {
+  const query = new URLSearchParams(params);
+  query.set("page", page);
+  query.set("sort", sort);
+  query.delete("lat");
+  query.delete("lon");
+  query.set("zip", zipCode);
+  const url = new URL("/", globalThis.location.origin);
+  url.search = query.toString();
+  return url.href;
+}
+
 /**
  * Runs searches and keeps the results area in step: one activity at a time (a new search,
  * a page change, a re-sort, or loading a shared showtime), each cancelling the last.
+ * Results stream in, so later pages, re-sorts and narrowed searches can often be served
+ * from what has already loaded.
  */
 export function createSearchFlow({
   pagination,
@@ -33,6 +55,8 @@ export function createSearchFlow({
 }) {
   let currentPage = 1;
   let activity = { kind: "idle" };
+  // The current search's results: streaming, or derived locally from a finished stream.
+  let loaded = null;
   const resultsView = createResultsView({
     getPage: () => currentPage,
     onPageChange: (page) => runPageChange(page),
@@ -86,30 +110,63 @@ export function createSearchFlow({
     return () => activity === next;
   }
 
-  async function fetchResults() {
-    const params = searchParams();
-    params.set("page", currentPage);
-    params.set("pageSize", PAGE_SIZE);
-    params.set("sort", sortInput.value);
-    const data = await getJson(`/api/search?${params}`);
-    params.set("page", data.page);
-    params.delete("pageSize");
-    params.delete("lat");
-    params.delete("lon");
-    params.set("zip", data.zipCode);
-    const url = new URL("/", globalThis.location.origin);
-    url.search = params.toString();
-    return { data, searchUrl: url.href };
+  /** A page of the current search: from loaded results when they cover it, else the server. */
+  async function loadPage(page) {
+    const results = loaded;
+    let data = null;
+    if (canServePage(results, page, PAGE_SIZE)) {
+      await results.until((current) => current.matches.length > page * PAGE_SIZE);
+      if (results.complete || results.matches.length > page * PAGE_SIZE) {
+        data = pageOf(results, page, PAGE_SIZE);
+      }
+    }
+    if (!data) {
+      // The stream stopped at its seat-map cap before reaching this page.
+      const query = new URLSearchParams(results.params);
+      query.set("page", page);
+      query.set("pageSize", PAGE_SIZE);
+      query.set("sort", results.sort);
+      data = await getJson(`/api/search?${query}`);
+    }
+    return { data, searchUrl: searchUrlFor(results.params, data.page, results.sort, data.zipCode) };
+  }
+
+  /** Note that more showtimes are still being checked, until the stream finishes. */
+  function showLoadingMore(results) {
+    if (results.done) {
+      return;
+    }
+    sortStatus.textContent = LOADING_MORE;
+    results
+      .until(() => false)
+      .catch(() => undefined)
+      .finally(() => {
+        if (activity.kind === "idle" && sortStatus.textContent === LOADING_MORE) {
+          sortStatus.textContent = "";
+        }
+      });
+  }
+
+  /** Use results narrowed from the last search when they answer it, else stream a new one. */
+  function startResults(params, sort) {
+    const narrowed = loaded && narrowedResults(loaded, params);
+    loaded?.abort();
+    if (narrowed) {
+      loaded = narrowed.sort === sort ? narrowed : resortedResults(narrowed, sort);
+    } else {
+      loaded = streamSearch(params, sort);
+    }
   }
 
   async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
     if (!validate()) {
       return;
     }
+    startResults(searchParams(), sortInput.value);
     const isCurrent = startActivity({ kind: "searching" });
     setSummary(summary, "", false);
     try {
-      const { data, searchUrl } = await fetchResults();
+      const { data, searchUrl } = await loadPage(currentPage);
       if (!isCurrent()) {
         return;
       }
@@ -123,6 +180,7 @@ export function createSearchFlow({
       resultsView.renderError(error.message);
     }
     finishActivity();
+    showLoadingMore(loaded);
     document.body.classList.remove("shared-loading");
     if (scrollToResults) {
       const section = results.closest("section");
@@ -132,14 +190,11 @@ export function createSearchFlow({
   }
 
   async function runPageChange(page) {
-    if (!validate()) {
-      return;
-    }
     const previousPage = currentPage;
     const isCurrent = startActivity({ kind: "paging" });
     currentPage = page;
     try {
-      const { data, searchUrl } = await fetchResults();
+      const { data, searchUrl } = await loadPage(page);
       if (!isCurrent()) {
         return;
       }
@@ -150,6 +205,7 @@ export function createSearchFlow({
       firstResult.focus({ preventScroll: true });
       firstResult.scrollIntoView({ behavior: "instant", block: "start" });
       finishActivity();
+      showLoadingMore(loaded);
     } catch {
       if (!isCurrent()) {
         return;
@@ -159,21 +215,23 @@ export function createSearchFlow({
     }
   }
 
-  /** Re-run the current search from page one in a new sort order. */
+  /** Show the current search from page one in a new sort order. */
   async function runReorder() {
     currentPage = 1;
-    if (!validate()) {
-      return;
-    }
+    const sort = sortInput.value;
+    const resorted = resortedResults(loaded, sort);
+    loaded.abort();
+    loaded = resorted ?? streamSearch(loaded.params, sort);
     const isCurrent = startActivity({ kind: "reordering", scrollY: window.scrollY });
     try {
-      const { data, searchUrl } = await fetchResults();
+      const { data, searchUrl } = await loadPage(1);
       if (!isCurrent()) {
         return;
       }
       rememberSearch(searchUrl);
       resultsView.render(data, { isUpdate: true, searchUrl });
       finishActivity({ restoreScroll: true });
+      showLoadingMore(loaded);
     } catch {
       if (!isCurrent()) {
         return;

@@ -1,15 +1,18 @@
 """Website routes and the showtime/seat search shared with the MCP server."""
 
+import json
 import logging
 import sys
 import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from itertools import islice
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     HTMLResponse,
@@ -17,6 +20,7 @@ from fastapi.responses import (
     PlainTextResponse,
     RedirectResponse,
     Response,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import StringConstraints
@@ -55,6 +59,8 @@ FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
 US_COUNTRY_CODES = {"US", "PR", "GU", "VI", "AS", "MP"}
 REGION_NOTICE_COOKIE = "regionNoticeDismissed"
 DEFAULT_PAGE_SIZE = 20
+# A streamed search checks at most this many seat maps, so one search can't flood Fandango.
+STREAM_SEAT_MAP_LIMIT = 150
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
 MAX_DAYS_AHEAD = 180
@@ -642,25 +648,129 @@ def collect_candidate_showtimes(
     return candidates
 
 
-def seat_checked_matches(candidates, page_end, check_candidate):
-    """Seat-check candidates in parallel until a match beyond page_end is found.
+class SeatCheck:
+    """Checks one (theatre, showtime) candidate's seat map, counting upstream failures."""
 
+    def __init__(self, adjacent_seats, selected_cells, exclude_accessible):
+        self.adjacent_seats = adjacent_seats
+        self.selected_cells = selected_cells
+        self.exclude_accessible = exclude_accessible
+        self.failed = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, candidate):
+        theatre_item, showtime = candidate
+        try:
+            seat_match = showtime_seat_match(
+                showtime,
+                self.adjacent_seats,
+                self.selected_cells,
+                self.exclude_accessible,
+                seat_map,
+            )
+        except (*UPSTREAM_ERRORS, ValueError):
+            with self._lock:
+                self.failed += 1
+            return None
+        if not seat_match:
+            return None
+        return {
+            "theatre": {
+                "name": theatre_item["name"],
+                "address": theatre_item["address"],
+                "distanceMiles": theatre_item["distanceMiles"],
+            },
+            "movieTitle": showtime["movieTitle"],
+            "date": showtime["date"],
+            "time": showtime["time"],
+            "displayTime": showtime["displayTime"],
+            "format": showtime["format"],
+            "amenities": showtime["amenities"],
+            "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
+            "poster": showtime["poster"],
+            "rating": showtime["rating"],
+            "runtime": showtime["runtime"],
+            "genres": showtime["genres"],
+            "seatMap": seat_match,
+            "showtimeHashCode": showtime["showtimeHashCode"],
+        }
+
+
+def checked_candidates(candidates, check):
+    """Seat-check candidates in parallel, yielding (match or None, number checked) in candidate
+    order.
+
+    A rolling window keeps requests in flight, so one slow seat map doesn't stall a whole batch.
     Candidates must be pre-sorted, so stopping early never skips a better match.
     """
-    matches = []
-    checked = 0
-    if not candidates:
-        return [], 0
     worker_count = min(12, max(4, len(candidates)))
-    batch_size = worker_count * 2
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        for offset in range(0, len(candidates), batch_size):
-            batch = candidates[offset : offset + batch_size]
-            checked += len(batch)
-            matches.extend(result for result in executor.map(check_candidate, batch) if result)
-            if len(matches) > page_end:
-                break
-    return matches, checked
+    remaining = iter(candidates)
+    executor = ThreadPoolExecutor(max_workers=worker_count)
+    try:
+        in_flight = deque(
+            executor.submit(check, item) for item in islice(remaining, worker_count * 2)
+        )
+        checked = 0
+        while in_flight:
+            match = in_flight.popleft().result()
+            checked += 1
+            for item in islice(remaining, 1):
+                in_flight.append(executor.submit(check, item))
+            yield match, checked
+    finally:
+        # A caller that stops early shouldn't wait on slow seat maps it no longer needs.
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def prepare_search(
+    radius,
+    movie,
+    zip_code,
+    theatre,
+    included_theatres,
+    excluded_theatres,
+    requested_format,
+    start_date,
+    end_date,
+    start_time,
+    end_time,
+    adjacent_seats,
+    seat_grid,
+    exclude_accessible,
+    sort,
+    lat,
+    lon,
+):
+    """Validate a search and return its ZIP, its candidates in result order, and its seat check."""
+    if start_time > end_time:
+        raise ValueError("Latest time must be on or after earliest time.")
+    start_date = start_date or us_today()
+    dates = date_range(start_date, end_date or start_date)
+    selected_cells = parse_seat_grid(seat_grid)
+    search_zip, origin, _ = api_search_location(zip_code, lat, lon)
+    candidates = collect_candidate_showtimes(
+        search_zip,
+        radius,
+        dates,
+        theatre.lower(),
+        movie,
+        requested_format,
+        start_time,
+        end_time,
+        origin,
+        included_theatres,
+        excluded_theatres,
+    )
+    candidates.sort(
+        key=lambda candidate: search_sort_key(
+            candidate[0]["distanceMiles"],
+            candidate[1]["date"],
+            candidate[1]["time"],
+            candidate[0]["name"],
+            sort,
+        )
+    )
+    return search_zip, candidates, SeatCheck(adjacent_seats, selected_cells, exclude_accessible)
 
 
 def find_seat_matches(
@@ -684,79 +794,38 @@ def find_seat_matches(
     lat: float | None = None,
     lon: float | None = None,
 ):
-    """Run the shared live showtime and seat-map search operation."""
+    """Run the shared live showtime and seat-map search operation for one page of results."""
+    page_start = (page - 1) * page_size
+    page_end = page_start + page_size
     with api_errors("Could not search real showtimes/seats"):
-        if start_time > end_time:
-            raise ValueError("Latest time must be on or after earliest time.")
-        start_date = start_date or us_today()
-        dates = date_range(start_date, end_date or start_date)
-        selected_cells = parse_seat_grid(seat_grid)
-        page_start = (page - 1) * page_size
-        page_end = page_start + page_size
-
-        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        candidates = collect_candidate_showtimes(
-            search_zip,
+        search_zip, candidates, check = prepare_search(
             radius,
-            dates,
-            theatre.lower(),
             movie,
-            requested_format,
-            start_time,
-            end_time,
-            origin,
+            zip_code,
+            theatre,
             included_theatres,
             excluded_theatres,
+            requested_format,
+            start_date,
+            end_date,
+            start_time,
+            end_time,
+            adjacent_seats,
+            seat_grid,
+            exclude_accessible,
+            sort,
+            lat,
+            lon,
         )
-        candidates.sort(
-            key=lambda candidate: search_sort_key(
-                candidate[0]["distanceMiles"],
-                candidate[1]["date"],
-                candidate[1]["time"],
-                candidate[0]["name"],
-                sort,
-            )
-        )
+        matches = []
+        checked_seat_maps = 0
+        for match, checked_seat_maps in checked_candidates(candidates, check):
+            if match:
+                matches.append(match)
+                if len(matches) > page_end:
+                    break
 
-        failed_seat_maps = 0
-        failure_lock = threading.Lock()
-
-        def check_candidate(candidate):
-            nonlocal failed_seat_maps
-            theatre_item, showtime = candidate
-            try:
-                seat_match = showtime_seat_match(
-                    showtime, adjacent_seats, selected_cells, exclude_accessible, seat_map
-                )
-            except (*UPSTREAM_ERRORS, ValueError):
-                with failure_lock:
-                    failed_seat_maps += 1
-                return None
-            if not seat_match:
-                return None
-            return {
-                "theatre": {
-                    "name": theatre_item["name"],
-                    "address": theatre_item["address"],
-                    "distanceMiles": theatre_item["distanceMiles"],
-                },
-                "movieTitle": showtime["movieTitle"],
-                "date": showtime["date"],
-                "displayTime": showtime["displayTime"],
-                "format": showtime["format"],
-                "amenities": showtime["amenities"],
-                "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
-                "poster": showtime["poster"],
-                "rating": showtime["rating"],
-                "runtime": showtime["runtime"],
-                "genres": showtime["genres"],
-                "seatMap": seat_match,
-                "showtimeHashCode": showtime["showtimeHashCode"],
-            }
-
-        matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
-
-    if failed_seat_maps and failed_seat_maps == checked_seat_maps:
+    if check.failed and check.failed == checked_seat_maps:
         raise HTTPException(
             status_code=502,
             detail="Seat availability could not be checked. Please try again.",
@@ -770,13 +839,12 @@ def find_seat_matches(
         "hasNextPage": len(matches) > page_end,
         "checkedShowtimes": len(candidates),
         "checkedSeatMaps": checked_seat_maps,
-        "failedSeatMaps": failed_seat_maps,
+        "failedSeatMaps": check.failed,
         "accessibleSeatsExcluded": exclude_accessible,
     }
 
 
-@app.get("/api/search")
-def api_search(
+def search_criteria(
     radius: Radius,
     movie: RequiredShortText,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
@@ -792,31 +860,72 @@ def api_search(
     seatGrid: str = "",
     excludeAccessible: bool = True,
     sort: SearchSort = "earliest",
-    page: PageNumber = 1,
-    pageSize: PageSize = DEFAULT_PAGE_SIZE,
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    return find_seat_matches(
-        radius=radius,
-        movie=movie,
-        zip_code=zip_code,
-        theatre=theatre,
-        included_theatres=included_theatres,
-        excluded_theatres=excluded_theatres,
-        requested_format=requested_format,
-        start_date=startDate,
-        end_date=endDate,
-        start_time=startTime,
-        end_time=endTime,
-        adjacent_seats=adjacentSeats,
-        seat_grid=seatGrid,
-        exclude_accessible=excludeAccessible,
-        sort=sort,
-        page=page,
-        page_size=pageSize,
-        lat=lat,
-        lon=lon,
+    """The query parameters both search endpoints share, as `prepare_search` arguments."""
+    return {
+        "radius": radius,
+        "movie": movie,
+        "zip_code": zip_code,
+        "theatre": theatre,
+        "included_theatres": included_theatres,
+        "excluded_theatres": excluded_theatres,
+        "requested_format": requested_format,
+        "start_date": startDate,
+        "end_date": endDate,
+        "start_time": startTime,
+        "end_time": endTime,
+        "adjacent_seats": adjacentSeats,
+        "seat_grid": seatGrid,
+        "exclude_accessible": excludeAccessible,
+        "sort": sort,
+        "lat": lat,
+        "lon": lon,
+    }
+
+
+SearchCriteria = Annotated[dict, Depends(search_criteria)]
+
+
+@app.get("/api/search")
+def api_search(
+    criteria: SearchCriteria,
+    page: PageNumber = 1,
+    pageSize: PageSize = DEFAULT_PAGE_SIZE,
+):
+    return find_seat_matches(**criteria, page=page, page_size=pageSize)
+
+
+@app.get("/api/search/stream")
+def api_search_stream(criteria: SearchCriteria):
+    """Stream matches as newline-delimited JSON events, in result order, so the first page can
+    show while the rest load. Checks at most STREAM_SEAT_MAP_LIMIT seat maps."""
+    with api_errors("Could not search real showtimes/seats"):
+        search_zip, candidates, check = prepare_search(**criteria)
+
+    def events():
+        yield {
+            "type": "start",
+            "zipCode": search_zip,
+            "checkedShowtimes": len(candidates),
+            "accessibleSeatsExcluded": criteria["exclude_accessible"],
+        }
+        checked = 0
+        for match, checked in checked_candidates(candidates[:STREAM_SEAT_MAP_LIMIT], check):
+            if match:
+                # Counts go first so a page shown at this match reports the seat maps behind it.
+                yield {
+                    "type": "progress",
+                    "checkedSeatMaps": checked,
+                    "failedSeatMaps": check.failed,
+                }
+                yield {"type": "match", "match": match}
+        yield {"type": "progress", "checkedSeatMaps": checked, "failedSeatMaps": check.failed}
+        yield {"type": "done", "complete": len(candidates) <= STREAM_SEAT_MAP_LIMIT}
+
+    return StreamingResponse(
+        (json.dumps(event) + "\n" for event in events()), media_type="application/x-ndjson"
     )
 
 
