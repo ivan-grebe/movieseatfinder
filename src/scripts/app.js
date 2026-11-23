@@ -15,6 +15,8 @@ import { logSharedLinkVisit } from "./tracking.js";
 
 const {
   backToSearchButton,
+  regionNotice,
+  dismissRegionNoticeButton,
   searchForm,
   zipInput,
   useLocationButton,
@@ -62,6 +64,9 @@ const {
 } = elements;
 
 const PAGE_SIZE = 20;
+// The server skips the outside-the-U.S. notice while this cookie is set.
+const REGION_NOTICE_DISMISSED_COOKIE =
+  "regionNoticeDismissed=1; Max-Age=31536000; Path=/; SameSite=Lax";
 const MAX_DATE_RANGE_DAYS = 14;
 let theatres = [];
 let movies = [];
@@ -878,6 +883,10 @@ async function loadSharedShowtime() {
 }
 
 function bindEvents() {
+  dismissRegionNoticeButton.addEventListener("click", () => {
+    document.cookie = REGION_NOTICE_DISMISSED_COOKIE;
+    regionNotice.hidden = true;
+  });
   backToSearchButton.addEventListener("click", async () => {
     finishResultsActivity();
     resultsView.endPageLoading();

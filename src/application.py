@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     HTMLResponse,
@@ -51,6 +51,9 @@ STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
+# Fandango lists U.S. theatres only; these territories use U.S. ZIP codes too.
+US_COUNTRY_CODES = {"US", "PR", "GU", "VI", "AS", "MP"}
+REGION_NOTICE_COOKIE = "regionNoticeDismissed"
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
@@ -204,18 +207,28 @@ async def unexpected_exception_handler(request, exc):
     )
 
 
-def render_index(shared):
+def render_index(shared, show_region_notice=False):
     return HTMLResponse(
         INDEX_TEMPLATE.replace(
             "__SHARED_SEARCH_CLASS__", "shared-search shared-loading" if shared else ""
-        ).replace("__INITIAL_SUMMARY__", "Loading shared showtime…" if shared else "")
+        )
+        .replace("__INITIAL_SUMMARY__", "Loading shared showtime…" if shared else "")
+        .replace("__REGION_NOTICE_HIDDEN__", "" if show_region_notice else " hidden")
     )
+
+
+def should_show_region_notice(request):
+    """Vercel sends the visitor's IP country; local servers send none and never show the notice."""
+    country = request.headers.get("x-vercel-ip-country")
+    if country is None or country in US_COUNTRY_CODES:
+        return False
+    return REGION_NOTICE_COOKIE not in request.cookies
 
 
 @app.head("/", include_in_schema=False)
 @app.get("/", include_in_schema=False)
-def index():
-    return render_index(shared=False)
+def index(request: Request):
+    return render_index(shared=False, show_region_notice=should_show_region_notice(request))
 
 
 @app.get("/index.html", include_in_schema=False)

@@ -118,6 +118,34 @@ main {
   padding-bottom: 54px;
 }
 
+.region-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: 700px;
+  margin: 20px auto 0;
+  padding: 10px 10px 10px 16px;
+  border-radius: 14px;
+  background: var(--field);
+  box-shadow: var(--shadow-border);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.region-notice[hidden] {
+  display: none;
+}
+
+.region-notice p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.region-notice button {
+  flex: 0 0 auto;
+}
+
 .hero {
   padding: 44px 0 24px;
   text-align: center;
