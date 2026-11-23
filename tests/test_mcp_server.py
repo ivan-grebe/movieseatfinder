@@ -2,6 +2,7 @@ import base64
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src import server as entrypoint
@@ -168,6 +169,41 @@ class McpProtocolTests(unittest.TestCase):
         search = find_seat_matches.call_args.args[0]
         self.assertEqual(search.seat_grid, "10:5,10:6,10:7,11:5,11:6,11:7")
         self.assertEqual(search.requested_format, "IMAX,IMAX 70mm")
+
+    @patch.object(
+        server.application,
+        "find_seat_matches",
+        side_effect=HTTPException(
+            status_code=400, detail="Latest time must be on or after earliest time."
+        ),
+    )
+    def test_expected_search_errors_reach_the_model_without_logging_a_crash(
+        self, _find_seat_matches
+    ):
+        request = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "find_movie_seats",
+                "arguments": {
+                    "movie": "The Odyssey",
+                    "start_date": "2026-08-04",
+                    "zip_code": "10023",
+                    "movie_formats": [],
+                    "seat_region": None,
+                    "adjacent_seats": 2,
+                },
+            },
+        }
+        with self.assertNoLogs(level="ERROR"):
+            response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn(
+            "Latest time must be on or after earliest time.", result["content"][0]["text"]
+        )
 
     @patch.object(server, "seat_map")
     @patch.object(
