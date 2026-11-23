@@ -2603,7 +2603,7 @@ input[type="time"] {
   :root {
     color-scheme: dark;
     --ink: #ecebea;
-    --muted: #a5a3a1;
+    --muted: hsl(0, 0%, 63%);
     --line: rgba(170, 168, 165, 0.18);
     --line-strong: rgba(170, 168, 165, 0.32);
     --panel: rgba(255, 255, 255, 0.025);
@@ -2664,11 +2664,11 @@ input[type="time"] {
   .summary,
   .format-label,
   .real-seat-map-title {
-    color: #cac7c4;
+    color: var(--ink);
   }
 
   .format-guide-body {
-    color: #cac7c4;
+    color: var(--ink);
     background: rgba(255, 255, 255, 0.035);
   }
 
@@ -2687,16 +2687,16 @@ input[type="time"] {
     background: #202021;
   }
   input::placeholder {
-    color: #85817e;
+    color: var(--muted);
   }
   .combo input:disabled,
   .filter-button:disabled {
     border-color: #494747;
     background: #101011;
-    color: #8a8581;
+    color: var(--muted);
   }
   .combo input:disabled::placeholder {
-    color: #8a8581;
+    color: var(--muted);
   }
 
   .location-btn {
@@ -2707,7 +2707,7 @@ input[type="time"] {
   }
 
   .btn-small {
-    color: #d4d0cc;
+    color: var(--ink);
     background: rgba(255, 255, 255, 0.06);
     box-shadow: var(--shadow-border);
   }
@@ -2774,7 +2774,7 @@ input[type="time"] {
 
   .summary,
   .empty-state {
-    color: #cac7c4;
+    color: var(--ink);
   }
   .empty-state {
     box-shadow:
@@ -2803,7 +2803,7 @@ input[type="time"] {
   }
 
   .tag {
-    color: #cac7c4;
+    color: var(--ink);
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(170, 168, 165, 0.16);
     box-shadow: none;
