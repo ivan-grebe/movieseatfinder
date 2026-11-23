@@ -1,67 +1,70 @@
-export function createFormatPicker(container) {
-  const selected = new Set(["any"]);
+import { createRunGuard, getJson } from "./utils.js";
+import { createFilterDropdown } from "./filter-dropdown.js";
+import { setStatus } from "./ui.js";
 
-  function syncOption(option) {
-    const isSelected = selected.has(option.dataset.format);
-    option.classList.toggle("is-selected", isSelected);
-    option.setAttribute("aria-pressed", String(isSelected));
+/** The Format dropdown, filled with the formats the picked movie shows in nearby. */
+export function createFormatPicker({ container, meta, status, onLoadError }) {
+  const load = createRunGuard();
+  const filter = createFilterDropdown(container, {
+    allLabel: () => "Any format",
+    noun: "formats",
+    onChange: () => setStatus(status, ""),
+    placeholder: "Pick a movie first",
+  });
+
+  function reset() {
+    load.cancel();
+    filter.setOptions([]);
+    setStatus(meta, "");
+    setStatus(status, "");
   }
 
-  function toggle(value) {
-    if (value === "any") {
-      selected.clear();
-      selected.add("any");
-    } else {
-      selected.delete("any");
-      if (selected.has(value)) {
-        selected.delete(value);
-      } else {
-        selected.add(value);
+  /** Load the formats a movie shows in. Picking another movie resets and cancels this. */
+  async function loadFor(criteriaParams, movieTitle) {
+    const isCurrent = load.start();
+    setStatus(meta, "Loading…", "loading");
+    setStatus(status, "");
+    criteriaParams.set("movie", movieTitle);
+    try {
+      const data = await getJson(`/api/formats?${criteriaParams}`);
+      if (!isCurrent()) {
+        return;
       }
-      if (selected.size === 0) {
-        selected.add("any");
+      filter.setOptions(data.formats);
+      setStatus(meta, "");
+    } catch (error) {
+      if (!isCurrent()) {
+        return;
       }
+      filter.setOptions([]);
+      setStatus(meta, "");
+      onLoadError(error, status);
     }
-    container.querySelectorAll(".format-option").forEach((option) => syncOption(option));
   }
 
-  function renderOption(label, value) {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.className = "format-option";
-    option.dataset.format = value;
-    option.textContent = label;
-    option.addEventListener("click", () => toggle(value));
-    container.append(option);
-    syncOption(option);
+  /** Re-check formats named in a link once the real options have loaded. */
+  function restore(params) {
+    const formats = params.get("format");
+    if (formats) {
+      filter.select({
+        include: formats.split(",").filter((format) => format && format !== "any"),
+      });
+    }
   }
 
-  function setOptions(formats) {
-    const available = [...new Set(formats)];
-    const retained = [...selected].filter((format) => available.includes(format));
-    selected.clear();
-    retained.forEach((format) => selected.add(format));
-    if (selected.size === 0) {
-      selected.add("any");
+  function validate() {
+    if (filter.isEmpty()) {
+      setStatus(status, "Pick at least one format.", "error");
+      return false;
     }
-
-    container.replaceChildren();
-    renderOption("Any available format", "any");
-    available.forEach((format) => renderOption(format, format));
-  }
-
-  function select(values) {
-    selected.clear();
-    values.forEach((format) => selected.add(format));
-    if (selected.size === 0) {
-      selected.add("any");
-    }
-    container.querySelectorAll(".format-option").forEach((option) => syncOption(option));
+    return true;
   }
 
   return {
-    select,
-    setOptions,
-    value: () => (selected.has("any") ? "any" : [...selected].join(",")),
+    loadFor,
+    param: () => (filter.isAll() ? "any" : filter.checked().join(",")),
+    reset,
+    restore,
+    validate,
   };
 }
