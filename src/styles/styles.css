@@ -603,8 +603,7 @@ select {
 .filter-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 4px 0 8px;
+  padding: 0 8px;
   border-radius: 9px;
   color: var(--ink);
   transition-property: background-color, color;
@@ -625,28 +624,6 @@ select {
   margin-bottom: 4px;
   border-bottom: 1px solid var(--line);
   border-radius: 9px 9px 0 0;
-}
-
-.filter-only {
-  flex: none;
-  padding: 5px 8px;
-  border-radius: 7px;
-  color: var(--accent);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 750;
-  opacity: 0;
-}
-
-.filter-row:hover .filter-only,
-.filter-only:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .filter-only {
-    opacity: 1;
-  }
 }
 
 .filter-empty {
@@ -2679,10 +2656,6 @@ input[type="time"] {
   .filter-row:hover {
     background: rgba(var(--accent-rgb), 0.3);
     color: var(--ink);
-  }
-
-  .filter-only {
-    color: #f27b83;
   }
 
   .seat-grid {

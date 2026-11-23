@@ -91,19 +91,9 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
     const { option: label } = createCheckbox(option, isChecked(option), (checked) =>
       setChecked(option, checked),
     );
-    const only = document.createElement("button");
-    only.type = "button";
-    only.className = "filter-only";
-    only.textContent = "only";
-    only.setAttribute("aria-label", `Only ${option}`);
-    only.addEventListener("click", () => {
-      included = new Set([option]);
-      excluded.clear();
-      changed();
-    });
     const row = document.createElement("div");
     row.className = "filter-row";
-    row.append(label, only);
+    row.append(label);
     return row;
   }
 
