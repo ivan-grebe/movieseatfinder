@@ -295,7 +295,9 @@ h1 {
 }
 
 .selection-gated > * {
-  transition: opacity 160ms ease-out;
+  transition:
+    opacity 260ms ease-out,
+    filter 260ms ease-out;
 }
 
 .selection-gated::after {
@@ -319,8 +321,23 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.selection-gated.is-locked > * {
-  opacity: 0.62;
+.selection-gated.is-locked > :not(.group-title) {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.lock-hint {
+  display: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.selection-gated.is-locked .lock-hint {
+  display: inline;
 }
 
 .selection-gated.is-locked::after {
@@ -444,7 +461,8 @@ select {
     background 0.16s ease;
 }
 
-.combo input:disabled {
+.combo input:disabled,
+.filter-button:disabled {
   border-color: rgba(107, 100, 96, 0.32);
   border-style: dashed;
   background: rgba(107, 100, 96, 0.08);
@@ -539,14 +557,6 @@ select {
 
 .filter-button.is-filtered {
   border-color: rgba(var(--accent-rgb), 0.55);
-}
-
-.filter-button:disabled {
-  border-style: dashed;
-  border-color: rgba(107, 100, 96, 0.32);
-  background: rgba(107, 100, 96, 0.08);
-  color: var(--muted);
-  cursor: not-allowed;
 }
 
 .filter-button[aria-busy="true"] {
@@ -2679,7 +2689,8 @@ input[type="time"] {
   input::placeholder {
     color: #85817e;
   }
-  .combo input:disabled {
+  .combo input:disabled,
+  .filter-button:disabled {
     border-color: #494747;
     background: #101011;
     color: #8a8581;
