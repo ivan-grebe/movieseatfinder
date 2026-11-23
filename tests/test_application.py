@@ -99,6 +99,21 @@ class SeatSelectionTests(unittest.TestCase):
         blocks = seat_matching.adjacent_blocks(seats, 2, [], False)
         self.assertEqual(blocks, [["A4", "A3", "A2"]])
 
+    def test_empty_neighbor_links_fall_back_to_consecutive_columns(self):
+        seats = [
+            {
+                "id": f"A{column}",
+                "row": 0,
+                "column": column,
+                "status": "A",
+                "leftNeighbor": "",
+                "rightNeighbor": "",
+            }
+            for column in (1, 2, 3)
+        ]
+        blocks = seat_matching.adjacent_blocks(seats, 2, [], False)
+        self.assertEqual(blocks, [["A1", "A2", "A3"]])
+
     def test_accessible_seats_can_be_excluded(self):
         blocks = seat_matching.adjacent_blocks(self.seats, 1, [], True)
         seat_ids = {seat_id for block in blocks for seat_id in block}

@@ -95,10 +95,10 @@ def seat_positioner(seats):
     return position
 
 
-def seats_touch(left, right):
+def seats_touch(left, right, use_links):
     if right.get("column", 0) != left.get("column", 0) + 1:
         return False
-    if not any(key in seat for seat in (left, right) for key in NEIGHBOR_KEYS):
+    if not use_links:
         return True
     return left.get("id") in {right.get(key) for key in NEIGHBOR_KEYS} or right.get("id") in {
         left.get(key) for key in NEIGHBOR_KEYS
@@ -116,6 +116,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     if not available:
         return []
 
+    use_links = any(seat.get(key) for seat in seats for key in NEIGHBOR_KEYS)
     position = seat_positioner(seats)
     by_row = {}
     for seat in available:
@@ -129,7 +130,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
         row_seats.sort(key=lambda seat: seat.get("column", 0))
         current = []
         for seat in row_seats:
-            if current and not seats_touch(current[-1], seat):
+            if current and not seats_touch(current[-1], seat, use_links):
                 if len(current) >= min_adjacent:
                     blocks.append(current)
                 current = []
