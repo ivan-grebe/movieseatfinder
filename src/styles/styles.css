@@ -508,10 +508,6 @@ select {
   pointer-events: none;
 }
 
-.format-picker {
-  min-width: 0;
-}
-
 .format-label {
   display: block;
   color: #514a45;
@@ -519,37 +515,157 @@ select {
   font-weight: 750;
 }
 
-.format-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 6px;
+.filter-field {
+  position: relative;
 }
 
-.format-option {
-  min-height: 34px;
-  padding: 6px 12px;
+.filter-field > .format-label {
+  display: flex;
+}
+
+.filter-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 7px 10px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--group-radius);
-  color: #514a45;
+  border-radius: 11px;
+  color: var(--ink);
   background: var(--field);
   box-shadow: inset 0 1px 2px rgba(32, 58, 92, 0.07);
-  font-size: 12px;
-  font-weight: 700;
-  transition:
-    border-color 0.16s ease,
-    background 0.16s ease,
-    color 0.16s ease;
+  font-size: 14px;
+  text-align: left;
+  transition: border-color 0.16s ease;
 }
 
-.format-option:hover {
+.filter-button:hover:not(:disabled),
+.filter-button[aria-expanded="true"] {
   border-color: var(--accent-hover-border);
 }
 
-.format-option.is-selected {
-  border-color: var(--accent-deep);
-  color: #fff;
-  background: var(--accent);
+.filter-button.is-filtered {
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+.filter-button:disabled {
+  border-style: dashed;
+  border-color: rgba(107, 100, 96, 0.32);
+  background: rgba(107, 100, 96, 0.08);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.filter-button[aria-busy="true"] {
+  cursor: progress;
+}
+
+.filter-button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-button svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.filter-button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.combo-menu.filter-popover {
+  max-height: none;
+  overflow: visible;
+  background: #fff;
+}
+
+.check input:indeterminate + .check-box {
+  border-color: var(--button-deep);
+  background: var(--button-red);
+}
+
+.check input:indeterminate + .check-box::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 3.5px;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.filter-search {
+  margin: 0 0 6px;
+}
+
+.filter-list {
+  max-height: 264px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  border-radius: 9px;
+}
+
+.filter-row:hover {
+  background: var(--accent-soft);
+}
+
+.filter-row .check {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.filter-select-all {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 9px 9px 0 0;
+}
+
+.filter-only {
+  flex: none;
+  padding: 5px 8px;
+  border-radius: 7px;
+  color: var(--accent);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  opacity: 0;
+}
+
+.filter-row:hover .filter-only,
+.filter-only:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .filter-only {
+    opacity: 1;
+  }
+}
+
+.filter-empty {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .format-guide {
@@ -2562,7 +2678,6 @@ input[type="time"] {
   .check,
   .summary,
   .format-label,
-  .format-option,
   .real-seat-map-title {
     color: #cac7c4;
   }
@@ -2612,6 +2727,10 @@ input[type="time"] {
   }
   .check-box {
     background: rgba(255, 255, 255, 0.06);
+  }
+
+  .combo-menu.filter-popover {
+    background: #141415;
   }
 
   .combo-menu {

@@ -7,7 +7,7 @@ import {
   setSummary,
   startLoadingStages,
 } from "./ui.js";
-import { createFormatPicker } from "./format-picker.js";
+import { createFilterDropdown } from "./filter-dropdown.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
 import { elements } from "./dom.js";
@@ -27,14 +27,13 @@ const {
   endDateInput,
   theatreMeta,
   theatreStatus,
-  theatreInput,
-  theatreMenu,
+  theatreFilterContainer,
   movieGroup,
   movieMeta,
   movieStatus,
   movieInput,
   movieMenu,
-  formatOptions,
+  formatFilterContainer,
   formatMeta,
   formatStatus,
   formatGuide,
@@ -68,10 +67,7 @@ const PAGE_SIZE = 20;
 const REGION_NOTICE_DISMISSED_COOKIE =
   "regionNoticeDismissed=1; Max-Age=31536000; Path=/; SameSite=Lax";
 const MAX_DATE_RANGE_DAYS = 14;
-let theatres = [];
 let movies = [];
-let selectedTheatre = null;
-let selectedTheatreName = "";
 let selectedMovie = null;
 let selectedMovieTitle = "";
 let movieCombo = null;
@@ -99,7 +95,18 @@ const theatreLoad = createRunGuard();
 const movieLoad = createRunGuard();
 const formatLoad = createRunGuard();
 
-const formatPicker = createFormatPicker(formatOptions);
+const theatreFilter = createFilterDropdown(theatreFilterContainer, {
+  allLabel: (count) => `All ${count} nearby theatres`,
+  noun: "theatres",
+  onChange: queueTheatreFilterRefresh,
+  placeholder: "Enter a location first",
+});
+const formatFilter = createFilterDropdown(formatFilterContainer, {
+  allLabel: () => "Any format",
+  noun: "formats",
+  onChange: () => setStatus(formatStatus, ""),
+  placeholder: "Pick a movie first",
+});
 const seatGrid = createSeatGrid(
   seatPreferenceGrid,
   gridStatus,
@@ -126,11 +133,7 @@ function hasValidZip() {
 }
 
 function searchInputsReady() {
-  return (
-    locationReady &&
-    !theatreInput.hasAttribute("aria-busy") &&
-    !movieInput.hasAttribute("aria-busy")
-  );
+  return locationReady && !theatreFilter.isBusy() && !movieInput.hasAttribute("aria-busy");
 }
 
 function setGroupReady(group, ready) {
@@ -173,11 +176,6 @@ function normalizedTitle(value) {
     .trim();
 }
 
-function theatreWithName(name) {
-  const normalized = normalizedTitle(name);
-  return theatres.find((theatre) => normalizedTitle(theatre.name) === normalized) || null;
-}
-
 function movieWithTitle(title) {
   const normalized = normalizedTitle(title);
   return movies.find((movie) => normalizedTitle(movie.title) === normalized) || null;
@@ -202,16 +200,9 @@ function setMovieCountMeta() {
 
 function resetFormats() {
   formatLoad.cancel();
-  formatPicker.setOptions([]);
+  formatFilter.setOptions([]);
   setStatus(formatMeta, "");
   setStatus(formatStatus, "");
-}
-
-function clearTheatreSelection({ rememberName = false } = {}) {
-  selectedTheatre = null;
-  if (!rememberName) {
-    selectedTheatreName = "";
-  }
 }
 
 function clearMovieSelection({ rememberTitle = false } = {}) {
@@ -223,14 +214,6 @@ function clearMovieSelection({ rememberTitle = false } = {}) {
   resetFormats();
 }
 
-function selectTheatre(theatre) {
-  selectedTheatre = theatre;
-  selectedTheatreName = theatre.name;
-  theatreInput.value = theatre.name;
-  theatreInput.setCustomValidity("");
-  setStatus(theatreStatus, "");
-}
-
 function selectMovie(movie) {
   selectedMovie = movie;
   syncPreferencesReady();
@@ -240,25 +223,6 @@ function selectMovie(movie) {
   resetFormats();
   setMovieCountMeta();
   setStatus(movieStatus, "");
-}
-
-function resolveTypedTheatre() {
-  const typedTheatre = theatreInput.value.trim();
-  if (!typedTheatre) {
-    clearTheatreSelection();
-    theatreInput.setCustomValidity("");
-    setStatus(theatreStatus, "");
-    return true;
-  }
-  const exactTheatre = theatreWithName(typedTheatre);
-  if (exactTheatre) {
-    selectTheatre(exactTheatre);
-    return true;
-  }
-  clearTheatreSelection();
-  theatreInput.setCustomValidity("Select an exact theatre from the list before searching.");
-  setStatus(theatreStatus, "Choose one of the nearby theatres shown in the list.", "error");
-  return false;
 }
 
 function resolveTypedMovie() {
@@ -316,15 +280,22 @@ function locationParams(params) {
 }
 
 function baseParams() {
-  return locationParams(
+  const params = locationParams(
     new URLSearchParams({
       endDate: endDateInput.value,
       radius: radiusInput.value,
       startDate: startDateInput.value,
-      theatre: selectedTheatre?.name || "",
       zip: zipInput.value.trim(),
     }),
   );
+  const { include, exclude } = theatreFilter.params();
+  include.forEach((name) => params.append("includeTheatre", name));
+  exclude.forEach((name) => params.append("excludeTheatre", name));
+  return params;
+}
+
+function formatParam() {
+  return formatFilter.isAll() ? "any" : formatFilter.checked().join(",");
 }
 
 function showLoaderError(error, status) {
@@ -341,15 +312,15 @@ function showLoaderError(error, status) {
 async function loadTheatres() {
   const isCurrent = theatreLoad.start();
   if (!hasSearchBasics()) {
-    theatres = [];
-    setComboLoading(theatreInput, theatreMenu, true, false);
+    theatreFilter.setOptions([]);
+    theatreFilter.setBusy(false);
     setComboLoading(movieInput, movieMenu, true, false);
     setStatus(theatreMeta, "");
     setStatus(theatreStatus, "");
     return false;
   }
 
-  setComboLoading(theatreInput, theatreMenu, true);
+  theatreFilter.setBusy(true);
   setComboLoading(movieInput, movieMenu, true);
   setStatus(theatreMeta, "Loading…", "loading");
   setStatus(theatreStatus, "");
@@ -364,31 +335,22 @@ async function loadTheatres() {
     if (!isCurrent()) {
       return null;
     }
-    theatres = data.theatres;
+    theatreFilter.setOptions(data.theatres.map((theatre) => theatre.name));
+    theatreFilter.setBusy(false);
     setLocationReady(true);
-    setComboLoading(theatreInput, theatreMenu, false);
     zipInput.setCustomValidity("");
     if (!preciseLocation) {
       setStatus(locationStatus, "");
     }
-    setStatus(theatreMeta, `${theatres.length} nearby`);
-    const typedTheatre = theatreInput.value.trim();
-    selectedTheatre = theatreWithName(selectedTheatreName || typedTheatre);
-    if (selectedTheatre) {
-      selectTheatre(selectedTheatre);
-    } else if (typedTheatre) {
-      resolveTypedTheatre();
-    } else {
-      setStatus(theatreStatus, "");
-    }
-    closeCombo(theatreInput, theatreMenu);
+    setStatus(theatreMeta, `${data.theatres.length} nearby`);
+    setStatus(theatreStatus, "");
     return true;
   } catch (error) {
     if (!isCurrent()) {
       return null;
     }
-    theatres = [];
-    setComboLoading(theatreInput, theatreMenu, true, false);
+    theatreFilter.setOptions([]);
+    theatreFilter.setBusy(false);
     setComboLoading(movieInput, movieMenu, true, false);
     setStatus(theatreMeta, "");
     showLoaderError(error, theatreStatus);
@@ -398,7 +360,7 @@ async function loadTheatres() {
 
 async function loadMovies() {
   const isCurrent = movieLoad.start();
-  if (!hasSearchBasics() || (theatreInput.value.trim() && !selectedTheatre)) {
+  if (!hasSearchBasics()) {
     movies = [];
     setComboLoading(movieInput, movieMenu, true, false);
     setStatus(movieMeta, "");
@@ -449,7 +411,7 @@ async function loadFormats() {
   setStatus(formatMeta, "");
   setStatus(formatStatus, "");
   if (!movieTitle || !hasSearchBasics()) {
-    formatPicker.setOptions([]);
+    formatFilter.setOptions([]);
     return;
   }
 
@@ -461,15 +423,14 @@ async function loadFormats() {
     if (!isCurrent() || selectedMovie?.title !== movieTitle) {
       return;
     }
-    const formats = data.formats;
-    formatPicker.setOptions(formats);
+    formatFilter.setOptions(data.formats);
     setStatus(formatMeta, "");
     setStatus(formatStatus, "");
   } catch (error) {
     if (!isCurrent() || selectedMovie?.title !== movieTitle) {
       return;
     }
-    formatPicker.setOptions([]);
+    formatFilter.setOptions([]);
     setStatus(formatMeta, "");
     showLoaderError(error, formatStatus);
   }
@@ -540,15 +501,19 @@ function validateSearchInputs() {
   if (!enforceRadius(true)) {
     return false;
   }
-  if (theatreInput.hasAttribute("aria-busy") || movieInput.hasAttribute("aria-busy")) {
+  if (theatreFilter.isBusy() || movieInput.hasAttribute("aria-busy")) {
     return false;
   }
-  if (!selectedTheatre && !resolveTypedTheatre()) {
-    reportRequiredField(theatreInput, "Select an exact theatre from the list before searching.");
+  if (theatreFilter.isEmpty()) {
+    setStatus(theatreStatus, "Pick at least one theatre.", "error");
     return false;
   }
   if (!selectedMovie && !resolveTypedMovie()) {
     reportRequiredField(movieInput, "Select an exact movie from the list before searching.");
+    return false;
+  }
+  if (formatFilter.isEmpty()) {
+    setStatus(formatStatus, "Pick at least one format.", "error");
     return false;
   }
   return true;
@@ -557,7 +522,7 @@ function validateSearchInputs() {
 function searchParams() {
   const params = baseParams();
   params.set("movie", selectedMovie.title);
-  params.set("format", formatPicker.value());
+  params.set("format", formatParam());
   params.set("startTime", startTimeInput.value);
   params.set("endTime", endTimeInput.value);
   params.set("adjacentSeats", adjacentSeatsInput.value);
@@ -685,7 +650,6 @@ function applyQueryParams() {
     sort: sortInput,
     startDate: startDateInput,
     startTime: startTimeInput,
-    theatre: theatreInput,
     zip: zipInput,
   };
   Object.entries(inputParams).forEach(([name, input]) => {
@@ -693,9 +657,15 @@ function applyQueryParams() {
       input.value = params.get(name);
     }
   });
-  if (params.has("theatre")) {
-    selectedTheatreName = params.get("theatre").trim();
+  const includedTheatres = params.getAll("includeTheatre");
+  if (params.get("theatre")) {
+    // Older links name a single theatre.
+    includedTheatres.push(params.get("theatre").trim());
   }
+  theatreFilter.select({
+    exclude: params.getAll("excludeTheatre"),
+    include: includedTheatres,
+  });
   if (params.has("movie")) {
     selectedMovieTitle = params.get("movie").trim();
   }
@@ -752,10 +722,9 @@ async function refreshTheatresAndMovies() {
     theatreLoad.cancel();
     movieLoad.cancel();
     formatLoad.cancel();
-    theatres = [];
+    theatreFilter.setOptions([]);
+    theatreFilter.setBusy(false);
     movies = [];
-    clearTheatreSelection();
-    setComboLoading(theatreInput, theatreMenu, true, false);
     setComboLoading(movieInput, movieMenu, true, false);
     setStatus(theatreMeta, "");
     setStatus(movieMeta, "");
@@ -763,7 +732,6 @@ async function refreshTheatresAndMovies() {
     [theatreStatus, movieStatus, formatStatus].forEach((status) => setStatus(status, ""));
     return;
   }
-  clearTheatreSelection({ rememberName: true });
   clearMovieSelection({ rememberTitle: true });
   const theatresLoaded = await loadTheatres();
   if (theatresLoaded === null) {
@@ -774,9 +742,6 @@ async function refreshTheatresAndMovies() {
     movies = [];
     setStatus(movieMeta, "");
     setStatus(movieStatus, "");
-    return;
-  }
-  if (theatreInput.value.trim() && !selectedTheatre) {
     return;
   }
   await loadMovies();
@@ -816,11 +781,26 @@ const autoRefresh = debounce(refreshTheatresAndMovies, 650);
 function queueCriteriaRefresh() {
   setStatus(theatreMeta, "");
   setStatus(movieMeta, "");
-  clearTheatreSelection({ rememberName: true });
   clearMovieSelection({ rememberTitle: true });
-  setComboLoading(theatreInput, theatreMenu, true);
+  theatreFilter.setBusy(true);
   setComboLoading(movieInput, movieMenu, true);
   autoRefresh();
+}
+
+const theatreFilterRefresh = debounce(async () => {
+  await loadMovies();
+  if (selectedMovie) {
+    await loadFormats();
+  }
+}, 400);
+
+/** Reload the movies (and formats) nearby once the theatre choice settles. */
+function queueTheatreFilterRefresh() {
+  setStatus(theatreStatus, "");
+  setStatus(movieMeta, "");
+  clearMovieSelection({ rememberTitle: true });
+  setComboLoading(movieInput, movieMenu, true);
+  theatreFilterRefresh();
 }
 
 function initializeHalReveal() {
@@ -932,22 +912,6 @@ function bindEvents() {
     formatGuideContent.setAttribute("aria-hidden", String(!expanded));
     formatGuide.classList.toggle("is-open", expanded);
   });
-  setupCombo(
-    theatreInput,
-    theatreMenu,
-    () => theatres,
-    (theatre) => theatre.name,
-    async (theatre) => {
-      selectTheatre(theatre);
-      movies = [];
-      clearMovieSelection();
-      setComboLoading(movieInput, movieMenu, true, false);
-      await loadMovies();
-      if (selectedMovie) {
-        await loadFormats();
-      }
-    },
-  );
   movieCombo = setupCombo(
     movieInput,
     movieMenu,
@@ -997,28 +961,6 @@ function bindEvents() {
       queueCriteriaRefresh();
     }),
   );
-  theatreInput.addEventListener("change", async () => {
-    if (!resolveTypedTheatre()) {
-      return;
-    }
-    movies = [];
-    clearMovieSelection();
-    setComboLoading(movieInput, movieMenu, true);
-    await loadMovies();
-  });
-  theatreInput.addEventListener("input", () => {
-    theatreInput.setCustomValidity("");
-    clearTheatreSelection();
-    movieLoad.cancel();
-    movies = [];
-    clearMovieSelection();
-    setStatus(movieMeta, "");
-    setStatus(movieStatus, "");
-    setComboLoading(movieInput, movieMenu, true, false);
-    if (!theatreInput.value.trim()) {
-      loadMovies();
-    }
-  });
   movieInput.addEventListener("change", () => {
     if (movieInput.value.trim() && !selectedMovie && resolveTypedMovie()) {
       loadFormats();
@@ -1051,7 +993,9 @@ async function loadSearchOptions() {
   await loadFormats();
   const formats = new URLSearchParams(globalThis.location.search).get("format");
   if (formats) {
-    formatPicker.select(formats.split(",").filter(Boolean));
+    formatFilter.select({
+      include: formats.split(",").filter((format) => format && format !== "any"),
+    });
   }
   return true;
 }
@@ -1061,7 +1005,6 @@ async function initialize() {
   const today = todayString();
   startDateInput.value = today;
   endDateInput.value = addDays(today, 7);
-  formatPicker.setOptions([]);
   bindEvents();
   if ("show" in regionNotice.dataset) {
     regionNotice.showModal();
