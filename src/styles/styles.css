@@ -308,7 +308,8 @@ h1 {
   position: relative;
 }
 
-.selection-gated > * {
+.selection-gated > *,
+.selection-gated .group-title > * {
   transition:
     opacity 260ms ease-out,
     filter 260ms ease-out;
@@ -339,12 +340,6 @@ h1 {
 .selection-gated.is-locked .group-title > :not(.lock-hint) {
   opacity: 0.4;
   filter: grayscale(1);
-}
-
-.selection-gated .group-title > * {
-  transition:
-    opacity 260ms ease-out,
-    filter 260ms ease-out;
 }
 
 .lock-hint {
@@ -465,7 +460,8 @@ label {
 }
 
 input,
-select {
+select,
+.filter-button {
   width: 100%;
   min-height: 36px;
   margin-top: 4px;
@@ -536,8 +532,7 @@ select {
   pointer-events: none;
 }
 
-.format-label {
-  display: block;
+.filter-label {
   color: var(--ink);
   font-size: 12px;
   font-weight: 750;
@@ -547,25 +542,11 @@ select {
   position: relative;
 }
 
-.filter-field > .format-label {
-  display: flex;
-}
-
 .filter-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  width: 100%;
-  min-height: 36px;
-  margin-top: 4px;
-  padding: 7px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 11px;
-  color: var(--ink);
-  background: var(--field);
-  box-shadow: inset 0 1px 2px rgba(32, 58, 92, 0.07);
-  font-size: 14px;
   font-weight: 750;
   text-align: left;
   transition: border-color 0.16s ease;
@@ -2608,7 +2589,6 @@ input[type="time"] {
   }
 
   body {
-    color: var(--ink);
     background: linear-gradient(180deg, #0b0b0c 0%, #090909 40%, #070707 100%);
   }
 
@@ -2618,10 +2598,6 @@ input[type="time"] {
 
   .status-bar-backdrop {
     background: rgba(11, 11, 12, 0.55);
-  }
-
-  h1 {
-    color: var(--ink);
   }
 
   .card,
@@ -2656,17 +2632,7 @@ input[type="time"] {
       inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
-  .group-title,
-  label,
-  .check,
-  .summary,
-  .format-label,
-  .real-seat-map-title {
-    color: var(--ink);
-  }
-
   .format-guide-body {
-    color: var(--ink);
     background: rgba(255, 255, 255, 0.035);
   }
 
@@ -2675,26 +2641,14 @@ input[type="time"] {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.055);
   }
 
-  input,
-  select {
-    background: var(--field);
-    color: var(--ink);
-  }
   input:focus,
   select:focus {
     background: #202021;
-  }
-  input::placeholder {
-    color: var(--muted);
   }
   .combo input:disabled,
   .filter-button:disabled {
     border-color: #494747;
     background: #101011;
-    color: var(--muted);
-  }
-  .combo input:disabled::placeholder {
-    color: var(--muted);
   }
 
   .location-btn {
@@ -2705,7 +2659,6 @@ input[type="time"] {
   }
 
   .btn-small {
-    color: var(--ink);
     background: rgba(255, 255, 255, 0.06);
     box-shadow: var(--shadow-border);
   }
@@ -2722,9 +2675,6 @@ input[type="time"] {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.08),
       0 22px 42px rgba(0, 0, 0, 0.5);
-  }
-  .combo-option {
-    color: var(--ink);
   }
 
   .seat-grid {
@@ -2770,19 +2720,12 @@ input[type="time"] {
     background: linear-gradient(180deg, #2b2929, #5c2b2b);
   }
 
-  .summary,
-  .empty-state {
-    color: var(--ink);
-  }
   .empty-state {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
-  .faq-item summary {
-    color: var(--ink);
-  }
   .shared-back:hover,
   .faq-back-link:hover,
   .footer-links a:hover,
@@ -2790,18 +2733,11 @@ input[type="time"] {
     color: var(--accent-deep);
   }
 
-  .result-title {
-    color: var(--ink);
-  }
   .result-distance {
     color: var(--accent);
   }
-  .result-movie {
-    color: var(--ink);
-  }
 
   .tag {
-    color: var(--ink);
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(170, 168, 165, 0.16);
     box-shadow: none;
