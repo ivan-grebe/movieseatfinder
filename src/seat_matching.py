@@ -102,8 +102,7 @@ def neighbor_ids(seat):
 def seats_touch(left, right, use_links):
     """Whether `right` sits directly to the right of `left` in the same row.
 
-    Some AMC and Regal maps number columns straight across an aisle; only their neighbor links
-    show the gap (checked on live maps, 2026-11-22).
+    Some seat maps number columns straight across an aisle; only their neighbor links show the gap.
     """
     if right.get("column", 0) != left.get("column", 0) + 1:
         return False
