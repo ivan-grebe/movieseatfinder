@@ -213,7 +213,7 @@ def render_index(shared, show_region_notice=False):
             "__SHARED_SEARCH_CLASS__", "shared-search shared-loading" if shared else ""
         )
         .replace("__INITIAL_SUMMARY__", "Loading shared showtime…" if shared else "")
-        .replace("__REGION_NOTICE_HIDDEN__", "" if show_region_notice else " hidden")
+        .replace("__REGION_NOTICE_OPEN__", " data-show" if show_region_notice else "")
     )
 
 

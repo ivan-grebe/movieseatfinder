@@ -119,31 +119,90 @@ main {
 }
 
 .region-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  max-width: 700px;
-  margin: 20px auto 0;
-  padding: 10px 10px 10px 16px;
-  border-radius: 14px;
+  width: min(100% - 32px, 420px);
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  color: var(--ink);
   background: var(--field);
-  box-shadow: var(--shadow-border);
-  font-size: 13px;
-  line-height: 1.4;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 24px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px) saturate(120%);
 }
 
-.region-notice[hidden] {
-  display: none;
+.region-notice::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.region-notice[open] {
+  animation: region-notice-in 220ms ease-out;
+}
+
+.region-notice[open]::backdrop {
+  animation: region-notice-fade-in 220ms ease-out;
+}
+
+.region-notice.is-closing {
+  animation: region-notice-out 180ms ease-in forwards;
+}
+
+.region-notice.is-closing::backdrop {
+  animation: region-notice-fade-out 180ms ease-in forwards;
+}
+
+.region-notice-content {
+  display: grid;
+  gap: 12px;
+  padding: 26px 24px 22px;
+  text-align: center;
+}
+
+.region-notice h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
 }
 
 .region-notice p {
   margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
   text-wrap: pretty;
 }
 
 .region-notice button {
-  flex: 0 0 auto;
+  margin-top: 6px;
+}
+
+@keyframes region-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@keyframes region-notice-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes region-notice-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes region-notice-fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 .hero {
@@ -2061,6 +2120,11 @@ input[type="time"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .region-notice,
+  .region-notice::backdrop {
+    animation: none !important;
+  }
+
   .shared-showtime::after {
     opacity: 0.65;
     animation: none;

@@ -229,10 +229,8 @@ class RegionNoticeTests(unittest.TestCase):
         client = TestClient(application.app, cookies=cookies)
         page = client.get("/", headers=headers or {})
         self.assertEqual(page.status_code, 200)
-        return (
-            'id="regionNotice" class="region-notice" aria-label="Location notice" hidden>'
-            in page.text
-        )
+        self.assertIn('id="regionNotice"', page.text)
+        return 'aria-labelledby="regionNoticeTitle" data-show>' not in page.text
 
     def test_notice_shows_only_for_visitors_outside_the_us(self):
         self.assertFalse(self.notice_hidden({"x-vercel-ip-country": "IN"}))
