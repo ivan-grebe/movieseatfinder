@@ -5,20 +5,54 @@ import { logTicketClick } from "./tracking.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ICON_FILM = [
-  ["rect", { height: "16", rx: "2", width: "18", x: "3", y: "4" }],
-  ["path", { d: "M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4" }],
+  [
+    "rect",
+    {
+      height: "16",
+      rx: "2",
+      width: "18",
+      x: "3",
+      y: "4",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M7 4v16M17 4v16M3 9h4M3 14h4M17 9h4M17 14h4",
+    },
+  ],
 ];
 const ICON_CALENDAR = [
-  ["rect", { height: "16", rx: "2", width: "18", x: "3", y: "4.5" }],
-  ["path", { d: "M3 9h18M8 2.5v4M16 2.5v4" }],
+  [
+    "rect",
+    {
+      height: "16",
+      rx: "2",
+      width: "18",
+      x: "3",
+      y: "4.5",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M3 9h18M8 2.5v4M16 2.5v4",
+    },
+  ],
 ];
 const ACCESSIBLE_SEAT_TYPES = new Set(["wheelchair", "companion"]);
 
 function createLegendItem(label, className) {
   const item = document.createElement("span");
+
   item.className = "legend-item";
   const swatch = document.createElement("span");
-  swatch.className = className ? `legend-swatch ${className}` : "legend-swatch";
+
+  swatch.className = "legend-swatch";
+  if (className) {
+    swatch.classList.add(className);
+  }
+
   item.append(swatch, document.createTextNode(label));
   return item;
 }
@@ -28,18 +62,23 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   const hasBackground = Boolean(layout.backgroundSvg);
 
   const wrapper = document.createElement("div");
+
   wrapper.className = "real-seat-map";
   const title = document.createElement("div");
+
   title.className = "real-seat-map-title";
   const titleLabel = document.createElement("span");
+
   titleLabel.textContent = "Live Fandango seat map";
   const titleCount = document.createElement("span");
+
   titleCount.textContent = `${seatMap.availableSeatCount} available / ${seatMap.totalSeatCount} total`;
   title.append(titleLabel, titleCount);
   wrapper.append(title);
 
   if (!hasBackground) {
     const screen = document.createElement("div");
+
     screen.className = "real-screen";
     screen.title = "Screen";
     screen.textContent = "SCREEN";
@@ -47,15 +86,19 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   }
 
   const stage = document.createElement("div");
+
   stage.className = "real-seat-map-stage";
   if (hasBackground) {
     stage.classList.add("has-background");
   }
+
   const { width, height } = layout;
+
   stage.style.aspectRatio = `${width} / ${height}`;
   stage.style.minHeight = "150px";
   if (hasBackground) {
     const background = document.createElement("img");
+
     background.className = "real-seat-map-background";
     background.alt = "";
     background.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(layout.backgroundSvg)}`;
@@ -65,24 +108,35 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   layout.seats.forEach((seat) => {
     const node = document.createElement("span");
     const isAvailable = seat.status === "A";
-    const accessibilityType = ACCESSIBLE_SEAT_TYPES.has(seat.type) ? seat.type : "";
+    let accessibilityType = "";
+
+    if (ACCESSIBLE_SEAT_TYPES.has(seat.type)) {
+      accessibilityType = seat.type;
+    }
+
     const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
     const isSelectable = isAvailable && !isExcluded;
+
     node.className = isSelectable ? "real-seat available" : "real-seat unavailable";
     if (accessibilityType) {
       node.classList.add("accessible");
     }
+
     if (seat.matched) {
       node.classList.add("matched");
     }
+
     const titleParts = [seat.id || "Seat"];
+
     titleParts.push(isAvailable ? "available" : "unavailable");
     if (accessibilityType) {
       titleParts.push(accessibilityType);
     }
+
     if (isExcluded) {
       titleParts.push("excluded by filter");
     }
+
     node.title = titleParts.join(" - ");
     node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
     node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
@@ -93,12 +147,15 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
   wrapper.append(stage);
 
   const legend = document.createElement("div");
+
   legend.className = "seat-map-legend";
   legend.append(createLegendItem("Available", ""));
   if (!accessibleSeatsExcluded) {
     legend.append(createLegendItem("Accessible", "accessible"));
   }
+
   const unavailableLabel = accessibleSeatsExcluded ? "Unavailable / excluded" : "Unavailable";
+
   legend.append(
     createLegendItem(unavailableLabel, "unavailable"),
     createLegendItem("Matches", "matched"),
@@ -109,6 +166,7 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
 
 function createIcon(definition) {
   const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+
   Object.entries({
     fill: "none",
     stroke: "currentColor",
@@ -119,6 +177,7 @@ function createIcon(definition) {
   }).forEach(([name, value]) => svg.setAttribute(name, value));
   definition.forEach(([tagName, attributes]) => {
     const child = document.createElementNS(SVG_NAMESPACE, tagName);
+
     Object.entries(attributes).forEach(([name, value]) => child.setAttribute(name, value));
     svg.append(child);
   });
@@ -127,8 +186,10 @@ function createIcon(definition) {
 
 function makeTag(text, iconDefinition) {
   const tag = document.createElement("span");
+
   tag.className = "tag";
   const icon = document.createElement("span");
+
   icon.className = "tag-icon";
   icon.append(createIcon(iconDefinition));
   tag.append(icon);
@@ -166,6 +227,7 @@ export function createResultsView({
     pagination.removeAttribute("aria-busy");
     const hasPrevious = data.hasPreviousPage;
     const hasNext = data.hasNextPage;
+
     if (!hasPrevious && !hasNext) {
       pagination.hidden = true;
       pagination.replaceChildren();
@@ -175,6 +237,7 @@ export function createResultsView({
     pagination.hidden = false;
     pagination.replaceChildren();
     const previous = document.createElement("button");
+
     previous.type = "button";
     previous.className = "btn-small";
     previous.textContent = "Previous";
@@ -183,12 +246,14 @@ export function createResultsView({
     previous.addEventListener("click", () => onPageChange(getPage() - 1));
 
     const label = document.createElement("span");
+
     label.className = "pagination-label";
     label.setAttribute("role", "status");
     label.setAttribute("aria-live", "polite");
     label.textContent = `Page ${data.page}`;
 
     const next = document.createElement("button");
+
     next.type = "button";
     next.className = "btn-small";
     next.textContent = "Next";
@@ -215,36 +280,45 @@ export function createResultsView({
     if (lastPaginationData) {
       renderPagination(lastPaginationData);
     }
+
     if (!errorMessage) {
       return;
     }
+
     pagination.classList.add("has-error");
     const label = pagination.querySelector(".pagination-label");
+
     label.textContent = errorMessage;
   }
 
   function render(data, { isUpdate = false, searchUrl, shared = false } = {}) {
     const matches = data.matches;
+
     results.replaceChildren();
     const incomplete = data.failedSeatMaps > 0;
+
     resultsToolbar.hidden = shared || matches.length === 0;
     renderPagination(data);
 
     if (matches.length === 0) {
       setSummary(summary, "", true);
       const hint = document.createElement("div");
+
       hint.className = "empty-state";
       hint.setAttribute("role", "status");
       hint.setAttribute("aria-live", "polite");
       const title = document.createElement("strong");
+
       title.textContent = "No matching showtimes";
       const hintText = document.createElement("p");
+
       hintText.textContent = "Try widening the time range, seat area, or dates.";
       if (incomplete) {
         title.textContent = "Search incomplete";
         hintText.textContent =
           "Some seat availability could not be checked. Retry before changing your preferences.";
       }
+
       hint.append(title, hintText);
       results.append(hint);
       return;
@@ -254,24 +328,29 @@ export function createResultsView({
     const showingEnd = showingStart + matches.length - 1;
     const pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
     let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+
     if (incomplete) {
       summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
     }
+
     if (shared) {
       summaryText = "Live seat availability for this shared showtime.";
       if (matches[0].seatMap.bestGroup.length === 0) {
         summaryText = "No seats currently match the shared seat preferences.";
       }
     }
+
     setSummary(summary, summaryText, false);
 
     matches.forEach((match, index) => {
       const item = document.createElement("article");
+
       item.className = "result";
       item.dataset.showtime = match.showtimeHashCode;
       if (isUpdate) {
         item.classList.add("result-update");
       }
+
       item.setAttribute(
         "aria-label",
         `${match.movieTitle} at ${match.theatre.name}, ${formatNiceDate(match.date)} ${match.displayTime}`,
@@ -279,11 +358,14 @@ export function createResultsView({
       if (!isUpdate) {
         item.style.animationDelay = `${Math.min(index, 5) * 80}ms`;
       }
+
       const body = document.createElement("div");
+
       body.className = "result-body";
 
       if (match.poster) {
         const poster = document.createElement("img");
+
         poster.className = "result-poster";
         poster.src = match.poster;
         poster.alt = `${match.movieTitle} poster`;
@@ -293,41 +375,51 @@ export function createResultsView({
       }
 
       const details = document.createElement("div");
+
       details.className = "result-details";
       const top = document.createElement("div");
+
       top.className = "result-top";
       const title = document.createElement("h2");
+
       title.className = "result-title";
       title.textContent = match.theatre.name;
       top.append(title);
       if (Number.isFinite(match.theatre.distanceMiles)) {
         const distance = document.createElement("span");
+
         distance.className = "result-distance";
         distance.textContent = `${match.theatre.distanceMiles.toFixed(1)} mi`;
         top.append(distance);
       }
+
       details.append(top);
 
       if (match.theatre.address) {
         const address = document.createElement("p");
+
         address.className = "result-addr";
         address.textContent = match.theatre.address;
         details.append(address);
       }
 
       const movie = document.createElement("p");
+
       movie.className = "result-movie";
       movie.textContent = match.movieTitle;
       details.append(movie);
       const submetaParts = [match.rating, match.runtime, match.genres.join(", ")].filter(Boolean);
+
       if (submetaParts.length > 0) {
         const submeta = document.createElement("p");
+
         submeta.className = "result-submeta";
         submeta.textContent = submetaParts.join("  ·  ");
         details.append(submeta);
       }
 
       const meta = document.createElement("div");
+
       meta.className = "result-meta";
       meta.append(makeTag(match.format, ICON_FILM));
       meta.append(makeTag(`${formatNiceDate(match.date)} · ${match.displayTime}`, ICON_CALENDAR));
@@ -337,15 +429,19 @@ export function createResultsView({
 
       if (match.amenities) {
         const amenities = document.createElement("p");
+
         amenities.className = "result-amenities";
         amenities.textContent = match.amenities;
         item.append(amenities);
       }
+
       item.append(renderRealSeatMap(match.seatMap, data.accessibleSeatsExcluded));
       const actions = document.createElement("div");
+
       actions.className = "result-actions";
       if (match.ticketUrl) {
         const link = document.createElement("a");
+
         link.className = "buy-btn";
         link.href = match.ticketUrl;
         link.textContent = "Get tickets";
@@ -354,6 +450,7 @@ export function createResultsView({
         link.addEventListener("click", logTicketClick);
         actions.append(link);
       }
+
       actions.append(createShareButton(searchUrl, match));
       item.append(actions);
       results.append(item);
@@ -372,23 +469,30 @@ export function createResultsView({
     const card = [...results.querySelectorAll(".result")].find(
       (item) => item.dataset.showtime === showtime,
     );
+
     if (!card) {
       return;
     }
+
     card.tabIndex = -1;
-    card.focus({ preventScroll: true });
-    card.scrollIntoView({ behavior: "instant", block: "start" });
+    card.focus({
+      preventScroll: true,
+    });
+    card.scrollIntoView({
+      behavior: "instant",
+      block: "start",
+    });
     card.classList.add("shared-showtime");
     globalThis.setTimeout(() => card.classList.remove("shared-showtime"), 2500);
   }
 
   return {
-    beginReorder,
-    endPageLoading,
-    endReorder,
-    focusShowtime,
-    render,
-    renderError,
-    setPageLoading,
+    beginReorder: beginReorder,
+    endPageLoading: endPageLoading,
+    endReorder: endReorder,
+    focusShowtime: focusShowtime,
+    render: render,
+    renderError: renderError,
+    setPageLoading: setPageLoading,
   };
 }

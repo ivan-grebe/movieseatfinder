@@ -22,20 +22,24 @@ export function createFormatPicker({ container, meta, status, onLoadError }) {
   /** Load the formats a movie shows in. Picking another movie resets and cancels this. */
   async function loadFor(criteriaParams, movieTitle) {
     const isCurrent = load.start();
+
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     criteriaParams.set("movie", movieTitle);
     try {
       const data = await getJson(`/api/formats?${criteriaParams}`);
+
       if (!isCurrent()) {
         return;
       }
+
       filter.setOptions(data.formats);
       setStatus(meta, "");
     } catch (error) {
       if (!isCurrent()) {
         return;
       }
+
       filter.setOptions([]);
       setStatus(meta, "");
       onLoadError(error, status);
@@ -45,6 +49,7 @@ export function createFormatPicker({ container, meta, status, onLoadError }) {
   /** Re-check formats named in a link once the real options have loaded. */
   function restore(params) {
     const formats = params.get("format");
+
     if (formats) {
       filter.select({
         include: formats.split(",").filter((format) => format && format !== "any"),
@@ -57,14 +62,21 @@ export function createFormatPicker({ container, meta, status, onLoadError }) {
       setStatus(status, "Pick at least one format.", "error");
       return false;
     }
+
     return true;
   }
 
   return {
-    loadFor,
-    param: () => (filter.isAll() ? "any" : filter.checked().join(",")),
-    reset,
-    restore,
-    validate,
+    loadFor: loadFor,
+    param() {
+      if (filter.isAll()) {
+        return "any";
+      }
+
+      return filter.checked().join(",");
+    },
+    reset: reset,
+    restore: restore,
+    validate: validate,
   };
 }

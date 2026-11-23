@@ -119,7 +119,9 @@ def search_with_candidates(candidates, matching):
 class CandidateSearchTests(unittest.TestCase):
     def test_exactly_full_page_keeps_checking_for_a_next_match(self):
         with search_with_candidates(list(range(100)), lambda value: value < 5 or value == 99):
-            result = application.find_seat_matches(radius=5, movie="Test", page_size=5)
+            result = application.find_seat_matches(
+                application.Search(application.Area(radius=5), movie="Test"), page_size=5
+            )
 
         self.assertEqual(result["matches"], [{"candidate": value} for value in range(5)])
         self.assertTrue(result["hasNextPage"])

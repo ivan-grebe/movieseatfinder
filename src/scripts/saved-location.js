@@ -14,18 +14,27 @@ function read() {
 export function loadSavedLocation() {
   const { radius, zip } = read();
   const saved = {};
+
   if (typeof zip === "string" && /^\d{5}$/u.test(zip)) {
     saved.zip = zip;
   }
+
   if (Number.isFinite(radius) && radius >= 1 && radius <= 100) {
     saved.radius = radius;
   }
+
   return saved;
 }
 
 export function saveLocation(changes) {
   try {
-    globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...read(), ...changes }));
+    globalThis.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...read(),
+        ...changes,
+      }),
+    );
   } catch {
     // Nothing to do: the form just starts empty next time.
   }

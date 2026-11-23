@@ -3,6 +3,17 @@
  * narrowing requests from what has loaded, when that is enough to be correct.
  */
 
+/** Where a streamed search is in its life. */
+export const StreamState = Object.freeze({
+  // Finished at the seat-map cap without reaching every showtime.
+  Capped: "capped",
+  // Finished after checking every showtime.
+  Complete: "complete",
+  // Stopped by an error; `error` says why.
+  Failed: "failed",
+  Streaming: "streaming",
+});
+
 /*
  * Params a later search may narrow and still be answered locally; any other change to the
  * params needs a new search.
@@ -16,7 +27,7 @@ const NARROWABLE_PARAMS = new Set([
 ]);
 
 function chronology(match) {
-  return Number(match.date.replaceAll("-", "") + match.time.replace(":", ""));
+  return Number(`${match.date.replaceAll("-", "")}${match.time.replace(":", "")}`);
 }
 
 /** The same order as the server's search_sort_key. */
@@ -25,12 +36,15 @@ function compareMatches(sort) {
     const byTime = chronology(a) - chronology(b);
     const byDistance = a.theatre.distanceMiles - b.theatre.distanceMiles;
     const byName = a.theatre.name.localeCompare(b.theatre.name);
+
     if (sort === "nearest") {
       return byDistance || byTime || byName;
     }
+
     if (sort === "latest") {
       return -byTime || byDistance || byName;
     }
+
     return byTime || byDistance || byName;
   };
 }
@@ -42,8 +56,10 @@ function lowerNames(params, name) {
 function theatreAllowed(params) {
   const included = lowerNames(params, "includeTheatre");
   const excluded = lowerNames(params, "excludeTheatre");
+
   return (name) => {
     const lower = name.toLowerCase();
+
     return (included.size === 0 || included.has(lower)) && !excluded.has(lower);
   };
 }
@@ -52,15 +68,20 @@ function theatreAllowed(params) {
 function theatresNarrowed(before, after) {
   const beforeIncluded = lowerNames(before, "includeTheatre");
   const afterIncluded = lowerNames(after, "includeTheatre");
+
   if (afterIncluded.size > 0) {
     const allowedBefore = theatreAllowed(before);
+
     return [...afterIncluded].every((name) => allowedBefore(name));
   }
+
   if (beforeIncluded.size > 0) {
     // "All except some" can't be checked against an include list without the full theatre list.
     return false;
   }
+
   const afterExcluded = lowerNames(after, "excludeTheatre");
+
   return [...lowerNames(before, "excludeTheatre")].every((name) => afterExcluded.has(name));
 }
 
@@ -68,7 +89,9 @@ function formatsNarrowed(before, after) {
   if (before.get("format") === "any") {
     return true;
   }
+
   const allowed = new Set(before.get("format").split(","));
+
   return (
     after.get("format") !== "any" &&
     after
@@ -80,6 +103,7 @@ function formatsNarrowed(before, after) {
 
 function sameOtherParams(before, after) {
   const keys = new Set([...before.keys(), ...after.keys()]);
+
   return [...keys].every(
     (key) =>
       NARROWABLE_PARAMS.has(key) ||
@@ -92,11 +116,11 @@ function derived(results, overrides) {
   const finished = {
     ...results,
     abort: () => undefined,
-    complete: true,
-    done: true,
     error: null,
+    state: StreamState.Complete,
     ...overrides,
   };
+
   finished.until = () => Promise.resolve(finished);
   return finished;
 }
@@ -110,14 +134,13 @@ export function streamSearch(params, sort) {
     accessibleSeatsExcluded: true,
     checkedSeatMaps: 0,
     checkedShowtimes: 0,
-    complete: false,
-    done: false,
     error: null,
     failedSeatMaps: 0,
     matches: [],
-    params,
-    sort,
-    until,
+    params: params,
+    sort: sort,
+    state: StreamState.Streaming,
+    until: until,
     zipCode: "",
   };
 
@@ -129,14 +152,15 @@ export function streamSearch(params, sort) {
   function until(condition) {
     return new Promise((resolve, reject) => {
       function check() {
-        if (results.error) {
+        if (results.state === StreamState.Failed) {
           waiters.delete(check);
           reject(results.error);
-        } else if (results.done || condition(results)) {
+        } else if (results.state !== StreamState.Streaming || condition(results)) {
           waiters.delete(check);
           resolve(results);
         }
       }
+
       waiters.add(check);
       check();
     });
@@ -153,38 +177,48 @@ export function streamSearch(params, sort) {
       if (event.type === "match") {
         results.matches.push(event.match);
       } else {
-        results.complete = event.complete;
-        results.done = true;
+        results.state = event.complete ? StreamState.Complete : StreamState.Capped;
       }
     }
   }
 
   async function read() {
     const query = new URLSearchParams(params);
+
     query.set("sort", sort);
-    const response = await fetch(`/api/search/stream?${query}`, { signal: controller.signal });
+    const response = await fetch(`/api/search/stream?${query}`, {
+      signal: controller.signal,
+    });
+
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       const error = new Error(data.error || "The search service is temporarily unavailable.");
+
       error.code = data.code || "";
       throw error;
     }
+
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
+
     for (;;) {
       // Events must be applied in order, so each read waits for the previous one.
       // oxlint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read();
+
       if (done) {
         break;
       }
+
       buffer += value;
       const lines = buffer.split("\n");
+
       buffer = lines.pop();
       lines.filter(Boolean).forEach((line) => apply(JSON.parse(line)));
       notify();
     }
-    if (!results.done) {
+
+    if (results.state === StreamState.Streaming) {
       throw new Error("The search stopped early. Please try again.");
     }
   }
@@ -192,7 +226,9 @@ export function streamSearch(params, sort) {
   read().catch((error) => {
     if (error.name !== "AbortError") {
       results.error = error;
+      results.state = StreamState.Failed;
     }
+
     notify();
   });
   return results;
@@ -200,10 +236,14 @@ export function streamSearch(params, sort) {
 
 /** The same results in another order, if they cover every showtime; otherwise null. */
 export function resortedResults(results, sort) {
-  if (!results.complete) {
+  if (results.state !== StreamState.Complete) {
     return null;
   }
-  return derived(results, { matches: results.matches.toSorted(compareMatches(sort)), sort });
+
+  return derived(results, {
+    matches: results.matches.toSorted(compareMatches(sort)),
+    sort: sort,
+  });
 }
 
 /**
@@ -213,8 +253,9 @@ export function resortedResults(results, sort) {
  */
 export function narrowedResults(results, params) {
   const before = results.params;
+
   if (
-    !results.complete ||
+    results.state !== StreamState.Complete ||
     before.toString() === params.toString() ||
     !sameOtherParams(before, params) ||
     !theatresNarrowed(before, params) ||
@@ -224,10 +265,17 @@ export function narrowedResults(results, params) {
   ) {
     return null;
   }
+
   const allowedTheatre = theatreAllowed(params);
-  const formats = params.get("format") === "any" ? null : new Set(params.get("format").split(","));
+  let formats = null;
+
+  if (params.get("format") !== "any") {
+    formats = new Set(params.get("format").split(","));
+  }
+
   const startTime = params.get("startTime");
   const endTime = params.get("endTime");
+
   return derived(results, {
     matches: results.matches.filter(
       (match) =>
@@ -236,13 +284,14 @@ export function narrowedResults(results, params) {
         match.time >= startTime &&
         match.time <= endTime,
     ),
-    params,
+    params: params,
   });
 }
 
 /** One page in the shape /api/search returns. */
 export function pageOf(results, page, pageSize) {
   const end = page * pageSize;
+
   return {
     accessibleSeatsExcluded: results.accessibleSeatsExcluded,
     checkedSeatMaps: results.checkedSeatMaps,
@@ -251,8 +300,8 @@ export function pageOf(results, page, pageSize) {
     hasNextPage: results.matches.length > end,
     hasPreviousPage: page > 1,
     matches: results.matches.slice(end - pageSize, end),
-    page,
-    pageSize,
+    page: page,
+    pageSize: pageSize,
     zipCode: results.zipCode,
   };
 }
