@@ -91,9 +91,10 @@
       </button>
       <span>Movie Seat Finder</span>
     </nav>
-    <dialog id="regionNotice" class="region-notice" aria-label="Location notice"__REGION_NOTICE_OPEN__>
+    <dialog id="regionNotice" class="region-notice" aria-labelledby="regionNoticeTitle"__REGION_NOTICE_OPEN__>
       <div class="region-notice-content">
-        <p><strong>Heads up:</strong> it looks like you're outside the U.S. Movie Seat Finder only works with theatres in the United States.</p>
+        <h2 id="regionNoticeTitle">Movie Seat Finder only works in the U.S.</h2>
+        <p>It looks like you're outside the United States. Showtimes and seat maps only cover U.S. theatres, so searches won't find anything near you.</p>
         <button id="dismissRegionNoticeButton" class="btn-small" type="button">Got it</button>
       </div>
     </dialog>
