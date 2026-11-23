@@ -62,8 +62,9 @@ LLMS_TXT = (SRC_DIR / "content" / "llms.txt").read_text(encoding="utf-8")
 US_COUNTRY_CODES = {"US", "PR", "GU", "VI", "AS", "MP"}
 REGION_NOTICE_COOKIE = "regionNoticeDismissed"
 DEFAULT_PAGE_SIZE = 20
-# A streamed search checks at most this many seat maps, so one search can't flood Fandango.
-STREAM_SEAT_MAP_LIMIT = 150
+# A search checks at most this many seat maps, so one search can't flood Fandango or outrun the
+# function timeout.
+SEAT_MAP_LIMIT = 150
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
 MAX_DAYS_AHEAD = 180
@@ -759,14 +760,15 @@ def prepare_search(search):
 
 
 def find_seat_matches(search, page=1, page_size=DEFAULT_PAGE_SIZE):
-    """Run the live showtime and seat-map search for one page of results."""
+    """Run the live showtime and seat-map search for one page of results, checking at most
+    SEAT_MAP_LIMIT seat maps."""
     page_start = (page - 1) * page_size
     page_end = page_start + page_size
     with api_errors("Could not search real showtimes/seats"):
         search_zip, candidates, check = prepare_search(search)
         matches = []
         checked_seat_maps = 0
-        for match, checked_seat_maps in checked_candidates(candidates, check):
+        for match, checked_seat_maps in checked_candidates(candidates[:SEAT_MAP_LIMIT], check):
             if match:
                 matches.append(match)
                 if len(matches) > page_end:
@@ -787,6 +789,7 @@ def find_seat_matches(search, page=1, page_size=DEFAULT_PAGE_SIZE):
         "checkedShowtimes": len(candidates),
         "checkedSeatMaps": checked_seat_maps,
         "failedSeatMaps": check.failed,
+        "capped": len(matches) <= page_end and len(candidates) > SEAT_MAP_LIMIT,
         "accessibleSeatsExcluded": check.exclude_accessible,
     }
 
@@ -831,7 +834,7 @@ def api_search(
 @app.get("/api/search/stream")
 def api_search_stream(search: SearchCriteria):
     """Stream matches as newline-delimited JSON events, in result order, so the first page can
-    show while the rest load. Checks at most STREAM_SEAT_MAP_LIMIT seat maps."""
+    show while the rest load. Checks at most SEAT_MAP_LIMIT seat maps."""
     with api_errors("Could not search real showtimes/seats"):
         search_zip, candidates, check = prepare_search(search)
 
@@ -843,7 +846,7 @@ def api_search_stream(search: SearchCriteria):
             "accessibleSeatsExcluded": search.exclude_accessible,
         }
         checked = 0
-        for match, checked in checked_candidates(candidates[:STREAM_SEAT_MAP_LIMIT], check):
+        for match, checked in checked_candidates(candidates[:SEAT_MAP_LIMIT], check):
             if match:
                 yield {
                     "type": "match",
@@ -853,7 +856,7 @@ def api_search_stream(search: SearchCriteria):
                 }
         yield {
             "type": "done",
-            "complete": len(candidates) <= STREAM_SEAT_MAP_LIMIT,
+            "complete": len(candidates) <= SEAT_MAP_LIMIT,
             "checkedSeatMaps": checked,
             "failedSeatMaps": check.failed,
         }

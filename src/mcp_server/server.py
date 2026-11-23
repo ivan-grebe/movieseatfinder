@@ -138,6 +138,11 @@ def compact_search_results(result, query, seat_preferences):
             "Results are incomplete because some seat maps could not be checked. "
             "Present any confirmed options with this warning and offer to retry before changing constraints."
         )
+    elif result["capped"]:
+        message = (
+            f"Only the first {result['checkedSeatMaps']} of {result['checkedShowtimes']} candidate showtimes were checked. "
+            "Present any options found and offer to narrow the dates, times, radius or theatre to check the rest."
+        )
     elif options:
         message = "Present these compact options and offer the seat map or ticket link for a selected option."
     else:

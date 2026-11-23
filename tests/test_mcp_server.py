@@ -76,6 +76,7 @@ def sample_search_result():
         "checkedShowtimes": 7,
         "checkedSeatMaps": 3,
         "failedSeatMaps": 0,
+        "capped": False,
     }
 
 
@@ -194,3 +195,17 @@ class McpProtocolTests(unittest.TestCase):
         self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
         self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
         self.assertEqual(result["structuredContent"]["bestGroup"], ["H10", "H11"])
+
+
+class CompactSearchResultsTests(unittest.TestCase):
+    def test_capped_search_tells_the_model_to_offer_narrowing(self):
+        result = sample_search_result()
+        result["capped"] = True
+        result["checkedSeatMaps"] = 150
+        result["checkedShowtimes"] = 400
+
+        compact = server.compact_search_results(result, query={}, seat_preferences={})
+
+        self.assertIn(
+            "Only the first 150 of 400 candidate showtimes were checked", compact["message"]
+        )
