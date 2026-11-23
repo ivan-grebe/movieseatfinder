@@ -204,6 +204,34 @@ class SearchTests(unittest.TestCase):
                     [(format_name, code)],
                 )
 
+    def test_theatre_include_and_exclude_lists_filter_every_endpoint(self):
+        for name, value, kept in [
+            ("excludeTheatre", ["Other Place", "cinema"], False),
+            ("excludeTheatre", ["Cinema Two"], True),
+            ("includeTheatre", ["CINEMA"], True),
+            ("includeTheatre", ["Cinema Two"], False),
+        ]:
+            with self.subTest(name=name, value=value):
+                params = {**self.params, "format": "IMAX", name: value}
+                movies = self.client.get("/api/movies", params=params).json()["movies"]
+                formats = self.client.get("/api/formats", params=params).json()["formats"]
+                search = self.client.get("/api/search", params=params).json()
+                self.assertEqual(bool(movies), kept)
+                self.assertEqual(bool(formats), kept)
+                self.assertEqual(len(search["matches"]), 1 if kept else 0)
+
+    def test_search_reports_showtime_counts_for_each_filter_option(self):
+        params = {**self.params, "format": "IMAX", "excludeTheatre": "Cinema"}
+        facets = self.client.get("/api/search", params=params).json()["facets"]
+        # Theatre counts follow the format choice; format counts follow the theatre choice.
+        self.assertEqual(
+            facets["theatres"], [{"name": "Cinema", "distanceMiles": 1, "showtimes": 1}]
+        )
+        self.assertEqual(
+            facets["formats"],
+            [{"name": "IMAX", "showtimes": 0}, {"name": "IMAX with Laser", "showtimes": 0}],
+        )
+
 
 class LocationTests(unittest.TestCase):
     @patch("src.location.reverse_geocode_zip", return_value="10001")

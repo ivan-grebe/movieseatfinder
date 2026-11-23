@@ -80,6 +80,8 @@ Radius = Annotated[float, Query(ge=1, le=100)]
 PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
+# Fandango returns at most 100 theatres per search, so a filter never needs more names.
+MAX_THEATRE_FILTERS = 100
 SearchSort = Literal["earliest", "latest", "nearest"]
 
 LOGGER = logging.getLogger("movieseatfinder")
@@ -126,20 +128,32 @@ def intent_query_matches(value, query):
     return not query_text or query_text in value_text
 
 
-def dated_theatres(zip_code, radius, dates, theatre_query, origin):
+def theatre_selected(name, included=(), excluded=()):
+    """Whether a theatre passes exact-name include/exclude lists (any case); empty means all."""
+    name = name.lower()
+    if included and name not in {item.lower() for item in included}:
+        return False
+    return name not in {item.lower() for item in excluded}
+
+
+def dated_theatres(zip_code, radius, dates, theatre_query, origin, included=(), excluded=()):
     """Yield (date, theatre) pairs for every requested date, filtered by theatre name."""
     theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
     for show_date in dates:
         for theatre in theatres_by_date[show_date]:
             if theatre_query and theatre_query not in theatre["name"].lower():
                 continue
+            if not theatre_selected(theatre["name"], included, excluded):
+                continue
             yield show_date, theatre
 
 
-def available_movies(zip_code, radius, dates, theatre_query, origin):
+def available_movies(zip_code, radius, dates, theatre_query, origin, included=(), excluded=()):
     seen = set()
     movies = []
-    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin):
+    for _, theatre in dated_theatres(
+        zip_code, radius, dates, theatre_query, origin, included, excluded
+    ):
         for movie in theatre["rawMovies"]:
             title = clean_title(movie.get("title", ""))
             key = normalized_text(title)
@@ -150,9 +164,13 @@ def available_movies(zip_code, radius, dates, theatre_query, origin):
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def available_formats(zip_code, radius, dates, theatre_query, movie_query, origin):
+def available_formats(
+    zip_code, radius, dates, theatre_query, movie_query, origin, included=(), excluded=()
+):
     formats = set()
-    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin):
+    for _, theatre in dated_theatres(
+        zip_code, radius, dates, theatre_query, origin, included, excluded
+    ):
         for movie in theatre["rawMovies"]:
             if not movie_matches(movie.get("title", ""), movie_query):
                 continue
@@ -535,6 +553,12 @@ def api_movies(
     startDate: date | None = None,
     endDate: date | None = None,
     theatre: ShortText = "",
+    included_theatres: Annotated[
+        list[ShortText], Query(alias="includeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -542,7 +566,15 @@ def api_movies(
         start_date = startDate or us_today()
         dates = date_range(start_date, endDate or start_date)
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        movies = available_movies(search_zip, radius, dates, theatre.lower(), origin)
+        movies = available_movies(
+            search_zip,
+            radius,
+            dates,
+            theatre.lower(),
+            origin,
+            included_theatres,
+            excluded_theatres,
+        )
     return {"movies": movies}
 
 
@@ -554,6 +586,12 @@ def api_formats(
     startDate: date | None = None,
     endDate: date | None = None,
     theatre: ShortText = "",
+    included_theatres: Annotated[
+        list[ShortText], Query(alias="includeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -563,7 +601,16 @@ def api_formats(
         start_date = startDate or us_today()
         dates = date_range(start_date, endDate or start_date)
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        formats = available_formats(search_zip, radius, dates, theatre.lower(), movie, origin)
+        formats = available_formats(
+            search_zip,
+            radius,
+            dates,
+            theatre.lower(),
+            movie,
+            origin,
+            included_theatres,
+            excluded_theatres,
+        )
     return {"formats": formats}
 
 
@@ -573,12 +620,15 @@ def collect_candidate_showtimes(
     dates,
     theatre_query,
     movie_query,
-    requested_format,
     start_time,
     end_time,
     origin,
 ):
-    """Gather (theatre, showtime) pairs that pass every non-seat filter."""
+    """Gather (theatre, showtime) pairs for the movie and time window.
+
+    Theatre and format choices are applied afterwards so the search can report how many
+    showtimes each choice would add.
+    """
     candidates = []
     for _, theatre in dated_theatres(search_zip, radius, dates, theatre_query, origin):
         movies = [
@@ -587,12 +637,35 @@ def collect_candidate_showtimes(
             if movie_matches(movie.get("title", ""), movie_query)
         ]
         for showtime in normalize_showtimes(movies):
-            if not format_matches(showtime["format"], requested_format):
-                continue
             if showtime["time"] < start_time or showtime["time"] > end_time:
                 continue
             candidates.append((theatre, showtime))
     return candidates
+
+
+def search_facets(candidates, included, excluded, requested_format):
+    """Showtime counts per theatre (under the format choice) and per format (under the
+    theatre choice), so each filter shows what picking an option would return."""
+    theatres = {}
+    formats = {}
+    for theatre, showtime in candidates:
+        theatre_count = theatres.setdefault(
+            theatre["name"],
+            {"name": theatre["name"], "distanceMiles": theatre["distanceMiles"], "showtimes": 0},
+        )
+        if format_matches(showtime["format"], requested_format):
+            theatre_count["showtimes"] += 1
+        format_count = formats.setdefault(
+            showtime["format"], {"name": showtime["format"], "showtimes": 0}
+        )
+        if theatre_selected(theatre["name"], included, excluded):
+            format_count["showtimes"] += 1
+    return {
+        "theatres": sorted(
+            theatres.values(), key=lambda item: (item["distanceMiles"], item["name"])
+        ),
+        "formats": sorted(formats.values(), key=lambda item: item["name"]),
+    }
 
 
 def seat_checked_matches(candidates, page_end, check_candidate):
@@ -621,6 +694,8 @@ def find_seat_matches(
     movie: RequiredShortText,
     zip_code: ShortText = "",
     theatre: ShortText = "",
+    included_theatres: tuple[str, ...] | list[str] = (),
+    excluded_theatres: tuple[str, ...] | list[str] = (),
     requested_format: RequiredShortText = "any",
     start_date: date | None = None,
     end_date: date | None = None,
@@ -646,17 +721,23 @@ def find_seat_matches(
         page_end = page_start + page_size
 
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        candidates = collect_candidate_showtimes(
+        showtimes = collect_candidate_showtimes(
             search_zip,
             radius,
             dates,
             theatre.lower(),
             movie,
-            requested_format,
             start_time,
             end_time,
             origin,
         )
+        facets = search_facets(showtimes, included_theatres, excluded_theatres, requested_format)
+        candidates = [
+            (theatre_item, showtime)
+            for theatre_item, showtime in showtimes
+            if format_matches(showtime["format"], requested_format)
+            and theatre_selected(theatre_item["name"], included_theatres, excluded_theatres)
+        ]
         candidates.sort(
             key=lambda candidate: search_sort_key(
                 candidate[0]["distanceMiles"],
@@ -721,6 +802,7 @@ def find_seat_matches(
         "checkedSeatMaps": checked_seat_maps,
         "failedSeatMaps": failed_seat_maps,
         "accessibleSeatsExcluded": exclude_accessible,
+        "facets": facets,
     }
 
 
@@ -730,6 +812,12 @@ def api_search(
     movie: RequiredShortText,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     theatre: ShortText = "",
+    included_theatres: Annotated[
+        list[ShortText], Query(alias="includeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_THEATRE_FILTERS)
+    ] = [],
     requested_format: Annotated[RequiredShortText, Query(alias="format")] = "any",
     startDate: date | None = None,
     endDate: date | None = None,
@@ -749,6 +837,8 @@ def api_search(
         movie=movie,
         zip_code=zip_code,
         theatre=theatre,
+        included_theatres=included_theatres,
+        excluded_theatres=excluded_theatres,
         requested_format=requested_format,
         start_date=startDate,
         end_date=endDate,
