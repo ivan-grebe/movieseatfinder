@@ -2664,11 +2664,11 @@ input[type="time"] {
   .summary,
   .format-label,
   .real-seat-map-title {
-    color: var(--ink);
+    color: #fff;
   }
 
   .format-guide-body {
-    color: var(--ink);
+    color: #fff;
     background: rgba(255, 255, 255, 0.035);
   }
 
@@ -2707,7 +2707,7 @@ input[type="time"] {
   }
 
   .btn-small {
-    color: var(--ink);
+    color: #fff;
     background: rgba(255, 255, 255, 0.06);
     box-shadow: var(--shadow-border);
   }
@@ -2774,7 +2774,7 @@ input[type="time"] {
 
   .summary,
   .empty-state {
-    color: var(--ink);
+    color: #fff;
   }
   .empty-state {
     box-shadow:
@@ -2803,7 +2803,7 @@ input[type="time"] {
   }
 
   .tag {
-    color: var(--ink);
+    color: #fff;
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(170, 168, 165, 0.16);
     box-shadow: none;
