@@ -163,10 +163,7 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     return [group for _, group in groups]
 
 
-def showtime_seat_match(
-    showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader
-):
-    data = seat_map_loader(showtime.get("showtimeHashCode"))
+def seat_map_match(data, min_adjacent, selected_cells, exclude_accessible):
     if not data or not data.get("seats"):
         return None
     blocks = adjacent_blocks(data["seats"], min_adjacent, selected_cells, exclude_accessible)

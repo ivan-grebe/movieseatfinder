@@ -14,7 +14,7 @@ from starlette.routing import Route
 from .. import application
 from ..fandango import seat_map
 from ..seat_map_visual import render_seat_map_svg, render_svg_png
-from ..seat_matching import parse_seat_grid, showtime_seat_match
+from ..seat_matching import parse_seat_grid, seat_map_match
 from .browser_page import BrowserPageMiddleware
 
 GridCell = Annotated[
@@ -442,12 +442,11 @@ def show_movie_seat_map(
 ) -> SeatMapOutput:
     """Refresh only the selected showtime and return its live layout as MCP image content."""
     selected_cells = resolved_seat_cells(seat_region, seat_cells)
-    seat_match = showtime_seat_match(
-        {"showtimeHashCode": showtime_hash_code},
+    seat_match = seat_map_match(
+        seat_map(showtime_hash_code),
         adjacent_seats,
         parse_seat_grid(internal_seat_grid(selected_cells)),
         exclude_accessible,
-        seat_map,
     )
     if not seat_match:
         raise ValueError(

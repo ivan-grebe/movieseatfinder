@@ -42,8 +42,8 @@ from .fandango import (
 from .location import ZipNotFoundError, resolve_search_location
 from .seat_matching import (
     parse_seat_grid,
+    seat_map_match,
     seat_map_preview,
-    showtime_seat_match,
 )
 from .share_links import decode_share_link
 
@@ -666,12 +666,11 @@ class SeatCheck:
     def __call__(self, candidate):
         theatre_item, showtime = candidate
         try:
-            seat_match = showtime_seat_match(
-                showtime,
+            seat_match = seat_map_match(
+                seat_map(showtime["showtimeHashCode"]),
                 self.adjacent_seats,
                 self.selected_cells,
                 self.exclude_accessible,
-                seat_map,
             )
         except (*UPSTREAM_ERRORS, ValueError):
             with self._lock:
