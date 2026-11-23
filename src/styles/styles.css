@@ -2212,7 +2212,6 @@ input[type="time"] {
   .buy-btn,
   .share-label,
   .share-feedback,
-  .github-link,
   .combo-option {
     transition-duration: 0ms;
   }
@@ -2673,6 +2672,9 @@ input[type="time"] {
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   @media (hover: hover) {
+    .btn-small:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.1);
+    }
     .seat-cell:hover::before {
       background: #3a2523;
       box-shadow: 0 0 0 1px var(--accent);
@@ -2748,15 +2750,6 @@ input[type="time"] {
   .legend-swatch {
     background: #dcd7d3;
     border-color: #bfb7b1;
-  }
-}
-
-@media (prefers-color-scheme: dark) and (hover: hover) {
-  .format-guide-toggle:hover {
-    color: var(--accent-deep);
-  }
-  .btn-small:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.1);
   }
 }
 

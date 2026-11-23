@@ -147,14 +147,15 @@ export function streamSearch(params, sort) {
       results.zipCode = event.zipCode;
       results.checkedShowtimes = event.checkedShowtimes;
       results.accessibleSeatsExcluded = event.accessibleSeatsExcluded;
-    } else if (event.type === "match") {
-      results.matches.push(event.match);
-    } else if (event.type === "progress") {
+    } else {
       results.checkedSeatMaps = event.checkedSeatMaps;
       results.failedSeatMaps = event.failedSeatMaps;
-    } else if (event.type === "done") {
-      results.complete = event.complete;
-      results.done = true;
+      if (event.type === "match") {
+        results.matches.push(event.match);
+      } else {
+        results.complete = event.complete;
+        results.done = true;
+      }
     }
   }
 
@@ -186,9 +187,6 @@ export function streamSearch(params, sort) {
     if (!results.done) {
       throw new Error("The search stopped early. Please try again.");
     }
-    if (results.checkedSeatMaps > 0 && results.failedSeatMaps === results.checkedSeatMaps) {
-      throw new Error("Seat availability could not be checked. Please try again.");
-    }
   }
 
   read().catch((error) => {
@@ -210,12 +208,14 @@ export function resortedResults(results, sort) {
 
 /**
  * The results a new search would return, if it only narrows theatres, formats or the time
- * window of a fully covered search; otherwise null.
+ * window of a fully covered search; otherwise null. An identical search is null, so it fetches
+ * live availability again.
  */
 export function narrowedResults(results, params) {
   const before = results.params;
   if (
     !results.complete ||
+    before.toString() === params.toString() ||
     !sameOtherParams(before, params) ||
     !theatresNarrowed(before, params) ||
     !formatsNarrowed(before, params) ||
@@ -238,11 +238,6 @@ export function narrowedResults(results, params) {
     ),
     params,
   });
-}
-
-/** Whether a page can be shown from loaded results, now or once the stream gets further. */
-export function canServePage(results, page, pageSize) {
-  return results.complete || results.matches.length > page * pageSize || !results.done;
 }
 
 /** One page in the shape /api/search returns. */

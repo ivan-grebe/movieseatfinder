@@ -61,7 +61,6 @@ function getSearchShareData(searchUrl, match) {
   return {
     text: [movie, details.filter(Boolean).join(" · ")].join("\n"),
     title: `${movie} — Movie Seat Finder`,
-    url: searchUrl,
   };
 }
 
@@ -69,8 +68,7 @@ export function createShareButton(searchUrl, match) {
   const mobile =
     /Android|iPhone|iPad|iPod/u.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const data = getSearchShareData(searchUrl, match);
-  data.url = compactShareUrl(searchUrl, match);
+  const data = { ...getSearchShareData(searchUrl, match), url: compactShareUrl(searchUrl, match) };
   const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
   const button = document.createElement("button");
   button.type = "button";

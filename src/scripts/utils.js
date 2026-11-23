@@ -5,8 +5,8 @@ function localDateString(date) {
   return `${year}-${month}-${day}`;
 }
 
-export function todayString(now = new Date()) {
-  return localDateString(now);
+export function todayString() {
+  return localDateString(new Date());
 }
 
 export function addDays(dateString, days) {
