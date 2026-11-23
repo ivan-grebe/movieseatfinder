@@ -3,6 +3,7 @@
 GRID_SIZE = 15
 
 ACCESSIBLE_SEAT_TYPES = {"wheelchair", "companion"}
+NEIGHBOR_KEYS = ("leftNeighbor", "rightNeighbor")
 
 
 def parse_seat_grid(value):
@@ -94,6 +95,16 @@ def seat_positioner(seats):
     return position
 
 
+def seats_touch(left, right, use_links):
+    if right.get("column", 0) != left.get("column", 0) + 1:
+        return False
+    if not use_links:
+        return True
+    return left.get("id") in {right.get(key) for key in NEIGHBOR_KEYS} or right.get("id") in {
+        left.get(key) for key in NEIGHBOR_KEYS
+    }
+
+
 def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     """Return runs of adjacent available seat ids, one list per run."""
     available = [
@@ -105,6 +116,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     if not available:
         return []
 
+    use_links = any(seat.get(key) for seat in seats for key in NEIGHBOR_KEYS)
     position = seat_positioner(seats)
     by_row = {}
     for seat in available:
@@ -117,16 +129,12 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
     for row_seats in by_row.values():
         row_seats.sort(key=lambda seat: seat.get("column", 0))
         current = []
-        previous_col = None
         for seat in row_seats:
-            column = seat.get("column", 0)
-            if previous_col is None or column == previous_col + 1:
-                current.append(seat)
-            else:
+            if current and not seats_touch(current[-1], seat, use_links):
                 if len(current) >= min_adjacent:
                     blocks.append(current)
-                current = [seat]
-            previous_col = column
+                current = []
+            current.append(seat)
         if len(current) >= min_adjacent:
             blocks.append(current)
 
