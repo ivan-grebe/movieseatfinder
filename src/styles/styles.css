@@ -230,17 +230,6 @@ h1 {
   text-wrap: balance;
 }
 
-.tagline {
-  margin: 14px auto 0;
-  max-width: 540px;
-  color: #625a55;
-  font-size: clamp(13px, 1.15vw, 15px);
-  font-weight: 600;
-  line-height: 1.42;
-  letter-spacing: 0;
-  text-wrap: balance;
-}
-
 .app-shell,
 .results-section {
   position: relative;
@@ -1440,8 +1429,7 @@ a:focus-visible {
 }
 
 .shared-search .hero,
-.shared-search #search,
-.shared-search .initial-results-placeholder {
+.shared-search #search {
   display: none;
 }
 
@@ -1754,12 +1742,6 @@ a:focus-visible {
     var(--shadow-border),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
   text-align: center;
-}
-
-.empty-art {
-  width: 106px;
-  height: auto;
-  color: rgba(88, 115, 148, 0.48);
 }
 
 .empty-state p {
@@ -2225,9 +2207,6 @@ input[type="time"] {
   animation: enter-up 440ms cubic-bezier(0.2, 0, 0, 1) backwards;
 }
 
-.enter-item-1 {
-  animation-delay: 40ms;
-}
 .enter-item-2 {
   animation-delay: 140ms;
 }
@@ -2321,10 +2300,6 @@ input[type="time"] {
 
   h1 {
     font-size: 34px;
-  }
-
-  .tagline {
-    margin-top: 12px;
   }
 
   .card-body {
@@ -2640,9 +2615,6 @@ input[type="time"] {
   h1 {
     color: var(--ink);
   }
-  .tagline {
-    color: #bbb8b5;
-  }
 
   .card,
   .result,
@@ -2797,9 +2769,6 @@ input[type="time"] {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.055),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-  .empty-art {
-    color: rgba(170, 168, 165, 0.4);
   }
 
   .faq-item summary {
