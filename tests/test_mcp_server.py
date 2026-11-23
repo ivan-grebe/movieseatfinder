@@ -251,7 +251,6 @@ class McpProtocolTests(unittest.TestCase):
         self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
         self.assertIn("Best matching group: H10-H11", result["content"][1]["text"])
         self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
-        self.assertEqual(result["structuredContent"]["seatMapUrl"], sample_seat_map_url())
         _match.assert_called_once_with(_seat_map.return_value, 2, [(6, 6), (6, 7)], True)
 
     def test_an_invalid_seat_map_url_asks_for_the_exact_link(self):
@@ -272,7 +271,12 @@ class McpProtocolTests(unittest.TestCase):
 
 
 class CompactSearchResultsTests(unittest.TestCase):
-    def test_capped_search_tells_the_model_to_offer_narrowing(self):
+    def test_a_complete_search_has_no_message(self):
+        compact = server.compact_search_results(sample_search_result(), sample_search())
+
+        self.assertNotIn("message", compact)
+
+    def test_capped_search_says_how_much_was_checked(self):
         result = sample_search_result()
         result["capped"] = True
         result["checkedSeatMaps"] = 150
@@ -289,7 +293,7 @@ class CompactSearchResultsTests(unittest.TestCase):
 
         compact = server.compact_search_results(result, sample_search())
 
-        self.assertIn("more matching showtimes exist", compact["message"])
+        self.assertIn("More matching showtimes exist", compact["message"])
 
     def test_a_search_with_no_showtimes_points_back_to_discovery(self):
         result = {**sample_search_result(), "matches": [], "checkedShowtimes": 0}
