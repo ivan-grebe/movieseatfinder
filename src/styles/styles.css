@@ -321,9 +321,16 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.selection-gated.is-locked > :not(.group-title) {
+.selection-gated.is-locked > :not(.group-title),
+.selection-gated.is-locked .group-title > :not(.lock-hint) {
   opacity: 0.4;
   filter: grayscale(1);
+}
+
+.selection-gated .group-title > * {
+  transition:
+    opacity 260ms ease-out,
+    filter 260ms ease-out;
 }
 
 .lock-hint {

@@ -133,7 +133,12 @@ function hasValidZip() {
 }
 
 function searchInputsReady() {
-  return locationReady && !theatreFilter.isBusy() && !movieInput.hasAttribute("aria-busy");
+  return (
+    locationReady &&
+    selectedMovie !== null &&
+    !theatreFilter.isBusy() &&
+    !movieInput.hasAttribute("aria-busy")
+  );
 }
 
 function setGroupReady(group, ready) {
@@ -208,6 +213,7 @@ function resetFormats() {
 function clearMovieSelection({ rememberTitle = false } = {}) {
   selectedMovie = null;
   syncPreferencesReady();
+  syncSearchButton();
   if (!rememberTitle) {
     selectedMovieTitle = "";
   }
@@ -217,6 +223,7 @@ function clearMovieSelection({ rememberTitle = false } = {}) {
 function selectMovie(movie) {
   selectedMovie = movie;
   syncPreferencesReady();
+  syncSearchButton();
   selectedMovieTitle = movie.title;
   movieInput.value = movie.title;
   movieInput.setCustomValidity("");
