@@ -163,19 +163,21 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     return [group for _, group in groups]
 
 
-def showtime_seat_match(
-    showtime, min_adjacent, selected_cells, exclude_accessible, seat_map_loader
-):
-    data = seat_map_loader(showtime.get("showtimeHashCode"))
+def seat_map_match(data, min_adjacent, selected_cells, exclude_accessible):
     if not data or not data.get("seats"):
         return None
-    preview = seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible)
+    blocks = adjacent_blocks(data["seats"], min_adjacent, selected_cells, exclude_accessible)
+    if not blocks:
+        # Most seat maps don't match; skip building a layout nobody will see.
+        return None
+    preview = seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible, blocks)
     return preview if preview["matchingGroups"] else None
 
 
-def seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible):
+def seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible, blocks=None):
     seats = data.get("seats") or []
-    blocks = adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible)
+    if blocks is None:
+        blocks = adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible)
     matching_groups = (
         ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells) if blocks else []
     )

@@ -1,3 +1,4 @@
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -104,15 +105,48 @@ class SeatSelectionTests(unittest.TestCase):
         self.assertCountEqual(groups, [["A1", "A2"], ["A2", "A3"], ["A3", "A4"]])
 
 
+def search_with_candidates(candidates, matching):
+    """Patch the search setup so `matching(candidate)` decides which candidates match."""
+
+    def check(candidate):
+        return {"candidate": candidate} if matching(candidate) else None
+
+    check.failed = 0
+    check.exclude_accessible = True
+    return patch.object(application, "prepare_search", return_value=("10001", candidates, check))
+
+
 class CandidateSearchTests(unittest.TestCase):
     def test_exactly_full_page_keeps_checking_for_a_next_match(self):
-        def check(candidate):
-            return {"candidate": candidate} if candidate < 5 or candidate == 99 else None
+        with search_with_candidates(list(range(100)), lambda value: value < 5 or value == 99):
+            result = application.find_seat_matches(radius=5, movie="Test", page_size=5)
 
-        matches, checked = application.seat_checked_matches(list(range(100)), 5, check)
+        self.assertEqual(result["matches"], [{"candidate": value} for value in range(5)])
+        self.assertTrue(result["hasNextPage"])
+        self.assertEqual(result["checkedSeatMaps"], 100)
 
-        self.assertEqual(matches, [{"candidate": value} for value in [0, 1, 2, 3, 4, 99]])
-        self.assertEqual(checked, 100)
+    def stream(self, candidate_count):
+        client = TestClient(application.app)
+        with search_with_candidates(list(range(candidate_count)), lambda value: True):
+            response = client.get("/api/search/stream", params={"radius": 5, "movie": "Test"})
+        return [json.loads(line) for line in response.text.splitlines()]
+
+    def test_stream_sends_matches_in_order_then_reports_full_coverage(self):
+        events = self.stream(30)
+        self.assertEqual(events[0]["checkedShowtimes"], 30)
+        matches = [event["match"]["candidate"] for event in events if event["type"] == "match"]
+        self.assertEqual(matches, list(range(30)))
+        self.assertEqual(
+            events[-1],
+            {"type": "done", "complete": True, "checkedSeatMaps": 30, "failedSeatMaps": 0},
+        )
+
+    def test_stream_stops_at_the_seat_map_cap(self):
+        events = self.stream(application.STREAM_SEAT_MAP_LIMIT + 50)
+        matches = [event for event in events if event["type"] == "match"]
+        self.assertEqual(len(matches), application.STREAM_SEAT_MAP_LIMIT)
+        self.assertEqual(events[-1]["checkedSeatMaps"], application.STREAM_SEAT_MAP_LIMIT)
+        self.assertFalse(events[-1]["complete"])
 
 
 def showtime_group(format_name, code, time):
@@ -231,11 +265,11 @@ class LocationTests(unittest.TestCase):
                 {"name": "Too far", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75}},
             ]
         }
-        with patch.object(fandango, "THEATRES_CACHE", fandango.TtlCache("theatres", 300, 10)):
-            response = TestClient(application.app).get(
-                "/api/theatres",
-                params={"lat": 40, "lon": -75, "radius": 5},
-            )
+        fandango._fetch_fandango_theatres.cache_clear()
+        response = TestClient(application.app).get(
+            "/api/theatres",
+            params={"lat": 40, "lon": -75, "radius": 5},
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
 

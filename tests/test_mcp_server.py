@@ -168,12 +168,13 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(search["seat_grid"], "10:5,10:6,10:7,11:5,11:6,11:7")
         self.assertEqual(search["requested_format"], "IMAX,IMAX 70mm")
 
+    @patch.object(server, "seat_map")
     @patch.object(
         server,
-        "showtime_seat_match",
+        "seat_map_match",
         return_value=sample_search_result()["matches"][0]["seatMap"],
     )
-    def test_client_receives_an_image_and_structured_seat_map_fallback(self, _showtime_seat_match):
+    def test_client_receives_an_image_and_structured_seat_map_fallback(self, _match, _seat_map):
         request = {
             "jsonrpc": "2.0",
             "id": 3,

@@ -81,12 +81,10 @@ export function createTheatrePicker({
   }
 
   function restore(params) {
-    const include = params.getAll("includeTheatre");
-    if (params.get("theatre")) {
-      // Older links name a single theatre.
-      include.push(params.get("theatre").trim());
-    }
-    filter.select({ exclude: params.getAll("excludeTheatre"), include });
+    filter.select({
+      exclude: params.getAll("excludeTheatre"),
+      include: params.getAll("includeTheatre"),
+    });
   }
 
   function validate() {

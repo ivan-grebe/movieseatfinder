@@ -29,6 +29,7 @@ def http_session():
     return _SESSION
 
 
+@lru_cache(maxsize=4096)
 def distance_miles(lat1, lon1, lat2, lon2):
     return geodesic((lat1, lon1), (lat2, lon2)).miles
 

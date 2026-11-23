@@ -55,7 +55,7 @@ class SearchFailureTests(unittest.TestCase):
         ]
         with (
             patch.object(application, "collect_candidate_showtimes", return_value=candidates),
-            patch.object(application, "showtime_seat_match", side_effect=check),
+            patch.object(application, "seat_map", side_effect=check),
         ):
             return self.client.get("/api/search", params=self.params)
 
@@ -73,10 +73,10 @@ class SearchFailureTests(unittest.TestCase):
         self.assertEqual(response.json()["failedSeatMaps"], 0)
 
     def test_partial_failure_preserves_confirmed_matches_and_reports_failed_checks(self):
-        def check(showtime, *_args):
-            if showtime["showtimeHashCode"] == "first":
+        def check(showtime_hash):
+            if showtime_hash == "first":
                 raise requests.Timeout("upstream timeout")
-            return {"matchingGroups": [["H1"]], "bestGroup": ["H1"]}
+            return {"seats": [{"id": "H1", "row": 0, "column": 1, "x": 0, "status": "A"}]}
 
         response = self.search_with_seat_check(check)
         self.assertEqual(response.status_code, 200)

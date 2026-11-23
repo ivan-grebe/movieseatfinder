@@ -304,8 +304,6 @@ async function initialize() {
   if (!sharedSearch) {
     shouldSearchFromUrl = applyQueryParams();
   }
-  document.body.classList.toggle("shared-search", sharedSearch);
-  document.body.classList.toggle("shared-loading", sharedSearch);
   if (sharedSearch) {
     logSharedLinkVisit();
     await search.loadSharedShowtime(sharedToken, applySharedShowtime);

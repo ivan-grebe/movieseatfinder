@@ -1,15 +1,18 @@
 """Website routes and the showtime/seat search shared with the MCP server."""
 
+import json
 import logging
 import sys
 import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from itertools import islice
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     HTMLResponse,
@@ -17,6 +20,7 @@ from fastapi.responses import (
     PlainTextResponse,
     RedirectResponse,
     Response,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import StringConstraints
@@ -38,8 +42,8 @@ from .fandango import (
 from .location import ZipNotFoundError, resolve_search_location
 from .seat_matching import (
     parse_seat_grid,
+    seat_map_match,
     seat_map_preview,
-    showtime_seat_match,
 )
 from .share_links import decode_share_link
 
@@ -51,10 +55,13 @@ STATIC_DIR = SRC_DIR / "dist"
 TEMPLATE_DIR = SRC_DIR / "templates"
 INDEX_TEMPLATE = (TEMPLATE_DIR / "index.html").read_text(encoding="utf-8")
 FAQ_TEMPLATE = (TEMPLATE_DIR / "faq.html").read_text(encoding="utf-8")
+LLMS_TXT = (SRC_DIR / "content" / "llms.txt").read_text(encoding="utf-8")
 # Fandango lists U.S. theatres only; these territories use U.S. ZIP codes too.
 US_COUNTRY_CODES = {"US", "PR", "GU", "VI", "AS", "MP"}
 REGION_NOTICE_COOKIE = "regionNoticeDismissed"
 DEFAULT_PAGE_SIZE = 20
+# A streamed search checks at most this many seat maps, so one search can't flood Fandango.
+STREAM_SEAT_MAP_LIMIT = 150
 MAX_PAGE_SIZE = 50
 MAX_DATE_RANGE_DAYS = 14
 MAX_DAYS_AHEAD = 180
@@ -80,6 +87,8 @@ Radius = Annotated[float, Query(ge=1, le=100)]
 PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
+Latitude = Annotated[float | None, Query(ge=-90, le=90)]
+Longitude = Annotated[float | None, Query(ge=-180, le=180)]
 # Fandango returns at most 100 theatres per search, so a filter never needs more names.
 MAX_THEATRE_FILTERS = 100
 IncludedTheatres = Annotated[
@@ -152,12 +161,10 @@ def dated_theatres(zip_code, radius, dates, theatre_query, origin, included=(), 
             yield show_date, theatre
 
 
-def available_movies(zip_code, radius, dates, theatre_query, origin, included, excluded):
+def available_movies(zip_code, radius, dates, origin, included, excluded):
     seen = set()
     movies = []
-    for _, theatre in dated_theatres(
-        zip_code, radius, dates, theatre_query, origin, included, excluded
-    ):
+    for _, theatre in dated_theatres(zip_code, radius, dates, "", origin, included, excluded):
         for movie in theatre["rawMovies"]:
             title = clean_title(movie.get("title", ""))
             key = normalized_text(title)
@@ -168,13 +175,9 @@ def available_movies(zip_code, radius, dates, theatre_query, origin, included, e
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def available_formats(
-    zip_code, radius, dates, theatre_query, movie_query, origin, included, excluded
-):
+def available_formats(zip_code, radius, dates, movie_query, origin, included, excluded):
     formats = set()
-    for _, theatre in dated_theatres(
-        zip_code, radius, dates, theatre_query, origin, included, excluded
-    ):
+    for _, theatre in dated_theatres(zip_code, radius, dates, "", origin, included, excluded):
         for movie in theatre["rawMovies"]:
             if not movie_matches(movie.get("title", ""), movie_query):
                 continue
@@ -339,8 +342,7 @@ def robots():
 
 @app.get("/llms.txt", include_in_schema=False)
 def llms_txt():
-    llms_file = SRC_DIR / "content" / "llms.txt"
-    return PlainTextResponse(llms_file.read_text(encoding="utf-8"))
+    return PlainTextResponse(LLMS_TXT)
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
@@ -403,6 +405,14 @@ def api_errors(upstream_message):
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
+def resolve_area(zip_code, lat, lon, start_date, end_date):
+    """Validate the dates and resolve the location: (search ZIP, origin, ISO dates)."""
+    start_date = start_date or us_today()
+    dates = date_range(start_date, end_date or start_date)
+    search_zip, origin, _ = api_search_location(zip_code, lat, lon)
+    return search_zip, origin, dates
+
+
 def api_search_location(zip_code, lat, lon):
     """Resolve location while preserving which field needs attention."""
     try:
@@ -435,14 +445,12 @@ def location_movie_info(
     theatre="",
     movie_query="",
     format_query="",
-    lat=None,
-    lon=None,
 ):
     """Return canonical live theatre, movie, and format values for agents."""
     with api_errors("Could not load real theatre and movie data"):
         end_date = end_date or start_date
         dates = date_range(start_date, end_date)
-        search_zip, origin, place = api_search_location(zip_code, lat, lon)
+        search_zip, origin, place = api_search_location(zip_code, None, None)
         theatres = {}
         movies = {}
 
@@ -541,8 +549,8 @@ def shared_link_visit():
 def api_theatres(
     radius: Radius,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
-    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
-    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    lat: Latitude = None,
+    lon: Longitude = None,
 ):
     with api_errors("Could not load real theatre data"):
         search_zip, origin, place = api_search_location(zip_code, lat, lon)
@@ -550,62 +558,65 @@ def api_theatres(
     return {"place": place, "theatres": [{"name": theatre["name"]} for theatre in theatres]}
 
 
-@app.get("/api/movies")
-def api_movies(
+def area_criteria(
     radius: Radius,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     startDate: date | None = None,
     endDate: date | None = None,
-    theatre: ShortText = "",
     included_theatres: IncludedTheatres = [],
     excluded_theatres: ExcludedTheatres = [],
-    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
-    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    lat: Latitude = None,
+    lon: Longitude = None,
 ):
+    """Where and when to look: the query parameters every listing and search shares."""
+    return {
+        "radius": radius,
+        "zip_code": zip_code,
+        "start_date": startDate,
+        "end_date": endDate,
+        "included_theatres": included_theatres,
+        "excluded_theatres": excluded_theatres,
+        "lat": lat,
+        "lon": lon,
+    }
+
+
+AreaCriteria = Annotated[dict, Depends(area_criteria)]
+
+
+@app.get("/api/movies")
+def api_movies(area: AreaCriteria):
     with api_errors("Could not load real movie data"):
-        start_date = startDate or us_today()
-        dates = date_range(start_date, endDate or start_date)
-        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
+        search_zip, origin, dates = resolve_area(
+            area["zip_code"], area["lat"], area["lon"], area["start_date"], area["end_date"]
+        )
         movies = available_movies(
             search_zip,
-            radius,
+            area["radius"],
             dates,
-            theatre.lower(),
             origin,
-            included_theatres,
-            excluded_theatres,
+            area["included_theatres"],
+            area["excluded_theatres"],
         )
     return {"movies": movies}
 
 
 @app.get("/api/formats")
-def api_formats(
-    radius: Radius,
-    zip_code: Annotated[ShortText, Query(alias="zip")] = "",
-    movie: ShortText = "",
-    startDate: date | None = None,
-    endDate: date | None = None,
-    theatre: ShortText = "",
-    included_theatres: IncludedTheatres = [],
-    excluded_theatres: ExcludedTheatres = [],
-    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
-    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
-):
+def api_formats(area: AreaCriteria, movie: ShortText = ""):
     if not movie:
         return {"formats": []}
     with api_errors("Could not load real format data"):
-        start_date = startDate or us_today()
-        dates = date_range(start_date, endDate or start_date)
-        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
+        search_zip, origin, dates = resolve_area(
+            area["zip_code"], area["lat"], area["lon"], area["start_date"], area["end_date"]
+        )
         formats = available_formats(
             search_zip,
-            radius,
+            area["radius"],
             dates,
-            theatre.lower(),
             movie,
             origin,
-            included_theatres,
-            excluded_theatres,
+            area["included_theatres"],
+            area["excluded_theatres"],
         )
     return {"formats": formats}
 
@@ -642,121 +653,146 @@ def collect_candidate_showtimes(
     return candidates
 
 
-def seat_checked_matches(candidates, page_end, check_candidate):
-    """Seat-check candidates in parallel until a match beyond page_end is found.
+class SeatCheck:
+    """Checks one (theatre, showtime) candidate's seat map, counting upstream failures."""
 
+    def __init__(self, adjacent_seats, selected_cells, exclude_accessible):
+        self.adjacent_seats = adjacent_seats
+        self.selected_cells = selected_cells
+        self.exclude_accessible = exclude_accessible
+        self.failed = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, candidate):
+        theatre_item, showtime = candidate
+        try:
+            seat_match = seat_map_match(
+                seat_map(showtime["showtimeHashCode"]),
+                self.adjacent_seats,
+                self.selected_cells,
+                self.exclude_accessible,
+            )
+        except (*UPSTREAM_ERRORS, ValueError):
+            with self._lock:
+                self.failed += 1
+            return None
+        if not seat_match:
+            return None
+        return {
+            "theatre": {
+                "name": theatre_item["name"],
+                "address": theatre_item["address"],
+                "distanceMiles": theatre_item["distanceMiles"],
+            },
+            "movieTitle": showtime["movieTitle"],
+            "date": showtime["date"],
+            "time": showtime["time"],
+            "displayTime": showtime["displayTime"],
+            "format": showtime["format"],
+            "amenities": showtime["amenities"],
+            "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
+            "poster": showtime["poster"],
+            "rating": showtime["rating"],
+            "runtime": showtime["runtime"],
+            "genres": showtime["genres"],
+            "seatMap": seat_match,
+            "showtimeHashCode": showtime["showtimeHashCode"],
+        }
+
+
+def checked_candidates(candidates, check):
+    """Seat-check candidates in parallel, yielding (match or None, number checked) in candidate
+    order.
+
+    A rolling window keeps requests in flight, so one slow seat map doesn't stall a whole batch.
     Candidates must be pre-sorted, so stopping early never skips a better match.
     """
-    matches = []
-    checked = 0
-    if not candidates:
-        return [], 0
     worker_count = min(12, max(4, len(candidates)))
-    batch_size = worker_count * 2
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        for offset in range(0, len(candidates), batch_size):
-            batch = candidates[offset : offset + batch_size]
-            checked += len(batch)
-            matches.extend(result for result in executor.map(check_candidate, batch) if result)
-            if len(matches) > page_end:
-                break
-    return matches, checked
+    remaining = iter(candidates)
+    executor = ThreadPoolExecutor(max_workers=worker_count)
+    try:
+        in_flight = deque(
+            executor.submit(check, item) for item in islice(remaining, worker_count * 2)
+        )
+        checked = 0
+        while in_flight:
+            match = in_flight.popleft().result()
+            checked += 1
+            for item in islice(remaining, 1):
+                in_flight.append(executor.submit(check, item))
+            yield match, checked
+    finally:
+        # A caller that stops early shouldn't wait on slow seat maps it no longer needs.
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
-def find_seat_matches(
-    radius: Radius,
-    movie: RequiredShortText,
-    zip_code: ShortText = "",
-    theatre: ShortText = "",
+def prepare_search(
+    radius,
+    movie,
+    zip_code="",
+    theatre="",
     included_theatres=(),
     excluded_theatres=(),
-    requested_format: RequiredShortText = "any",
-    start_date: date | None = None,
-    end_date: date | None = None,
-    start_time: TimeText = "00:00",
-    end_time: TimeText = "23:59",
-    adjacent_seats: AdjacentSeatCount = 1,
-    seat_grid: str = "",
-    exclude_accessible: bool = True,
-    sort: SearchSort = "earliest",
-    page: PageNumber = 1,
-    page_size: PageSize = DEFAULT_PAGE_SIZE,
-    lat: float | None = None,
-    lon: float | None = None,
+    requested_format="any",
+    start_date=None,
+    end_date=None,
+    start_time="00:00",
+    end_time="23:59",
+    adjacent_seats=1,
+    seat_grid="",
+    exclude_accessible=True,
+    sort="earliest",
+    lat=None,
+    lon=None,
 ):
-    """Run the shared live showtime and seat-map search operation."""
+    """Validate a search and return its ZIP, its candidates in result order, and its seat check."""
+    if start_time > end_time:
+        raise ValueError("Latest time must be on or after earliest time.")
+    selected_cells = parse_seat_grid(seat_grid)
+    search_zip, origin, dates = resolve_area(zip_code, lat, lon, start_date, end_date)
+    candidates = collect_candidate_showtimes(
+        search_zip,
+        radius,
+        dates,
+        theatre.lower(),
+        movie,
+        requested_format,
+        start_time,
+        end_time,
+        origin,
+        included_theatres,
+        excluded_theatres,
+    )
+    candidates.sort(
+        key=lambda candidate: search_sort_key(
+            candidate[0]["distanceMiles"],
+            candidate[1]["date"],
+            candidate[1]["time"],
+            candidate[0]["name"],
+            sort,
+        )
+    )
+    return search_zip, candidates, SeatCheck(adjacent_seats, selected_cells, exclude_accessible)
+
+
+def find_seat_matches(page=1, page_size=DEFAULT_PAGE_SIZE, **criteria):
+    """Run the live showtime and seat-map search for one page of results.
+
+    `criteria` are `prepare_search` arguments.
+    """
+    page_start = (page - 1) * page_size
+    page_end = page_start + page_size
     with api_errors("Could not search real showtimes/seats"):
-        if start_time > end_time:
-            raise ValueError("Latest time must be on or after earliest time.")
-        start_date = start_date or us_today()
-        dates = date_range(start_date, end_date or start_date)
-        selected_cells = parse_seat_grid(seat_grid)
-        page_start = (page - 1) * page_size
-        page_end = page_start + page_size
+        search_zip, candidates, check = prepare_search(**criteria)
+        matches = []
+        checked_seat_maps = 0
+        for match, checked_seat_maps in checked_candidates(candidates, check):
+            if match:
+                matches.append(match)
+                if len(matches) > page_end:
+                    break
 
-        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        candidates = collect_candidate_showtimes(
-            search_zip,
-            radius,
-            dates,
-            theatre.lower(),
-            movie,
-            requested_format,
-            start_time,
-            end_time,
-            origin,
-            included_theatres,
-            excluded_theatres,
-        )
-        candidates.sort(
-            key=lambda candidate: search_sort_key(
-                candidate[0]["distanceMiles"],
-                candidate[1]["date"],
-                candidate[1]["time"],
-                candidate[0]["name"],
-                sort,
-            )
-        )
-
-        failed_seat_maps = 0
-        failure_lock = threading.Lock()
-
-        def check_candidate(candidate):
-            nonlocal failed_seat_maps
-            theatre_item, showtime = candidate
-            try:
-                seat_match = showtime_seat_match(
-                    showtime, adjacent_seats, selected_cells, exclude_accessible, seat_map
-                )
-            except (*UPSTREAM_ERRORS, ValueError):
-                with failure_lock:
-                    failed_seat_maps += 1
-                return None
-            if not seat_match:
-                return None
-            return {
-                "theatre": {
-                    "name": theatre_item["name"],
-                    "address": theatre_item["address"],
-                    "distanceMiles": theatre_item["distanceMiles"],
-                },
-                "movieTitle": showtime["movieTitle"],
-                "date": showtime["date"],
-                "displayTime": showtime["displayTime"],
-                "format": showtime["format"],
-                "amenities": showtime["amenities"],
-                "ticketUrl": safe_fandango_url(showtime["ticketUrl"]),
-                "poster": showtime["poster"],
-                "rating": showtime["rating"],
-                "runtime": showtime["runtime"],
-                "genres": showtime["genres"],
-                "seatMap": seat_match,
-                "showtimeHashCode": showtime["showtimeHashCode"],
-            }
-
-        matches, checked_seat_maps = seat_checked_matches(candidates, page_end, check_candidate)
-
-    if failed_seat_maps and failed_seat_maps == checked_seat_maps:
+    if check.failed and check.failed == checked_seat_maps:
         raise HTTPException(
             status_code=502,
             detail="Seat availability could not be checked. Please try again.",
@@ -770,53 +806,81 @@ def find_seat_matches(
         "hasNextPage": len(matches) > page_end,
         "checkedShowtimes": len(candidates),
         "checkedSeatMaps": checked_seat_maps,
-        "failedSeatMaps": failed_seat_maps,
-        "accessibleSeatsExcluded": exclude_accessible,
+        "failedSeatMaps": check.failed,
+        "accessibleSeatsExcluded": check.exclude_accessible,
     }
 
 
-@app.get("/api/search")
-def api_search(
-    radius: Radius,
+def search_criteria(
+    area: AreaCriteria,
     movie: RequiredShortText,
-    zip_code: Annotated[ShortText, Query(alias="zip")] = "",
-    theatre: ShortText = "",
-    included_theatres: IncludedTheatres = [],
-    excluded_theatres: ExcludedTheatres = [],
     requested_format: Annotated[RequiredShortText, Query(alias="format")] = "any",
-    startDate: date | None = None,
-    endDate: date | None = None,
     startTime: TimeText = "00:00",
     endTime: TimeText = "23:59",
     adjacentSeats: AdjacentSeatCount = 1,
     seatGrid: str = "",
     excludeAccessible: bool = True,
     sort: SearchSort = "earliest",
+):
+    """The query parameters both search endpoints share, as `prepare_search` arguments."""
+    return {
+        **area,
+        "movie": movie,
+        "requested_format": requested_format,
+        "start_time": startTime,
+        "end_time": endTime,
+        "adjacent_seats": adjacentSeats,
+        "seat_grid": seatGrid,
+        "exclude_accessible": excludeAccessible,
+        "sort": sort,
+    }
+
+
+SearchCriteria = Annotated[dict, Depends(search_criteria)]
+
+
+@app.get("/api/search")
+def api_search(
+    criteria: SearchCriteria,
     page: PageNumber = 1,
     pageSize: PageSize = DEFAULT_PAGE_SIZE,
-    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
-    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
-    return find_seat_matches(
-        radius=radius,
-        movie=movie,
-        zip_code=zip_code,
-        theatre=theatre,
-        included_theatres=included_theatres,
-        excluded_theatres=excluded_theatres,
-        requested_format=requested_format,
-        start_date=startDate,
-        end_date=endDate,
-        start_time=startTime,
-        end_time=endTime,
-        adjacent_seats=adjacentSeats,
-        seat_grid=seatGrid,
-        exclude_accessible=excludeAccessible,
-        sort=sort,
-        page=page,
-        page_size=pageSize,
-        lat=lat,
-        lon=lon,
+    return find_seat_matches(**criteria, page=page, page_size=pageSize)
+
+
+@app.get("/api/search/stream")
+def api_search_stream(criteria: SearchCriteria):
+    """Stream matches as newline-delimited JSON events, in result order, so the first page can
+    show while the rest load. Checks at most STREAM_SEAT_MAP_LIMIT seat maps."""
+    with api_errors("Could not search real showtimes/seats"):
+        search_zip, candidates, check = prepare_search(**criteria)
+
+    def events():
+        yield {
+            "type": "start",
+            "zipCode": search_zip,
+            "checkedShowtimes": len(candidates),
+            "accessibleSeatsExcluded": criteria["exclude_accessible"],
+        }
+        checked = 0
+        for match, checked in checked_candidates(candidates[:STREAM_SEAT_MAP_LIMIT], check):
+            if match:
+                yield {
+                    "type": "match",
+                    "match": match,
+                    "checkedSeatMaps": checked,
+                    "failedSeatMaps": check.failed,
+                }
+        yield {
+            "type": "done",
+            "complete": len(candidates) <= STREAM_SEAT_MAP_LIMIT,
+            "checkedSeatMaps": checked,
+            "failedSeatMaps": check.failed,
+        }
+
+    return StreamingResponse(
+        (json.dumps(event, separators=(",", ":")) + "\n" for event in events()),
+        media_type="application/x-ndjson",
     )
 
 
