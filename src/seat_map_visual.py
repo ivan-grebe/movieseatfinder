@@ -150,29 +150,18 @@ def _legend_svg(accessible_seats_excluded):
             ("Matches", "#ef4444", "#fca5a5"),
         ]
     )
-    text_widths = [len(label) * 6.1 for label, _, _ in items]
-    item_widths = [17 + width for width in text_widths]
     gap = 7
-    total_width = sum(item_widths) + gap * (len(items) - 1)
     cursor = WRAPPER_PADDING + 1
     nodes = []
-    for (label, fill, stroke), item_width in zip(items, item_widths):
+    for label, fill, stroke in items:
         nodes.append(_legend_item(cursor, label, fill, stroke))
-        cursor += item_width + gap
-    start = WRAPPER_PADDING + 1
-    return (
-        f'<g id="seat-map-legend" data-start="{start:g}" data-width="{total_width:g}">'
-        f"{''.join(nodes)}</g>"
-    )
+        cursor += 17 + len(label) * 6.1 + gap
+    return f'<g id="seat-map-legend">{"".join(nodes)}</g>'
 
 
-def render_seat_map_svg(
-    layout, available_count=None, total_count=None, accessible_seats_excluded=True
-):
+def render_seat_map_svg(layout, available_count, total_count, accessible_seats_excluded):
     """Create a dark MCP image using the website seat map's layout."""
-    seats = layout.get("seats") or []
-    if not seats:
-        raise ValueError("This showtime does not have a seat map to display.")
+    seats = layout["seats"]
 
     layout_width = max(
         _number(layout.get("width"), 1),
@@ -185,11 +174,6 @@ def render_seat_map_svg(
         1,
     )
     background_svg = str(layout.get("backgroundSvg") or "")
-    title = "Live Fandango seat map"
-    if available_count is None:
-        available_count = sum(1 for seat in seats if seat.get("status") == "A")
-    if total_count is None:
-        total_count = len(seats)
 
     layout_aspect = layout_width / layout_height
     stage_width = CONTENT_WIDTH
@@ -248,7 +232,7 @@ def render_seat_map_svg(
         <clipPath id="stage-clip"><rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12"/></clipPath>
       </defs>
       <rect x="0.5" y="0.5" width="641" height="{canvas_height - 1}" rx="22" fill="#111827" stroke="#475569" stroke-opacity=".72"/>
-      <text x="11" y="20" style="{TITLE_TEXT_STYLE}">{_text(title)}</text>
+      <text x="11" y="20" style="{TITLE_TEXT_STYLE}">Live Fandango seat map</text>
       <text x="631" y="20" style="{COUNT_TEXT_STYLE}" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
       <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#64748b" stroke-opacity=".5"/>
       {screen_node}

@@ -112,6 +112,7 @@ def search_with_candidates(candidates, matching):
         return {"candidate": candidate} if matching(candidate) else None
 
     check.failed = 0
+    check.exclude_accessible = True
     return patch.object(application, "prepare_search", return_value=("10001", candidates, check))
 
 
@@ -135,15 +136,17 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertEqual(events[0]["checkedShowtimes"], 30)
         matches = [event["match"]["candidate"] for event in events if event["type"] == "match"]
         self.assertEqual(matches, list(range(30)))
-        self.assertEqual(events[-1], {"type": "done", "complete": True})
+        self.assertEqual(
+            events[-1],
+            {"type": "done", "complete": True, "checkedSeatMaps": 30, "failedSeatMaps": 0},
+        )
 
     def test_stream_stops_at_the_seat_map_cap(self):
         events = self.stream(application.STREAM_SEAT_MAP_LIMIT + 50)
         matches = [event for event in events if event["type"] == "match"]
         self.assertEqual(len(matches), application.STREAM_SEAT_MAP_LIMIT)
-        progress = [event for event in events if event["type"] == "progress"]
-        self.assertEqual(progress[-1]["checkedSeatMaps"], application.STREAM_SEAT_MAP_LIMIT)
-        self.assertEqual(events[-1], {"type": "done", "complete": False})
+        self.assertEqual(events[-1]["checkedSeatMaps"], application.STREAM_SEAT_MAP_LIMIT)
+        self.assertFalse(events[-1]["complete"])
 
 
 def showtime_group(format_name, code, time):

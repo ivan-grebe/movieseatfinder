@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from urllib.parse import urlsplit
 
 import requests
@@ -163,16 +164,19 @@ def canonical_format_label(value):
     return FORMAT_LABEL_ALIASES.get(normalized_text(cleaned), cleaned)
 
 
-def format_matches(format_name, requested):
-    if requested == "any":
-        return True
-    actual = normalized_text(canonical_format_label(format_name))
-    requested_formats = {
+@lru_cache(maxsize=256)
+def requested_format_names(requested):
+    return frozenset(
         normalized_text(canonical_format_label(value))
         for value in requested.split(",")
         if normalized_text(value)
-    }
-    return actual in requested_formats
+    )
+
+
+def format_matches(format_name, requested):
+    if requested == "any":
+        return True
+    return normalized_text(canonical_format_label(format_name)) in requested_format_names(requested)
 
 
 GENERIC_FORMAT_NAMES = {"format", "premium format", "standard"}
@@ -224,8 +228,7 @@ def showtime_format(format_header, group, showtime):
         if part.strip()
     ]
     amenity_names.extend(group_amenity_names(group))
-    header = clean_title(format_header)
-    evidence = [*showtime_names, header, *amenity_names]
+    evidence = [*showtime_names, format_header, *amenity_names]
     labels_by_name = {
         normalized_text(label): label
         for value in evidence
@@ -253,7 +256,7 @@ def showtime_format(format_header, group, showtime):
         if is_format_amenity(name):
             return canonical_format_label(name)
 
-    return canonical_format_label(header or "Standard")
+    return canonical_format_label(format_header)
 
 
 def amenity_groups(movie):
@@ -376,7 +379,7 @@ def display_showtime_time(value):
     """Turn Fandango's 24-hour ticketing time into a compact display time."""
     try:
         hour, minute = (int(part) for part in value.split(":", 1))
-    except AttributeError, TypeError, ValueError:
+    except ValueError:
         return value
     suffix = "AM" if hour < 12 else "PM"
     hour = hour % 12 or 12

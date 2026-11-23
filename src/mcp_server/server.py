@@ -8,7 +8,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver import Image
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import Annotations, CallToolResult, TextContent
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from starlette.routing import Route
 
 from .. import application
@@ -51,8 +51,6 @@ class SeatRegion(BaseModel):
 
 class SeatMapOutput(BaseModel):
     """Structured fallback returned alongside the seat-map image."""
-
-    model_config = ConfigDict(populate_by_name=True)  # noqa
 
     option: int  # noqa
     movie: str
@@ -135,6 +133,15 @@ def compact_search_results(result, query, seat_preferences):
                 "seatMapRequest": showtime_request,
             }
         )
+    if result["failedSeatMaps"]:
+        message = (
+            "Results are incomplete because some seat maps could not be checked. "
+            "Present any confirmed options with this warning and offer to retry before changing constraints."
+        )
+    elif options:
+        message = "Present these compact options and offer the seat map or ticket link for a selected option."
+    else:
+        message = "No matching live seat maps were found. Ask which explicit constraint the user wants to change."
     return {
         "query": query,
         "options": options,
@@ -142,14 +149,7 @@ def compact_search_results(result, query, seat_preferences):
         "checkedShowtimes": result["checkedShowtimes"],
         "checkedSeatMaps": result["checkedSeatMaps"],
         "failedSeatMaps": result["failedSeatMaps"],
-        "message": (
-            "Results are incomplete because some seat maps could not be checked. "
-            "Present any confirmed options with this warning and offer to retry before changing constraints."
-            if result["failedSeatMaps"]
-            else "Present these compact options and offer the seat map or ticket link for a selected option."
-            if options
-            else "No matching live seat maps were found. Ask which explicit constraint the user wants to change."
-        ),
+        "message": message,
     }
 
 
@@ -456,7 +456,7 @@ def show_movie_seat_map(
 
     matching_groups = seat_match["matchingGroups"][:12]
     best_group = seat_match["bestGroup"]
-    recommended_summary = "-".join(best_group) or "none currently highlighted"
+    recommended_summary = "-".join(best_group)
     caption = (
         f"Display the attached seat-map image directly to the user. "
         f"Live seat map for option {option_number}: {movie} at {theatre} — "
