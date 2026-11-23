@@ -2,18 +2,25 @@ const SEARCHABLE_OPTION_COUNT = 8;
 
 function createCheckbox(text, checked, onToggle) {
   const input = document.createElement("input");
+
   input.type = "checkbox";
   input.checked = checked;
   input.addEventListener("change", () => onToggle(input.checked));
   const box = document.createElement("span");
+
   box.className = "check-box";
   box.setAttribute("aria-hidden", "true");
   const label = document.createElement("span");
+
   label.textContent = text;
   const option = document.createElement("label");
+
   option.className = "check";
   option.append(input, box, label);
-  return { input, option };
+  return {
+    input: input,
+    option: option,
+  };
 }
 
 /**
@@ -33,7 +40,11 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
   let query = "";
 
   function isChecked(option) {
-    return included ? included.has(option) : !excluded.has(option);
+    if (included) {
+      return included.has(option);
+    }
+
+    return !excluded.has(option);
   }
 
   function checkedOptions() {
@@ -44,23 +55,30 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
     if (options.length === 0) {
       return placeholder;
     }
+
     const picked = checkedOptions();
     const left = options.filter((option) => !isChecked(option));
+
     if (left.length === 0) {
       return allLabel(options.length);
     }
+
     if (picked.length === 0) {
       return `No ${noun} selected`;
     }
+
     if (picked.length <= 2) {
       return picked.join(", ");
     }
+
     if (left.length === 1) {
       return `All except ${left[0]}`;
     }
+
     if (left.length < picked.length) {
       return `All except ${left.length} ${noun}`;
     }
+
     return `${picked.length} ${noun}`;
   }
 
@@ -76,6 +94,7 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
       } else {
         included.delete(option);
       }
+
       if (included.size === options.length) {
         included = null;
       }
@@ -84,6 +103,7 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
     } else {
       excluded.add(option);
     }
+
     changed();
   }
 
@@ -92,6 +112,7 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
       setChecked(option, checked),
     );
     const row = document.createElement("div");
+
     row.className = "filter-row";
     row.append(label);
     return row;
@@ -103,13 +124,20 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
       `Select all (${options.length})`,
       picked === options.length,
       (checked) => {
-        included = checked ? null : new Set();
+        if (checked) {
+          included = null;
+        } else {
+          included = new Set();
+        }
+
         excluded.clear();
         changed();
       },
     );
+
     input.indeterminate = picked > 0 && picked < options.length;
     const row = document.createElement("div");
+
     row.className = "filter-row filter-select-all";
     row.append(option);
     return row;
@@ -123,17 +151,22 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
     );
     const visible = options.filter((option) => option.toLowerCase().includes(query));
     const rows = [];
+
     if (!query) {
       rows.push(renderSelectAll());
     }
+
     rows.push(...visible.map((option) => renderRow(option)));
     if (visible.length === 0) {
       const empty = document.createElement("p");
+
       empty.className = "filter-empty";
       empty.textContent = `No ${noun} match “${query}”.`;
       rows.push(empty);
     }
+
     const { scrollTop } = list;
+
     list.replaceChildren(...rows);
     list.scrollTop = scrollTop;
   }
@@ -163,16 +196,23 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
         included = null;
       }
     }
+
     button.disabled = options.length === 0;
     if (options.length === 0) {
       setOpen(false);
     }
+
     render();
   }
 
   /** Restore a selection (for example from the URL) before or after options load. */
   function select({ include = [], exclude = [] }) {
-    included = include.length > 0 ? new Set(include) : null;
+    if (include.length > 0) {
+      included = new Set(include);
+    } else {
+      included = null;
+    }
+
     excluded.clear();
     exclude.forEach((option) => excluded.add(option));
     if (options.length > 0) {
@@ -227,12 +267,19 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
     /** The shortest way to send the selection: an include list, an exclude list, or neither. */
     params() {
       if (included) {
-        return { exclude: [], include: [...included] };
+        return {
+          exclude: [],
+          include: [...included],
+        };
       }
-      return { exclude: [...excluded], include: [] };
+
+      return {
+        exclude: [...excluded],
+        include: [],
+      };
     },
-    select,
-    setBusy,
-    setOptions,
+    select: select,
+    setBusy: setBusy,
+    setOptions: setOptions,
   };
 }

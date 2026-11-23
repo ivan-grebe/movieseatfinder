@@ -14,6 +14,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
 
   function setActive(index) {
     const choices = options();
+
     choices.forEach((option) => {
       option.classList.remove("is-active");
       option.setAttribute("aria-selected", "false");
@@ -23,12 +24,16 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       input.removeAttribute("aria-activedescendant");
       return;
     }
+
     activeIndex = ((index % choices.length) + choices.length) % choices.length;
     const active = choices[activeIndex];
+
     active.classList.add("is-active");
     active.setAttribute("aria-selected", "true");
     input.setAttribute("aria-activedescendant", active.id);
-    active.scrollIntoView({ block: "nearest" });
+    active.scrollIntoView({
+      block: "nearest",
+    });
   }
 
   function pick(item) {
@@ -47,6 +52,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
 
     items.forEach((item, index) => {
       const button = document.createElement("button");
+
       button.type = "button";
       button.className = "combo-option";
       button.id = `${menu.id}-option-${index}`;
@@ -65,6 +71,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
 
   function update() {
     const query = input.value.trim().toLowerCase();
+
     items = source().filter((item) => getLabel(item).toLowerCase().includes(query));
     render();
     activeIndex = -1;
@@ -78,12 +85,14 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       if (menu.hidden) {
         update();
       }
+
       setActive(activeIndex + 1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       if (menu.hidden) {
         update();
       }
+
       if (activeIndex === -1) {
         setActive(-1);
       } else {
@@ -109,5 +118,7 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
     }, 120);
   });
 
-  return { refresh: update };
+  return {
+    refresh: update,
+  };
 }

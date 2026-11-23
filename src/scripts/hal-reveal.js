@@ -22,10 +22,12 @@ export function initializeHalReveal() {
       0,
       bottom + padding - sectionPadding - revealWindow.getBoundingClientRect().top - offset,
     );
+
     revealWindow.style.setProperty("--hal-height", `${height}px`);
   }
 
   const observer = new ResizeObserver(sizeImage);
+
   observer.observe(locationFields);
   observer.observe(movieFields);
   observer.observe(guideBody);

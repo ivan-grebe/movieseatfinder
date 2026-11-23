@@ -42,14 +42,17 @@ export function createTheatrePicker({
    */
   async function loadNear(areaParams) {
     const isCurrent = load.start();
+
     setBusy(true);
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     try {
       const data = await getJson(`/api/theatres?${areaParams}`);
+
       if (!isCurrent()) {
         return null;
       }
+
       filter.setOptions(data.theatres.map((theatre) => theatre.name));
       setBusy(false);
       setStatus(meta, `${data.theatres.length} nearby`);
@@ -58,6 +61,7 @@ export function createTheatrePicker({
       if (!isCurrent()) {
         return null;
       }
+
       filter.setOptions([]);
       setBusy(false);
       setStatus(meta, "");
@@ -75,6 +79,7 @@ export function createTheatrePicker({
   /** Add the theatre choice to request params, as an include or exclude list. */
   function appendParams(params) {
     const { include, exclude } = filter.params();
+
     include.forEach((name) => params.append("includeTheatre", name));
     exclude.forEach((name) => params.append("excludeTheatre", name));
     return params;
@@ -92,16 +97,17 @@ export function createTheatrePicker({
       setStatus(status, "Pick at least one theatre.", "error");
       return false;
     }
+
     return true;
   }
 
   return {
-    appendParams,
-    clear,
+    appendParams: appendParams,
+    clear: clear,
     isBusy: filter.isBusy,
-    loadNear,
-    restore,
-    validate,
-    waitForReload,
+    loadNear: loadNear,
+    restore: restore,
+    validate: validate,
+    waitForReload: waitForReload,
   };
 }

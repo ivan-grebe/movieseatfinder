@@ -170,14 +170,13 @@ def seat_map_match(data, min_adjacent, selected_cells, exclude_accessible):
     if not blocks:
         # Most seat maps don't match; skip building a layout nobody will see.
         return None
-    preview = seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible, blocks)
+    preview = seat_map_preview(data, blocks, min_adjacent, selected_cells)
     return preview if preview["matchingGroups"] else None
 
 
-def seat_map_preview(data, min_adjacent, selected_cells, exclude_accessible, blocks=None):
-    seats = data.get("seats") or []
-    if blocks is None:
-        blocks = adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible)
+def seat_map_preview(data, blocks, min_adjacent, selected_cells):
+    """`blocks` are the seat map's `adjacent_blocks` for this search."""
+    seats = data["seats"]
     matching_groups = (
         ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells) if blocks else []
     )

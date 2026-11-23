@@ -30,6 +30,7 @@ export function createMoviePicker({
 
   function movieWithTitle(title) {
     const normalized = normalizedTitle(title);
+
     return movies.find((movie) => normalizedTitle(movie.title) === normalized) || null;
   }
 
@@ -41,9 +42,11 @@ export function createMoviePicker({
     } else {
       input.removeAttribute("aria-busy");
     }
+
     if (disabled) {
       closeCombo(input, menu);
     }
+
     onBusyChange();
   }
 
@@ -56,6 +59,7 @@ export function createMoviePicker({
     if (!rememberTitle) {
       rememberedTitle = "";
     }
+
     onSelectionChange();
   }
 
@@ -71,10 +75,12 @@ export function createMoviePicker({
 
   function resolveTyped() {
     const exactMovie = movieWithTitle(input.value.trim());
+
     if (exactMovie) {
       select(exactMovie);
       return true;
     }
+
     clearSelection();
     input.setCustomValidity("Select an exact movie from the list before searching.");
     setStatus(status, "Choose one of the movies shown in the list.", "error");
@@ -88,32 +94,42 @@ export function createMoviePicker({
     setLoading(true, false);
     setStatus(meta, "");
     setStatus(status, "");
-    clearSelection({ rememberTitle });
+    clearSelection({
+      rememberTitle: rememberTitle,
+    });
   }
 
   /** Show the input as waiting for a lookup, keeping the picked title to re-pick after. */
   function waitForReload() {
     setStatus(meta, "");
-    clearSelection({ rememberTitle: true });
+    clearSelection({
+      rememberTitle: true,
+    });
     setLoading(true);
   }
 
   async function loadFor(criteriaParams) {
     const isCurrent = load.start();
+
     setLoading(true);
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     movies = [];
-    clearSelection({ rememberTitle: true });
+    clearSelection({
+      rememberTitle: true,
+    });
     try {
       const data = await getJson(`/api/movies?${criteriaParams}`);
+
       if (!isCurrent()) {
         return;
       }
+
       movies = data.movies;
       setLoading(false);
       showCount();
       const remembered = movieWithTitle(rememberedTitle);
+
       if (remembered) {
         select(remembered);
         closeCombo(input, menu);
@@ -129,6 +145,7 @@ export function createMoviePicker({
       if (!isCurrent()) {
         return;
       }
+
       setLoading(true, false);
       setStatus(meta, "");
       onLoadError(error, status);
@@ -146,6 +163,7 @@ export function createMoviePicker({
     if (selected || resolveTyped()) {
       return true;
     }
+
     input.reportValidity();
     return false;
   }
@@ -160,6 +178,7 @@ export function createMoviePicker({
       onPick();
     },
   );
+
   input.addEventListener("change", () => {
     if (input.value.trim() && !selected && resolveTyped()) {
       onPick();
@@ -169,6 +188,7 @@ export function createMoviePicker({
     input.setCustomValidity("");
     clearSelection();
     const exactMovie = movieWithTitle(input.value.trim());
+
     if (exactMovie) {
       select(exactMovie);
       onPick();
@@ -176,14 +196,14 @@ export function createMoviePicker({
   });
 
   return {
-    clearSelection,
-    disable,
+    clearSelection: clearSelection,
+    disable: disable,
     isBusy: () => input.hasAttribute("aria-busy"),
-    loadFor,
-    remember,
+    loadFor: loadFor,
+    remember: remember,
     selected: () => selected,
-    setLoading,
-    validate,
-    waitForReload,
+    setLoading: setLoading,
+    validate: validate,
+    waitForReload: waitForReload,
   };
 }

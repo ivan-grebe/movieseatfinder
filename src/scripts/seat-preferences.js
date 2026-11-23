@@ -33,6 +33,7 @@ export function createSeatPreferences({
   function validateTimeWindow() {
     const invalid = startTimeInput.value > endTimeInput.value;
     const message = invalid ? "Latest time must be on or after earliest time." : "";
+
     endTimeInput.setCustomValidity(message);
     endTimeInput.setAttribute("aria-invalid", String(invalid));
     setStatus(timeStatus, message, invalid ? "error" : "");
@@ -43,6 +44,7 @@ export function createSeatPreferences({
     if (validateTimeWindow()) {
       return true;
     }
+
     endTimeInput.reportValidity();
     return false;
   }
@@ -53,9 +55,11 @@ export function createSeatPreferences({
     params.set("adjacentSeats", adjacentSeatsInput.value);
     params.set("excludeAccessible", excludeAccessibleInput.checked ? "1" : "0");
     const selectedCells = seatGrid.values();
+
     if (selectedCells.length > 0) {
       params.set("seatGrid", selectedCells.join(","));
     }
+
     return params;
   }
 
@@ -69,6 +73,7 @@ export function createSeatPreferences({
     if (params.has("excludeAccessible")) {
       excludeAccessibleInput.checked = params.get("excludeAccessible") === "1";
     }
+
     if (params.has("seatGrid")) {
       seatGrid.select(params.get("seatGrid").split(",").filter(Boolean));
     }
@@ -84,5 +89,9 @@ export function createSeatPreferences({
     input.addEventListener("input", validateTimeWindow),
   );
 
-  return { appendParams, restore, validate };
+  return {
+    appendParams: appendParams,
+    restore: restore,
+    validate: validate,
+  };
 }

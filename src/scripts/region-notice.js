@@ -8,9 +8,15 @@ export function setupRegionNotice(dialog, dismissButton) {
     if (dialog.classList.contains("is-closing")) {
       return;
     }
+
     document.cookie = DISMISSED_COOKIE;
     dialog.classList.add("is-closing");
-    const fadeOut = dialog.getAnimations({ subtree: true }).map((animation) => animation.finished);
+    const fadeOut = dialog
+      .getAnimations({
+        subtree: true,
+      })
+      .map((animation) => animation.finished);
+
     Promise.allSettled(fadeOut).then(() => {
       dialog.close();
       dialog.classList.remove("is-closing");

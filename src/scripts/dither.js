@@ -19,9 +19,11 @@ function drawDither() {
   if (!pixels) {
     return;
   }
+
   const { data, height, width } = pixels;
   const phase = elapsed * 0.36;
   let opacity = 0.6;
+
   if (theme.matches) {
     opacity = 0.5;
   }
@@ -34,6 +36,7 @@ function drawDither() {
       0.065 * Math.sin(x * Math.PI * 4 + phase * 0.7);
     const secondCrest = 0.4 + 0.16 * Math.sin(x * Math.PI * 2 + phase * 0.6 + 0.4);
     const thickness = 0.15 + 0.055 * Math.sin(x * Math.PI * 2 + phase * 0.45);
+
     for (let row = 0; row < height; row += 2) {
       const y = row / height;
       const wave = Math.exp(-(((y - crest) / thickness) ** 2));
@@ -43,9 +46,11 @@ function drawDither() {
       const threshold = (BAYER[(row / 2) % 4][(column / 2) % 4] + 0.5) / 16;
       const coverage = Math.max(0, Math.min(1, (density - threshold) / 0.045 + 0.5));
       const smoothCoverage = coverage * coverage * (3 - 2 * coverage);
+
       data[(row * width + column) * 4 + 3] = Math.round(255 * opacity * smoothCoverage);
     }
   }
+
   context.putImageData(pixels, 0, 0);
 }
 
@@ -56,10 +61,13 @@ function resizeDither() {
   safeZone = new Float32Array(pixels.width * pixels.height);
   const canvasBounds = canvas.getBoundingClientRect();
   const heroBounds = hero?.getBoundingClientRect();
+
   for (let column = 0; column < pixels.width; column += 2) {
     const x = column / pixels.width;
+
     for (let row = 0; row < pixels.height; row += 2) {
       let density = 1;
+
       if (heroBounds?.width && heroBounds.height) {
         const screenX = canvasBounds.left + x * canvasBounds.width;
         const screenY = canvasBounds.top + (row / pixels.height) * canvasBounds.height;
@@ -67,15 +75,19 @@ function resizeDither() {
         const dy =
           (screenY - heroBounds.top - heroBounds.height / 2) / (heroBounds.height / 2 + 24);
         const edge = Math.max(0, Math.min(1, (Math.hypot(dx, dy) - 0.65) / 0.8));
+
         density = edge * edge * (3 - 2 * edge);
       }
+
       safeZone[row * pixels.width + column] = density;
       const offset = (row * pixels.width + column) * 4;
+
       pixels.data[offset] = Math.round(193 + 28 * x);
       pixels.data[offset + 1] = Math.round(65 + 84 * x);
       pixels.data[offset + 2] = Math.round(75 - 7 * x);
     }
   }
+
   drawDither();
 }
 
@@ -83,11 +95,13 @@ function animate(timestamp) {
   if (!lastFrame) {
     lastFrame = timestamp;
   }
+
   if (timestamp - lastFrame >= 1000 / 24) {
     elapsed += (timestamp - lastFrame) / 1000;
     lastFrame = timestamp;
     drawDither();
   }
+
   animationFrame = globalThis.requestAnimationFrame(animate);
 }
 
@@ -101,10 +115,12 @@ function syncMotion() {
 }
 
 const resizeObserver = new ResizeObserver(resizeDither);
+
 resizeObserver.observe(canvas);
 if (hero) {
   resizeObserver.observe(hero);
 }
+
 theme.addEventListener("change", drawDither);
 reducedMotion.addEventListener("change", syncMotion);
 document.addEventListener("visibilitychange", syncMotion);

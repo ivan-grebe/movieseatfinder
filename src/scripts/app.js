@@ -33,7 +33,7 @@ const sharedSearch = Boolean(sharedToken);
 let locationReady = false;
 
 const locationFields = createLocationFields({
-  elements,
+  elements: elements,
   onCriteriaChange: queueCriteriaRefresh,
   onLocated: () => {
     setLocationReady(false);
@@ -72,7 +72,7 @@ const formats = createFormatPicker({
 const preferences = createSeatPreferences(elements);
 const search = createSearchFlow({
   ...elements,
-  searchParams,
+  searchParams: searchParams,
   setSearchBusy: (busy, label) => {
     setButtonBusy(searchButton, busy, label);
     syncSearchButton();
@@ -99,6 +99,7 @@ function syncSearchButton() {
   if (searchButton.hasAttribute("aria-busy")) {
     return;
   }
+
   searchButton.disabled = !(
     locationReady &&
     movies.selected() !== null &&
@@ -122,6 +123,7 @@ function showLoaderError(error, status) {
     setStatus(status, "");
     return;
   }
+
   setStatus(status, error.message, "error");
 }
 
@@ -136,14 +138,17 @@ async function loadTheatres() {
     movies.setLoading(true, false);
     return false;
   }
+
   movies.setLoading(true);
   const loaded = await theatres.loadNear(locationFields.areaParams());
+
   if (loaded) {
     setLocationReady(true);
     locationFields.markResolved();
   } else if (loaded === false) {
     movies.setLoading(true, false);
   }
+
   return loaded;
 }
 
@@ -157,10 +162,12 @@ async function loadMovies() {
 
 async function loadFormats() {
   const movie = movies.selected();
+
   if (!movie || !locationFields.hasSearchBasics()) {
     formats.reset();
     return;
   }
+
   await formats.loadFor(criteriaParams(), movie.title);
 }
 
@@ -174,19 +181,28 @@ async function refreshTheatresAndMovies() {
     if (!locationFields.hasSearchLocation()) {
       setLocationReady(false);
     }
+
     theatres.clear();
     movies.disable();
     return;
   }
-  movies.clearSelection({ rememberTitle: true });
+
+  movies.clearSelection({
+    rememberTitle: true,
+  });
   const theatresLoaded = await loadTheatres();
+
   if (theatresLoaded === null) {
     return;
   }
+
   if (!theatresLoaded) {
-    movies.disable({ rememberTitle: true });
+    movies.disable({
+      rememberTitle: true,
+    });
     return;
   }
+
   await loadMoviesAndFormats();
 }
 
@@ -222,6 +238,7 @@ function validateSearchInputs() {
 
 function searchParams() {
   const params = criteriaParams();
+
   params.set("movie", movies.selected().title);
   params.set("format", formats.param());
   return preferences.appendParams(params);
@@ -233,13 +250,16 @@ async function loadSearchOptions() {
   if (!locationFields.hasSearchBasics()) {
     return false;
   }
+
   if (!(await loadTheatres())) {
     return false;
   }
+
   await loadMovies();
   if (!movies.selected()) {
     return false;
   }
+
   await loadFormats();
   formats.restore(new URLSearchParams(globalThis.location.search));
   return true;
@@ -248,18 +268,22 @@ async function loadSearchOptions() {
 /** Fill the form from a search link. Returns whether the link names a movie to search. */
 function applyQueryParams() {
   const params = new URLSearchParams(globalThis.location.search);
+
   locationFields.restore(params);
   theatres.restore(params);
   preferences.restore(params);
   if (params.has("movie")) {
     movies.remember(params.get("movie"));
   }
+
   if (params.has("sort")) {
     sortInput.value = params.get("sort");
   }
+
   if (sortInput.selectedIndex === -1) {
     sortInput.value = "earliest";
   }
+
   search.setPage(Number(params.get("page")));
   return params.has("movie");
 }
@@ -277,15 +301,22 @@ function bindEvents() {
     document.body.classList.remove("shared-search", "shared-loading");
     globalThis.history.replaceState(null, "", "/");
     const section = searchForm.closest("section");
+
     section.tabIndex = -1;
-    section.focus({ preventScroll: true });
-    globalThis.scrollTo({ behavior: "instant", top: 0 });
+    section.focus({
+      preventScroll: true,
+    });
+    globalThis.scrollTo({
+      behavior: "instant",
+      top: 0,
+    });
     await loadSearchOptions();
   });
   globalThis.addEventListener("popstate", () => globalThis.location.reload());
   window.addEventListener("pageshow", () => setLocationReady(locationReady));
   formatGuideButton.addEventListener("click", () => {
     const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
+
     formatGuideButton.setAttribute("aria-expanded", String(expanded));
     formatGuideContent.setAttribute("aria-hidden", String(!expanded));
     formatGuide.classList.toggle("is-open", expanded);
@@ -301,17 +332,24 @@ async function initialize() {
   setLocationReady(false);
   bindEvents();
   let shouldSearchFromUrl = false;
+
   if (!sharedSearch) {
     shouldSearchFromUrl = applyQueryParams();
   }
+
   if (sharedSearch) {
     logSharedLinkVisit();
     await search.loadSharedShowtime(sharedToken, applySharedShowtime);
     return;
   }
+
   const optionsLoaded = await loadSearchOptions();
+
   if (optionsLoaded && shouldSearchFromUrl) {
-    await search.runNewSearch({ replaceHistory: true, scrollToResults: true });
+    await search.runNewSearch({
+      replaceHistory: true,
+      scrollToResults: true,
+    });
   }
 }
 

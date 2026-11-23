@@ -3,7 +3,11 @@ function logEvent(endpoint) {
     if (navigator.sendBeacon?.(endpoint)) {
       return;
     }
-    void fetch(endpoint, { keepalive: true, method: "POST" }).catch(() => undefined);
+
+    void fetch(endpoint, {
+      keepalive: true,
+      method: "POST",
+    }).catch(() => undefined);
   } catch {
     return;
   }

@@ -164,9 +164,9 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(
             structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order"
         )
-        search = find_seat_matches.call_args.kwargs
-        self.assertEqual(search["seat_grid"], "10:5,10:6,10:7,11:5,11:6,11:7")
-        self.assertEqual(search["requested_format"], "IMAX,IMAX 70mm")
+        search = find_seat_matches.call_args.args[0]
+        self.assertEqual(search.seat_grid, "10:5,10:6,10:7,11:5,11:6,11:7")
+        self.assertEqual(search.requested_format, "IMAX,IMAX 70mm")
 
     @patch.object(server, "seat_map")
     @patch.object(

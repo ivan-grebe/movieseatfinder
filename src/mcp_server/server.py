@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from starlette.routing import Route
 
 from .. import application
+from ..application import Area, Search
 from ..fandango import seat_map
 from ..seat_map_visual import render_seat_map_svg, render_svg_png
 from ..seat_matching import parse_seat_grid, seat_map_match
@@ -71,16 +72,15 @@ def resolved_seat_cells(seat_region, seat_cells):
         raise ValueError("Use seat_region or seat_cells, not both.")
     if not seat_region:
         return tuple(seat_cells)
-    if not isinstance(seat_region, SeatRegion):
-        seat_region = SeatRegion.model_validate(seat_region)
-    if seat_region.row_min > seat_region.row_max:
+    region = SeatRegion.model_validate(seat_region)
+    if region.row_min > region.row_max:
         raise ValueError("row_min must be less than or equal to row_max.")
-    if seat_region.column_min > seat_region.column_max:
+    if region.column_min > region.column_max:
         raise ValueError("column_min must be less than or equal to column_max.")
     return tuple(
         f"{row}:{column}"
-        for row in range(seat_region.row_min, seat_region.row_max + 1)
-        for column in range(seat_region.column_min, seat_region.column_max + 1)
+        for row in range(region.row_min, region.row_max + 1)
+        for column in range(region.column_min, region.column_max + 1)
     )
 
 
@@ -255,11 +255,13 @@ def get_location_and_movie_info(
     """Discover canonical live values before an agent performs a seat search."""
     try:
         result = application.location_movie_info(
-            radius=radius_miles,
-            zip_code=zip_code,
-            start_date=start_date,
-            end_date=end_date,
-            theatre=theatre,
+            Area(
+                radius=radius_miles,
+                zip_code=zip_code,
+                start_date=start_date,
+                end_date=end_date,
+                theatre_query=theatre,
+            ),
             movie_query=movie_query,
             format_query=format_query,
         )
@@ -371,22 +373,24 @@ def find_movie_seats(
         "excludeAccessible": exclude_accessible,
     }
     try:
-        result = application.find_seat_matches(
-            radius=radius_miles,
+        search = Search(
+            area=Area(
+                radius=radius_miles,
+                zip_code=zip_code,
+                start_date=start_date,
+                end_date=search_end_date,
+                theatre_query=theatre,
+            ),
             movie=movie,
-            zip_code=zip_code,
-            theatre=theatre,
             requested_format=",".join(movie_formats) or "any",
-            start_date=start_date,
-            end_date=search_end_date,
             start_time=start_time,
             end_time=end_time,
             adjacent_seats=adjacent_seats,
             seat_grid=internal_seat_grid(selected_cells),
             exclude_accessible=exclude_accessible,
             sort="nearest",
-            page_size=5,
         )
+        result = application.find_seat_matches(search, page_size=5)
     except HTTPException as error:
         raise ValueError(_public_error(error)) from error
     seat_preferences = {

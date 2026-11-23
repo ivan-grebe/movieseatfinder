@@ -36,6 +36,7 @@ export function createLocationFields({
 
   function hasValidRadius() {
     const radius = Number(radiusInput.value);
+
     return (
       radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100
     );
@@ -47,11 +48,13 @@ export function createLocationFields({
       setStatus(radiusStatus, "");
       return true;
     }
+
     radiusInput.setCustomValidity("Enter a radius between 1 and 100 miles.");
     setStatus(radiusStatus, "Use a radius from 1 to 100 miles.", "error");
     if (report) {
       radiusInput.reportValidity();
     }
+
     return false;
   }
 
@@ -66,20 +69,24 @@ export function createLocationFields({
       zipInput.reportValidity();
       return false;
     }
+
     return enforceRadius(true);
   }
 
   function syncEndDateBounds() {
     const today = todayString();
+
     startDateInput.min = today;
     if (startDateInput.value && startDateInput.value < today) {
       startDateInput.value = today;
     }
+
     endDateInput.min = startDateInput.value;
     endDateInput.max = addDays(startDateInput.value, MAX_DATE_RANGE_DAYS);
     if (endDateInput.value && endDateInput.value < startDateInput.value) {
       endDateInput.value = startDateInput.value;
     }
+
     if (endDateInput.value && endDateInput.value > endDateInput.max) {
       endDateInput.value = endDateInput.max;
     }
@@ -90,13 +97,17 @@ export function createLocationFields({
       params.set("lat", preciseLocation.latitude);
       params.set("lon", preciseLocation.longitude);
     }
+
     return params;
   }
 
   /** Where to look for theatres. */
   function areaParams() {
     return withCoordinates(
-      new URLSearchParams({ radius: radiusInput.value, zip: zipInput.value.trim() }),
+      new URLSearchParams({
+        radius: radiusInput.value,
+        zip: zipInput.value.trim(),
+      }),
     );
   }
 
@@ -126,13 +137,17 @@ export function createLocationFields({
     if (!preciseLocation) {
       setStatus(locationStatus, "");
     }
+
     const changes = {};
+
     if (unsavedEdits.has("zip") && hasValidZip()) {
       changes.zip = zipInput.value.trim();
     }
+
     if (unsavedEdits.has("radius") && hasValidRadius()) {
       changes.radius = Number(radiusInput.value);
     }
+
     unsavedEdits.clear();
     if (Object.keys(changes).length > 0) {
       saveLocation(changes);
@@ -142,6 +157,7 @@ export function createLocationFields({
   /** Fill the fields from saved values, then from the URL, so a link's own values win. */
   function restore(params) {
     const { radius, zip } = loadSavedLocation();
+
     zipInput.value = zip || zipInput.value;
     radiusInput.value = radius || radiusInput.value;
     Object.entries(inputsByParam).forEach(([name, input]) => {
@@ -152,13 +168,17 @@ export function createLocationFields({
     if (params.has("lat") && params.has("lon")) {
       const latitude = Number(params.get("lat"));
       const longitude = Number(params.get("lon"));
+
       if (
         Number.isFinite(latitude) &&
         Math.abs(latitude) <= 90 &&
         Number.isFinite(longitude) &&
         Math.abs(longitude) <= 180
       ) {
-        preciseLocation = { latitude, longitude };
+        preciseLocation = {
+          latitude: latitude,
+          longitude: longitude,
+        };
         setStatus(locationStatus, "Using location");
       }
     }
@@ -174,6 +194,7 @@ export function createLocationFields({
       setStatus(locationStatus, "Location unavailable — use ZIP.", "error");
       return;
     }
+
     setStatus(locationStatus, "Requesting your location…", "loading");
     useLocationButton.disabled = true;
     navigator.geolocation.getCurrentPosition(
@@ -190,7 +211,11 @@ export function createLocationFields({
         setStatus(locationStatus, "Location blocked — use ZIP.", "error");
         useLocationButton.disabled = false;
       },
-      { enableHighAccuracy: true, maximumAge: 300_000, timeout: 10_000 },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 300_000,
+        timeout: 10_000,
+      },
     );
   }
 
@@ -202,6 +227,7 @@ export function createLocationFields({
   };
 
   const today = todayString();
+
   setDates(today, addDays(today, 7));
 
   useLocationButton.addEventListener("click", requestLocation);
@@ -209,6 +235,7 @@ export function createLocationFields({
     onLocationInvalidated();
     zipInput.setCustomValidity("");
     const zip = zipInput.value.trim();
+
     if (zip) {
       preciseLocation = null;
       if (/^\d{0,5}$/u.test(zip)) {
@@ -219,6 +246,7 @@ export function createLocationFields({
     } else if (!preciseLocation) {
       setStatus(locationStatus, "");
     }
+
     unsavedEdits.add("zip");
     onCriteriaChange();
   });
@@ -235,16 +263,16 @@ export function createLocationFields({
   );
 
   return {
-    areaParams,
-    criteriaParams,
-    hasSearchBasics,
-    hasSearchLocation,
-    hasValidRadius,
-    markResolved,
-    restore,
-    setDates,
-    showError,
-    syncEndDateBounds,
-    validate,
+    areaParams: areaParams,
+    criteriaParams: criteriaParams,
+    hasSearchBasics: hasSearchBasics,
+    hasSearchLocation: hasSearchLocation,
+    hasValidRadius: hasValidRadius,
+    markResolved: markResolved,
+    restore: restore,
+    setDates: setDates,
+    showError: showError,
+    syncEndDateBounds: syncEndDateBounds,
+    validate: validate,
   };
 }
