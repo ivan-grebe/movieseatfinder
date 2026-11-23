@@ -1717,6 +1717,8 @@ a:focus-visible {
 
 .result {
   position: relative;
+  display: flex;
+  flex-direction: column;
   scroll-margin-top: 20px;
   min-width: 0;
   padding: 13px;
@@ -1876,7 +1878,11 @@ a:focus-visible {
   line-height: 1.35;
 }
 
+/* Fills the card so result cards side by side end level; a shorter map centers in the space. */
 .real-seat-map {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   margin-top: 10px;
   padding: 14px 10px;
   border: 1px solid rgba(104, 130, 164, 0.18);
@@ -1907,7 +1913,7 @@ a:focus-visible {
   position: relative;
   width: 100%;
   max-width: 620px;
-  margin: 0 auto;
+  margin: auto;
   overflow: hidden;
   border: 1px solid rgba(104, 130, 164, 0.24);
   border-radius: 12px;
