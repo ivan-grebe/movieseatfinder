@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import HTTPException
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Image
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import Annotations, CallToolResult, TextContent
 from pydantic import BaseModel, Field
@@ -69,14 +70,14 @@ class SeatMapOutput(BaseModel):
 def resolved_seat_cells(seat_region, seat_cells):
     """Expand a normal rectangular selection or retain an advanced arbitrary shape."""
     if seat_region and seat_cells:
-        raise ValueError("Use seat_region or seat_cells, not both.")
+        raise ToolError("Use seat_region or seat_cells, not both.")
     if not seat_region:
         return tuple(seat_cells)
     region = SeatRegion.model_validate(seat_region)
     if region.row_min > region.row_max:
-        raise ValueError("row_min must be less than or equal to row_max.")
+        raise ToolError("row_min must be less than or equal to row_max.")
     if region.column_min > region.column_max:
-        raise ValueError("column_min must be less than or equal to column_max.")
+        raise ToolError("column_min must be less than or equal to column_max.")
     return tuple(
         f"{row}:{column}"
         for row in range(region.row_min, region.row_max + 1)
@@ -271,7 +272,7 @@ def get_location_and_movie_info(
             format_query=format_query,
         )
     except HTTPException as error:
-        raise ValueError(_public_error(error)) from error
+        raise ToolError(_public_error(error)) from error
     return {
         **result,
         "message": (
@@ -397,7 +398,7 @@ def find_movie_seats(
         )
         result = application.find_seat_matches(search, page_size=5)
     except HTTPException as error:
-        raise ValueError(_public_error(error)) from error
+        raise ToolError(_public_error(error)) from error
     seat_preferences = {
         "seat_region": serialized_region,
         "seat_cells": list(seat_cells),
@@ -458,7 +459,7 @@ def show_movie_seat_map(
         exclude_accessible,
     )
     if not seat_match:
-        raise ValueError(
+        raise ToolError(
             "Those seats are no longer available for that exact showtime. Run find_movie_seats again."
         )
 
