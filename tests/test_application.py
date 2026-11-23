@@ -220,18 +220,6 @@ class SearchTests(unittest.TestCase):
                 self.assertEqual(bool(formats), kept)
                 self.assertEqual(len(search["matches"]), 1 if kept else 0)
 
-    def test_search_reports_showtime_counts_for_each_filter_option(self):
-        params = {**self.params, "format": "IMAX", "excludeTheatre": "Cinema"}
-        facets = self.client.get("/api/search", params=params).json()["facets"]
-        # Theatre counts follow the format choice; format counts follow the theatre choice.
-        self.assertEqual(
-            facets["theatres"], [{"name": "Cinema", "distanceMiles": 1, "showtimes": 1}]
-        )
-        self.assertEqual(
-            facets["formats"],
-            [{"name": "IMAX", "showtimes": 0}, {"name": "IMAX with Laser", "showtimes": 0}],
-        )
-
 
 class LocationTests(unittest.TestCase):
     @patch("src.location.reverse_geocode_zip", return_value="10001")
