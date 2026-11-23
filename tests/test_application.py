@@ -224,6 +224,25 @@ class LocationTests(unittest.TestCase):
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
 
 
+class RegionNoticeTests(unittest.TestCase):
+    def notice_hidden(self, headers=None, cookies=None):
+        client = TestClient(application.app, cookies=cookies)
+        page = client.get("/", headers=headers or {})
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('id="regionNotice"', page.text)
+        return 'aria-labelledby="regionNoticeTitle" data-show>' not in page.text
+
+    def test_notice_shows_only_for_visitors_outside_the_us(self):
+        self.assertFalse(self.notice_hidden({"x-vercel-ip-country": "IN"}))
+        self.assertTrue(self.notice_hidden({"x-vercel-ip-country": "US"}))
+        self.assertTrue(self.notice_hidden({"x-vercel-ip-country": "PR"}))
+        self.assertTrue(self.notice_hidden())
+
+    def test_dismissed_notice_stays_hidden(self):
+        dismissed = {application.REGION_NOTICE_COOKIE: "1"}
+        self.assertTrue(self.notice_hidden({"x-vercel-ip-country": "IN"}, dismissed))
+
+
 @unittest.skipUnless(
     os.environ.get("LIVE_UPSTREAM_TESTS"), "set LIVE_UPSTREAM_TESTS=1 to call Fandango"
 )

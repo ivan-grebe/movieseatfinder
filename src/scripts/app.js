@@ -15,6 +15,8 @@ import { logSharedLinkVisit } from "./tracking.js";
 
 const {
   backToSearchButton,
+  regionNotice,
+  dismissRegionNoticeButton,
   searchForm,
   zipInput,
   useLocationButton,
@@ -62,6 +64,9 @@ const {
 } = elements;
 
 const PAGE_SIZE = 20;
+// The server skips the outside-the-U.S. notice while this cookie is set.
+const REGION_NOTICE_DISMISSED_COOKIE =
+  "regionNoticeDismissed=1; Max-Age=31536000; Path=/; SameSite=Lax";
 const MAX_DATE_RANGE_DAYS = 14;
 let theatres = [];
 let movies = [];
@@ -877,7 +882,34 @@ async function loadSharedShowtime() {
   }
 }
 
+/** Remember the dismissal, then close the dialog once its fade-out finishes. */
+function dismissRegionNotice() {
+  if (regionNotice.classList.contains("is-closing")) {
+    return;
+  }
+  document.cookie = REGION_NOTICE_DISMISSED_COOKIE;
+  regionNotice.classList.add("is-closing");
+  const fadeOut = regionNotice
+    .getAnimations({ subtree: true })
+    .map((animation) => animation.finished);
+  Promise.allSettled(fadeOut).then(() => {
+    regionNotice.close();
+    regionNotice.classList.remove("is-closing");
+  });
+}
+
 function bindEvents() {
+  dismissRegionNoticeButton.addEventListener("click", dismissRegionNotice);
+  regionNotice.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    dismissRegionNotice();
+  });
+  regionNotice.addEventListener("click", (event) => {
+    // Clicks on the dimmed backdrop target the dialog itself, not its content.
+    if (event.target === regionNotice) {
+      dismissRegionNotice();
+    }
+  });
   backToSearchButton.addEventListener("click", async () => {
     finishResultsActivity();
     resultsView.endPageLoading();
@@ -1031,6 +1063,9 @@ async function initialize() {
   endDateInput.value = addDays(today, 7);
   formatPicker.setOptions([]);
   bindEvents();
+  if ("show" in regionNotice.dataset) {
+    regionNotice.showModal();
+  }
 
   let shouldSearchFromUrl = false;
   if (!sharedSearch) {
