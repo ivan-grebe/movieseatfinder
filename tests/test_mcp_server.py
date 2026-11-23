@@ -6,7 +6,9 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src import server as entrypoint
+from src.application import Area, Search
 from src.mcp_server import server
+from src.share_links import decode_share_link
 
 
 def sample_seat_layout():
@@ -78,21 +80,38 @@ def sample_search_result():
         "checkedSeatMaps": 3,
         "failedSeatMaps": 0,
         "capped": False,
+        "hasNextPage": False,
     }
 
 
-def sample_seat_map_request():
+def sample_search():
+    return Search(
+        area=Area(radius=25, zip_code="10023"),
+        movie="The Odyssey",
+        adjacent_seats=2,
+        seat_grid="6:6,6:7",
+    )
+
+
+def sample_seat_map_url():
+    return server.seat_map_url(sample_search_result()["matches"][0], sample_search())
+
+
+def sample_movie_info(movie_count):
     return {
-        "showtime_hash_code": "showtime-123",
-        "option_number": 1,
-        "movie": "The Odyssey",
-        "theatre": "Test Cinema",
-        "show_date": "2026-08-04",
-        "show_time": "7:30 PM",
-        "movie_format": "IMAX",
-        "seat_region": {"row_min": 7, "row_max": 8, "column_min": 7, "column_max": 8},
-        "adjacent_seats": 2,
-        "exclude_accessible": True,
+        "place": "New York, NY 10023",
+        "startDate": "2026-08-04",
+        "endDate": "2026-08-04",
+        "theatres": [{"name": "Test Cinema", "address": "1 Main St", "distanceMiles": 2.54}],
+        "movies": [
+            {
+                "title": f"Movie {number}",
+                "dates": ["2026-08-04"],
+                "formats": ["Standard"],
+                "theatres": ["Test Cinema"],
+            }
+            for number in range(movie_count)
+        ],
     }
 
 
@@ -160,12 +179,13 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.json()["result"]
         self.assertFalse(result["isError"])
-        structured = result["structuredContent"]
-        self.assertEqual(structured["options"][0]["matchingGroups"], [["H10", "H11"]])
-        self.assertEqual(structured["options"][0]["bestGroup"], ["H10", "H11"])
-        self.assertEqual(
-            structured["options"][0]["ticketUrl"], "https://tickets.fandango.com/order"
-        )
+        option = result["structuredContent"]["options"][0]
+        self.assertEqual(option["bestGroup"], ["H10", "H11"])
+        self.assertEqual(option["matchingSeatCount"], 2)
+        self.assertEqual(option["ticketUrl"], "https://tickets.fandango.com/order")
+        shared = decode_share_link(option["seatMapUrl"].rsplit("/", 1)[1])
+        self.assertEqual(shared.showtime, "showtime-123")
+        self.assertEqual(shared.seat_grid, "10:5,10:6,10:7,11:5,11:6,11:7")
         search = find_seat_matches.call_args.args[0]
         self.assertEqual(search.seat_grid, "10:5,10:6,10:7,11:5,11:6,11:7")
         self.assertEqual(search.requested_format, "IMAX,IMAX 70mm")
@@ -218,7 +238,7 @@ class McpProtocolTests(unittest.TestCase):
             "method": "tools/call",
             "params": {
                 "name": "show_movie_seat_map",
-                "arguments": sample_seat_map_request(),
+                "arguments": {"seat_map_url": sample_seat_map_url()},
             },
         }
         response = self.client.post("/mcp", headers=self.request_headers(), json=request)
@@ -229,19 +249,85 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual([item["type"] for item in result["content"]], ["image", "text"])
         self.assertEqual(result["content"][0]["mimeType"], "image/png")
         self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
+        self.assertIn("Best matching group: H10-H11", result["content"][1]["text"])
         self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
-        self.assertEqual(result["structuredContent"]["bestGroup"], ["H10", "H11"])
+        _match.assert_called_once_with(_seat_map.return_value, 2, [(6, 6), (6, 7)], True)
+
+    def test_an_invalid_seat_map_url_asks_for_the_exact_link(self):
+        request = {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "show_movie_seat_map",
+                "arguments": {"seat_map_url": "https://movieseatfinder.com/s/not-a-link"},
+            },
+        }
+        response = self.client.post("/mcp", headers=self.request_headers(), json=request)
+
+        result = response.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("That seatMapUrl is invalid", result["content"][0]["text"])
 
 
 class CompactSearchResultsTests(unittest.TestCase):
-    def test_capped_search_tells_the_model_to_offer_narrowing(self):
+    def test_a_complete_search_has_no_message(self):
+        compact = server.compact_search_results(sample_search_result(), sample_search())
+
+        self.assertNotIn("message", compact)
+
+    def test_capped_search_says_how_much_was_checked(self):
         result = sample_search_result()
         result["capped"] = True
         result["checkedSeatMaps"] = 150
         result["checkedShowtimes"] = 400
 
-        compact = server.compact_search_results(result, query={}, seat_preferences={})
+        compact = server.compact_search_results(result, sample_search())
 
         self.assertIn(
             "Only the first 150 of 400 candidate showtimes were checked", compact["message"]
         )
+
+    def test_a_full_page_says_more_showtimes_exist(self):
+        result = {**sample_search_result(), "hasNextPage": True}
+
+        compact = server.compact_search_results(result, sample_search())
+
+        self.assertIn("More matching showtimes exist", compact["message"])
+
+    def test_a_search_with_no_showtimes_points_back_to_discovery(self):
+        result = {**sample_search_result(), "matches": [], "checkedShowtimes": 0}
+
+        compact = server.compact_search_results(result, sample_search())
+
+        self.assertEqual(compact["options"], [])
+        self.assertIn("No The Odyssey showtimes match", compact["message"])
+        self.assertIn("get_location_and_movie_info", compact["message"])
+
+
+class CompactMovieInfoTests(unittest.TestCase):
+    def test_a_short_list_names_each_movies_theatres(self):
+        compact = server.compact_movie_info(
+            sample_movie_info(2), Area(radius=25, zip_code="10023"), "", ""
+        )
+
+        self.assertEqual(compact["theatres"], [{"name": "Test Cinema", "distanceMiles": 2.5}])
+        self.assertEqual(
+            compact["movies"][0],
+            {"title": "Movie 0", "formats": ["Standard"], "theatres": ["Test Cinema"]},
+        )
+
+    def test_a_long_list_counts_theatres_instead(self):
+        compact = server.compact_movie_info(
+            sample_movie_info(6), Area(radius=25, zip_code="10023"), "", ""
+        )
+
+        self.assertEqual(compact["movies"][0]["theatreCount"], 1)
+        self.assertNotIn("theatres", compact["movies"][0])
+
+    def test_no_match_says_what_was_not_found(self):
+        compact = server.compact_movie_info(
+            sample_movie_info(0), Area(radius=25, zip_code="10023"), "wicked", ""
+        )
+
+        self.assertIn('Nothing matching "wicked" is showing within 25 miles', compact["message"])

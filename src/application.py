@@ -86,10 +86,12 @@ TimeText = Annotated[
     str,
     StringConstraints(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$"),
 ]
-Radius = Annotated[float, Query(ge=1, le=100)]
+MAX_RADIUS_MILES = 100
+MAX_ADJACENT_SEATS = 10
+Radius = Annotated[float, Query(ge=1, le=MAX_RADIUS_MILES)]
 PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
-AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
+AdjacentSeatCount = Annotated[int, Query(ge=1, le=MAX_ADJACENT_SEATS)]
 Latitude = Annotated[float | None, Query(ge=-90, le=90)]
 Longitude = Annotated[float | None, Query(ge=-180, le=180)]
 # Fandango returns at most 100 theatres per search, so a filter never needs more names.
@@ -170,7 +172,10 @@ def us_today():
 
 def date_range(start, end):
     """Validate a requested date range and return its days as ISO strings."""
-    if end > us_today() + timedelta(days=MAX_DAYS_AHEAD):
+    today = us_today()
+    if start < today:
+        raise ValueError(f"{start.isoformat()} has already passed; today is {today.isoformat()}.")
+    if end > today + timedelta(days=MAX_DAYS_AHEAD):
         raise ValueError(f"Dates must be within {MAX_DAYS_AHEAD} days from today.")
     if end < start:
         raise ValueError("End date must be on or after start date.")

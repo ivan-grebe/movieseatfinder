@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 import requests
@@ -9,11 +10,17 @@ from src import application, fandango
 
 class SearchFailureTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(application, "us_today", return_value=date(2026, 7, 1)))
         self.client = TestClient(application.app)
         self.params = {"zip": "10001", "radius": 25, "movie": "Test Movie"}
         self.location = self.enterContext(
             patch.object(application, "api_search_location", return_value=("10001", (0, 0), "Test"))
         )
+
+    def test_a_past_date_is_rejected(self):
+        response = self.client.get("/api/search", params={**self.params, "startDate": "2026-06-30"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("2026-06-30 has already passed", response.text)
 
     def test_backwards_time_window_is_rejected_before_location_lookup(self):
         response = self.client.get(
