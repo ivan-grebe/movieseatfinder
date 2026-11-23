@@ -1878,7 +1878,6 @@ a:focus-visible {
   line-height: 1.35;
 }
 
-/* Fills the card so result cards side by side end level; a shorter map centers in the space. */
 .real-seat-map {
   display: flex;
   flex: 1 1 auto;
