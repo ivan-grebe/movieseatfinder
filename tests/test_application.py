@@ -79,6 +79,26 @@ class SeatSelectionTests(unittest.TestCase):
         self.assertIn(["A1", "A2"], blocks)
         self.assertNotIn(["A2", "A3"], blocks)
 
+    def test_seats_on_either_side_of_an_aisle_are_not_adjacent(self):
+        def seat(seat_id, column, left, right):
+            return {
+                "id": seat_id,
+                "row": 0,
+                "column": column,
+                "status": "A",
+                "leftNeighbor": left,
+                "rightNeighbor": right,
+            }
+
+        seats = [
+            seat("A5", 12, "A6", ""),
+            seat("A4", 13, "", "A3"),
+            seat("A3", 14, "A4", "A2"),
+            seat("A2", 15, "A3", ""),
+        ]
+        blocks = seat_matching.adjacent_blocks(seats, 2, [], False)
+        self.assertEqual(blocks, [["A4", "A3", "A2"]])
+
     def test_accessible_seats_can_be_excluded(self):
         blocks = seat_matching.adjacent_blocks(self.seats, 1, [], True)
         seat_ids = {seat_id for block in blocks for seat_id in block}
