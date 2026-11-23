@@ -23,6 +23,8 @@ export function createLocationFields({
   onLocationInvalidated,
 }) {
   let preciseLocation = null;
+  // Fields the user edited since theatres last loaded; saved once they load for them.
+  const unsavedEdits = new Set();
 
   function hasValidZip() {
     return /^\d{5}$/u.test(zipInput.value.trim());
@@ -115,11 +117,25 @@ export function createLocationFields({
     setStatus(locationStatus, message, "error");
   }
 
-  /** Clear location errors once theatres load for the current area. */
+  /**
+   * Clear location errors once theatres load for the current area, and remember the ZIP and
+   * radius the user typed now that they are known to work.
+   */
   function markResolved() {
     zipInput.setCustomValidity("");
     if (!preciseLocation) {
       setStatus(locationStatus, "");
+    }
+    const changes = {};
+    if (unsavedEdits.has("zip") && hasValidZip()) {
+      changes.zip = zipInput.value.trim();
+    }
+    if (unsavedEdits.has("radius") && hasValidRadius()) {
+      changes.radius = Number(radiusInput.value);
+    }
+    unsavedEdits.clear();
+    if (Object.keys(changes).length > 0) {
+      saveLocation(changes);
     }
   }
 
@@ -203,15 +219,12 @@ export function createLocationFields({
     } else if (!preciseLocation) {
       setStatus(locationStatus, "");
     }
-    if (hasValidZip()) {
-      saveLocation({ zip });
-    }
+    unsavedEdits.add("zip");
     onCriteriaChange();
   });
   radiusInput.addEventListener("input", () => {
-    if (enforceRadius()) {
-      saveLocation({ radius: Number(radiusInput.value) });
-    }
+    enforceRadius();
+    unsavedEdits.add("radius");
     onCriteriaChange();
   });
   [startDateInput, endDateInput].forEach((input) =>
