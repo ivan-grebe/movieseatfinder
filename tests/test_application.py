@@ -153,6 +153,18 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertEqual(result["matches"], [{"candidate": value} for value in range(5)])
         self.assertTrue(result["hasNextPage"])
         self.assertEqual(result["checkedSeatMaps"], 100)
+        self.assertFalse(result["capped"])
+
+    def test_search_stops_at_the_seat_map_cap(self):
+        candidates = list(range(application.SEAT_MAP_LIMIT + 50))
+        with search_with_candidates(candidates, lambda value: value == 0):
+            result = application.find_seat_matches(
+                application.Search(application.Area(radius=5), movie="Test"), page_size=5
+            )
+
+        self.assertEqual(result["matches"], [{"candidate": 0}])
+        self.assertEqual(result["checkedSeatMaps"], application.SEAT_MAP_LIMIT)
+        self.assertTrue(result["capped"])
 
     def stream(self, candidate_count):
         client = TestClient(application.app)
@@ -171,10 +183,10 @@ class CandidateSearchTests(unittest.TestCase):
         )
 
     def test_stream_stops_at_the_seat_map_cap(self):
-        events = self.stream(application.STREAM_SEAT_MAP_LIMIT + 50)
+        events = self.stream(application.SEAT_MAP_LIMIT + 50)
         matches = [event for event in events if event["type"] == "match"]
-        self.assertEqual(len(matches), application.STREAM_SEAT_MAP_LIMIT)
-        self.assertEqual(events[-1]["checkedSeatMaps"], application.STREAM_SEAT_MAP_LIMIT)
+        self.assertEqual(len(matches), application.SEAT_MAP_LIMIT)
+        self.assertEqual(events[-1]["checkedSeatMaps"], application.SEAT_MAP_LIMIT)
         self.assertFalse(events[-1]["complete"])
 
 
