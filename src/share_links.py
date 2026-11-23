@@ -6,9 +6,11 @@ import re
 import zlib
 from datetime import date
 from typing import Annotated
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlencode
 
 from pydantic import BaseModel, Field, StringConstraints
+
+from .seat_matching import GRID_SIZE, parse_seat_grid
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
@@ -64,3 +66,23 @@ def decode_share_link(token):
         raise ValueError(
             "This shared showtime link is invalid. Please create a new link."
         ) from error
+
+
+def base64_url(data):
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def pack_seat_grid(seat_grid):
+    bitmap = bytearray(29)
+    for row, column in parse_seat_grid(seat_grid):
+        index = row * GRID_SIZE + column
+        bitmap[index // 8] |= 1 << (index % 8)
+    return base64_url(bytes(bitmap))
+
+
+def encode_share_link(params):
+    """Build the token the website's share button makes; `params` use the link's field names."""
+    values = dict(params)
+    if values.get("seatGrid"):
+        values["seatGrid"] = pack_seat_grid(values["seatGrid"])
+    return base64_url(zlib.compress(urlencode(values).encode("utf-8"), level=9))

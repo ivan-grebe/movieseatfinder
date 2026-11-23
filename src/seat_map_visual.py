@@ -2,6 +2,7 @@
 
 import base64
 import math
+import re
 import threading
 from html import escape
 from pathlib import Path
@@ -28,6 +29,10 @@ COUNT_TEXT_STYLE = (
 LEGEND_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
     "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:400"
+)
+ROW_LABEL_TEXT_STYLE = (
+    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
+    "font-family:'Inter Variable',sans-serif;font-weight:750"
 )
 SCREEN_TEXT_STYLE = (
     "display:inline;visibility:visible;opacity:1;fill:#e8b4bd;"
@@ -126,6 +131,29 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
         glow + f'<path d="{seat_path}" fill="{fill}" stroke="{stroke}" '
         f'stroke-width="{stroke_width:g}"><title>{_text(description)}</title></path>'
     )
+
+
+def _row_labels_svg(seats):
+    """Write each row's letters beside its leftmost seat, so seat labels like E8 can be found."""
+    leftmost = {}
+    for seat in seats:
+        label = re.match(r"[A-Za-z]+", str(seat.get("id") or ""))
+        if not label:
+            continue
+        current = leftmost.get(label[0])
+        if current is None or _number(seat.get("x")) < _number(current.get("x")):
+            leftmost[label[0]] = seat
+
+    nodes = []
+    for label, seat in leftmost.items():
+        width = max(_number(seat.get("width")), 1)
+        height = max(_number(seat.get("height")), 1)
+        nodes.append(
+            f'<text x="{_number(seat.get("x")) - width * 0.25:g}" '
+            f'y="{_number(seat.get("y")) + height * 0.75:g}" text-anchor="end" '
+            f'style="{ROW_LABEL_TEXT_STYLE};font-size:{height * 0.7:g}px">{_text(label)}</text>'
+        )
+    return "".join(nodes)
 
 
 def _legend_item(x, label, fill, stroke):
@@ -238,7 +266,7 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
       {screen_node}
       <g clip-path="url(#stage-clip)">
         <svg x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none" overflow="hidden">
-          {background_node}{seat_nodes}
+          {background_node}{seat_nodes}{_row_labels_svg(seats[:2500])}
         </svg>
       </g>
       <g transform="translate(0 {legend_y:g})">{legend}</g>

@@ -170,7 +170,10 @@ def us_today():
 
 def date_range(start, end):
     """Validate a requested date range and return its days as ISO strings."""
-    if end > us_today() + timedelta(days=MAX_DAYS_AHEAD):
+    today = us_today()
+    if start < today:
+        raise ValueError(f"{start.isoformat()} has already passed; today is {today.isoformat()}.")
+    if end > today + timedelta(days=MAX_DAYS_AHEAD):
         raise ValueError(f"Dates must be within {MAX_DAYS_AHEAD} days from today.")
     if end < start:
         raise ValueError("End date must be on or after start date.")

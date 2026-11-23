@@ -1,7 +1,8 @@
 """Remote MCP server exposing Movie Seat Finder as an agent tool."""
 
+import json
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
 from mcp.server import MCPServer
@@ -14,10 +15,15 @@ from starlette.routing import Route
 
 from .. import application
 from ..application import Area, Search
-from ..fandango import seat_map
+from ..fandango import UPSTREAM_ERRORS, seat_map
 from ..seat_map_visual import render_seat_map_svg, render_svg_png
 from ..seat_matching import parse_seat_grid, seat_map_match
+from ..share_links import decode_share_link, encode_share_link
 from .browser_page import BrowserPageMiddleware
+
+SHARE_URL_PREFIX = "https://movieseatfinder.com/s/"
+# Above this many movies, discovery gives each movie's theatre count instead of its theatre names.
+MOVIE_THEATRE_NAME_LIMIT = 5
 
 GridCell = Annotated[
     str,
@@ -54,17 +60,16 @@ class SeatRegion(BaseModel):
 class SeatMapOutput(BaseModel):
     """Structured fallback returned alongside the seat-map image."""
 
-    option: int  # noqa
     movie: str
     theatre: str
     date: str
     time: str
     format: str  # noqa
-    matching_groups: list[list[str]] = Field(alias="matchingGroups")
     best_group: list[str] = Field(alias="bestGroup")
+    matching_groups: list[list[str]] = Field(alias="matchingGroups")
     available_seat_count: int = Field(alias="availableSeatCount")  # noqa
     total_seat_count: int = Field(alias="totalSeatCount")  # noqa
-    seat_map_available: bool = Field(alias="seatMapAvailable")  # noqa
+    seat_map_url: str = Field(alias="seatMapUrl")  # noqa
 
 
 def resolved_seat_cells(seat_region, seat_cells):
@@ -98,65 +103,12 @@ def internal_seat_grid(seat_cells):
     return ",".join(converted)
 
 
-def compact_search_results(result, query, seat_preferences):
-    """Return only the details a messaging assistant needs to present options."""
-    options = []
-    for position, match in enumerate(result["matches"], start=1):
-        all_matching_groups = match["seatMap"]["matchingGroups"]
-        matching_groups = all_matching_groups[:12]
-        matching_seats = {seat for group in all_matching_groups for seat in group}
-        showtime_request = {
-            "showtime_hash_code": match["showtimeHashCode"],
-            "option_number": position,
-            "movie": match["movieTitle"],
-            "theatre": match["theatre"]["name"],
-            "show_date": match["date"],
-            "show_time": match["displayTime"],
-            "movie_format": match["format"],
-            **seat_preferences,
-        }
-        options.append(
-            {
-                "option": position,
-                "movie": match["movieTitle"],
-                "theatre": match["theatre"]["name"],
-                "address": match["theatre"]["address"],
-                "distanceMiles": match["theatre"]["distanceMiles"],
-                "date": match["date"],
-                "time": match["displayTime"],
-                "format": match["format"],
-                "amenities": match["amenities"],
-                "availableSeatCount": match["seatMap"]["availableSeatCount"],
-                "matchingSeatCount": len(matching_seats),
-                "matchingGroups": matching_groups,
-                "bestGroup": match["seatMap"]["bestGroup"],
-                "ticketUrl": match["ticketUrl"],
-                "seatMapRequest": showtime_request,
-            }
-        )
-    if result["failedSeatMaps"]:
-        message = (
-            "Results are incomplete because some seat maps could not be checked. "
-            "Present any confirmed options with this warning and offer to retry before changing constraints."
-        )
-    elif result["capped"]:
-        message = (
-            f"Only the first {result['checkedSeatMaps']} of {result['checkedShowtimes']} candidate showtimes were checked. "
-            "Present any options found and offer to narrow the dates, times, radius or theatre to check the rest."
-        )
-    elif options:
-        message = "Present these compact options and offer the seat map or ticket link for a selected option."
-    else:
-        message = "No matching live seat maps were found. Ask which explicit constraint the user wants to change."
-    return {
-        "query": query,
-        "options": options,
-        "resultCount": len(options),
-        "checkedShowtimes": result["checkedShowtimes"],
-        "checkedSeatMaps": result["checkedSeatMaps"],
-        "failedSeatMaps": result["failedSeatMaps"],
-        "message": message,
-    }
+def tool_result(data):
+    """Return structured content plus the compact JSON text copy that text-only clients read."""
+    return CallToolResult(
+        content=[TextContent(text=json.dumps(data, ensure_ascii=False, separators=(",", ":")))],
+        structuredContent=data,
+    )
 
 
 def _public_error(error):
@@ -166,45 +118,167 @@ def _public_error(error):
     return str(detail)
 
 
+def compact_movie_info(result, area, movie_query, format_query):
+    """Keep discovery small enough for a model's context: exact values only, no addresses."""
+    multi_day = result["startDate"] != result["endDate"]
+    name_theatres = len(result["movies"]) <= MOVIE_THEATRE_NAME_LIMIT
+    movies = []
+    for movie in result["movies"]:
+        item = {"title": movie["title"], "formats": movie["formats"]}
+        if multi_day:
+            item["dates"] = movie["dates"]
+        if name_theatres:
+            item["theatres"] = movie["theatres"]
+        else:
+            item["theatreCount"] = len(movie["theatres"])
+        movies.append(item)
+
+    if movies:
+        message = "Use these exact titles and formats in find_movie_seats."
+    else:
+        wanted = " ".join(filter(None, [movie_query, format_query, area.theatre_query]))
+        subject = f'Nothing matching "{wanted}" is' if wanted else "No movies are"
+        message = (
+            f"{subject} showing within {area.radius:g} miles of {result['place']} on these dates. "
+            "Tell the user and offer other dates, a wider radius or another movie."
+        )
+    return {
+        "place": result["place"],
+        "startDate": result["startDate"],
+        "endDate": result["endDate"],
+        "theatres": [
+            {"name": theatre["name"], "distanceMiles": round(theatre["distanceMiles"], 1)}
+            for theatre in result["theatres"]
+        ],
+        "movies": movies,
+        "message": message,
+    }
+
+
+def seat_map_url(match, search):
+    """A share link for one result: show_movie_seat_map reads it, and it opens the live map.
+
+    It carries only what the map needs, which keeps it short enough to copy between tool calls.
+    """
+    token = encode_share_link(
+        {
+            "adjacentSeats": search.adjacent_seats,
+            "date": match["date"],
+            "excludeAccessible": int(search.exclude_accessible),
+            "format": match["format"],
+            "movie": match["movieTitle"],
+            "seatGrid": search.seat_grid,
+            "showtime": match["showtimeHashCode"],
+            "theatre": match["theatre"]["name"],
+            "time": match["displayTime"],
+        }
+    )
+    return f"{SHARE_URL_PREFIX}{token}"
+
+
+def search_message(result, search):
+    if result["failedSeatMaps"]:
+        return (
+            "Results are incomplete because some seat maps could not be checked. Present any "
+            "options with this warning and offer to retry before changing constraints."
+        )
+    if result["capped"]:
+        return (
+            f"Only the first {result['checkedSeatMaps']} of {result['checkedShowtimes']} "
+            "candidate showtimes were checked. Present any options found and offer to narrow the "
+            "dates, times, radius or theatre to check the rest."
+        )
+    if result["hasNextPage"]:
+        return (
+            "Present these options and say more matching showtimes exist; offer to narrow by "
+            "date, time or theatre to see others."
+        )
+    if result["matches"]:
+        return "Present these options and offer the seat map or ticket link for a chosen one."
+    if not result["checkedShowtimes"]:
+        return (
+            f"No {search.movie} showtimes match these dates, times, formats and theatres within "
+            f"{search.area.radius:g} miles. Check the exact title, formats and dates with "
+            "get_location_and_movie_info, then ask which constraint the user wants to change."
+        )
+    return (
+        f"None of the {result['checkedSeatMaps']} showtimes checked has {search.adjacent_seats} "
+        "adjacent seats in the requested area. Ask which constraint the user wants to change: "
+        "seat area, party size, times, dates or radius."
+    )
+
+
+def compact_search_results(result, search):
+    """Return only the details an assistant needs to present and act on options."""
+    options = []
+    for position, match in enumerate(result["matches"], start=1):
+        seat_match = match["seatMap"]
+        options.append(
+            {
+                "option": position,
+                "movie": match["movieTitle"],
+                "theatre": match["theatre"]["name"],
+                "address": match["theatre"]["address"],
+                "distanceMiles": round(match["theatre"]["distanceMiles"], 1),
+                "date": match["date"],
+                "time": match["displayTime"],
+                "format": match["format"],
+                "amenities": match["amenities"],
+                "availableSeatCount": seat_match["availableSeatCount"],
+                "matchingSeatCount": len(
+                    {seat for group in seat_match["matchingGroups"] for seat in group}
+                ),
+                "bestGroup": seat_match["bestGroup"],
+                "ticketUrl": match["ticketUrl"],
+                "seatMapUrl": seat_map_url(match, search),
+            }
+        )
+    return {
+        "options": options,
+        "checkedShowtimes": result["checkedShowtimes"],
+        "checkedSeatMaps": result["checkedSeatMaps"],
+        "failedSeatMaps": result["failedSeatMaps"],
+        "message": search_message(result, search),
+    }
+
+
 MCP_INSTRUCTIONS = """
-Help users find live movie showtimes and adjacent available seats. Carry forward details already
-provided and ask only when required information is genuinely missing, ambiguous, or unavailable.
-When you need to ask, always use the client's user-question or input tool if one is available. If
-the client has no such tool, ask in your response. Collect all and only the currently blocking
-details in one concise question instead of asking for them one at a time. Never invent a movie,
-date, ZIP code, party size, format, or seat preference.
+Help users find live movie showtimes with adjacent available seats. Carry forward details the user
+already gave. Ask only when required information is missing or ambiguous, and collect every
+blocking detail in one question, using the client's question tool if it has one. Never invent a
+movie, date, ZIP code, party size, format or seat preference.
 
-Do not ask for an optional preference when a default is defined. When presenting results, briefly
-state every default applied because the user omitted that preference.
+Required: ZIP code, date or date range, movie and party size. Dates must be today or later, and one
+search covers at most 15 days. Everything else has a default; don't ask for it, but state each
+default you applied when presenting results: 25-mile radius, any time, every format, all theatres,
+anywhere in the auditorium, accessible seats excluded, nearest theatres first.
 
-Use get_location_and_movie_info before the first search and whenever the location, date, theatre,
-movie, or format changes. ZIP code and date or date range must be known; radius defaults to 25 miles.
-Pass movie_query and format_query whenever the user has expressed those preferences so discovery
-stays focused. If one returned title or normalized format unambiguously matches the request, proceed
-without asking the user to repeat it. Ask only when multiple plausible choices remain or the
-requested choice is unavailable. An empty movie_formats array searches every format. Do not treat
-IMAX, IMAX with Laser, and IMAX 70mm as interchangeable.
+Call get_location_and_movie_info before the first search, and again when the location changes or
+you need titles or formats for dates you haven't looked up. Pass movie_query and format_query when the user named them, and
+use the returned titles and formats exactly. If one title clearly matches, use it without asking.
+If the user described a kind of movie instead of a title, offer a few fitting titles from the list.
+IMAX, IMAX with Laser and IMAX 70mm are different formats: when the user just says "IMAX", pass
+every IMAX format returned; when they name one, pass only that one.
 
-Translate ordinary rectangular seat preferences into seat_region. The grid has 15 rows and 15
-columns: row 1 is nearest the screen, row 15 is the back, column 1 is the displayed left edge, and
-column 15 is the right edge. When the user's preference is vague, reasonable defaults are: good/best
-= rows 8-12 and columns 5-11; dead center = rows 7-9 and columns 7-9; center = rows 6-10 and columns
-6-10. Honor more specific wording. Use seat_cells only for an arbitrary non-rectangular shape. Use
-seat_region=null and an empty seat_cells array when anywhere is acceptable.
+Times: morning = 00:00-11:59, afternoon = 12:00-16:59, evening = 17:00-23:59, tonight = today
+17:00-23:59. For "ASAP", "soonest" or "earliest", search from today through the next 14 days with
+sort "earliest"; otherwise use sort "nearest".
 
-Search 00:00-23:59 when no time is given, all theatres when none is named, every format when none is
-requested, anywhere in the auditorium when no seat preference is given, and exclude accessible seats
-unless accessible seating is requested. Treat "ASAP" as the earliest future date with matching seats
-across the requested or supported date range, not merely the earliest time today. Never weaken an
-explicit constraint without permission.
+seat_region is a 15 by 15 grid scaled to the auditorium: row 1 is the front, row 15 the back,
+column 1 the left edge facing the screen, column 15 the right edge. It is relative position, not the
+theatre's row letters or seat numbers. Defaults for vague wording: good or best = rows 8-12,
+columns 5-11; center or middle = rows 6-10, columns 6-10; dead center = rows 7-9, columns 7-9; back
+half = rows 8-15; front half = rows 1-7; back row = rows 14-15. Honor more specific wording. Use
+seat_cells only for a shape that isn't a rectangle, and seat_region null when anywhere is fine.
 
-Present up to five concise numbered options with movie, date, time, theatre, format, distance, and
-bestGroup when useful. Use the selected option's ticketUrl for checkout or copy its seatMapRequest
-into show_movie_seat_map to refresh availability. The map tool returns both an image and structured
-seat groups. When the user asks to see the map, include the returned image in the user-visible
-response instead of leaving it only in the tool trace. If the client cannot display tool-result
-images, say so and present the structured seat groups. Never claim seats are held, reserved,
-purchased, or guaranteed.
+If the user needs wheelchair or companion seating, set exclude_accessible to false and tell them the
+results don't guarantee those spaces; they choose them on the seat map or at checkout.
+
+Present up to five numbered options with movie, date, time, theatre, format, distance and
+bestGroup. bestGroup uses the theatre's own seat labels. For checkout, give the option's ticketUrl.
+To show seats, call show_movie_seat_map with the option's seatMapUrl and include the returned image
+in your reply; if images can't be shown, give the seatMapUrl link, which opens the live map in a
+browser. Never claim seats are held, reserved, purchased or guaranteed.
 """.strip()
 
 
@@ -214,79 +288,66 @@ movie_seat_mcp = MCPServer(
     description="Discover canonical movie options, then search live showtimes and adjacent available seats.",
     instructions=MCP_INSTRUCTIONS,
     website_url="https://movieseatfinder.com",
-    version="0.6.0",
+    version="0.7.0",
 )
+
+ZipCode = Annotated[str, Field(pattern=r"^\d{5}$", description="Five-digit US ZIP code")]
+StartDate = Annotated[date, Field(description="First date, YYYY-MM-DD; today or later")]
+EndDate = Annotated[
+    date | None,
+    Field(description="Last date, YYYY-MM-DD, at most 14 days after start_date; omit for one day"),
+]
+RadiusMiles = Annotated[
+    float, Field(ge=1, le=100, description="Search radius in miles; defaults to 25")
+]
 
 
 @movie_seat_mcp.tool(
     title="Get location and movie information",
     description=(
-        "List live theatre names, canonical movie titles, dates, and normalized formats for a location. "
-        "Pass movie_query and format_query when known to keep the response focused."
+        "List the movies, normalized formats and theatres showing near a ZIP code on the given "
+        "dates. Pass movie_query and format_query when the user named them."
     ),
     structured_output=True,
 )
 def get_location_and_movie_info(
-    zip_code: Annotated[str, Field(pattern=r"^\d{5}$", description="Five-digit US ZIP code")],
-    start_date: Annotated[date, Field(description="First calendar date in YYYY-MM-DD form")],
-    radius_miles: Annotated[
-        float,
-        Field(ge=1, le=100, description="Search radius in miles; defaults to 25 when unspecified"),
-    ] = 25,
-    end_date: Annotated[
-        date | None,
-        Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
-    ] = None,
+    zip_code: ZipCode,
+    start_date: StartDate,
+    radius_miles: RadiusMiles = 25,
+    end_date: EndDate = None,
     theatre: Annotated[
         str,
-        Field(
-            max_length=120, description="Optional partial theatre-name filter; normally leave empty"
-        ),
+        Field(max_length=120, description="Optional partial theatre name; normally leave empty"),
     ] = "",
     movie_query: Annotated[
-        str,
-        Field(
-            max_length=120,
-            description="Optional partial movie-title hint used to reduce the response",
-        ),
+        str, Field(max_length=120, description="Optional partial movie title the user named")
     ] = "",
     format_query: Annotated[
-        str,
-        Field(
-            max_length=120,
-            description="Optional format hint, such as IMAX 70mm, used to reduce the response",
-        ),
+        str, Field(max_length=120, description="Optional format the user named, such as IMAX")
     ] = "",
 ) -> dict[str, Any]:
     """Discover canonical live values before an agent performs a seat search."""
+    area = Area(
+        radius=radius_miles,
+        zip_code=zip_code,
+        start_date=start_date,
+        end_date=end_date,
+        theatre_query=theatre,
+    )
     try:
         result = application.location_movie_info(
-            Area(
-                radius=radius_miles,
-                zip_code=zip_code,
-                start_date=start_date,
-                end_date=end_date,
-                theatre_query=theatre,
-            ),
-            movie_query=movie_query,
-            format_query=format_query,
+            area, movie_query=movie_query, format_query=format_query
         )
     except HTTPException as error:
         raise ToolError(_public_error(error)) from error
-    return {
-        **result,
-        "message": (
-            "Use the returned title, normalized format, and optional theatre in find_movie_seats. "
-            "Clarify only when multiple plausible choices remain."
-        ),
-    }
+    return tool_result(compact_movie_info(result, area, movie_query, format_query))
 
 
 @movie_seat_mcp.tool(
     title="Find available movie seats",
     description=(
-        "Find real showtimes with adjacent available seats. Prefer seat_region for a rectangular "
-        "preference and seat_cells only for an arbitrary shape."
+        "Find live showtimes of one movie with enough adjacent available seats, up to five "
+        "options. Each option has a ticketUrl for checkout and a seatMapUrl for show_movie_seat_map."
     ),
     structured_output=True,
 )
@@ -299,209 +360,167 @@ def find_movie_seats(
             description="Exact title returned by get_location_and_movie_info",
         ),
     ],
-    start_date: Annotated[date, Field(description="First calendar date in YYYY-MM-DD form")],
-    zip_code: Annotated[str, Field(pattern=r"^\d{5}$", description="Five-digit US ZIP code")],
+    start_date: StartDate,
+    zip_code: ZipCode,
     adjacent_seats: Annotated[
-        int,
-        Field(ge=1, le=10, description="Exact user-provided number of adjacent seats needed"),
+        int, Field(ge=1, le=10, description="Number of seats needed together")
     ],
     movie_formats: Annotated[
         tuple[FormatName, ...],
         Field(
             max_length=10,
             description=(
-                "Exact formats returned by get_location_and_movie_info. A showtime may match any "
-                "selected value; use an empty array when every format is acceptable."
+                "Exact formats returned by get_location_and_movie_info; a showtime may match any "
+                "of them. Use an empty array when every format is fine."
             ),
         ),
     ],
     seat_region: Annotated[
         SeatRegion | None,
-        Field(
-            description="Normal rectangular seat preference; use null only when anywhere is acceptable"
-        ),
+        Field(description="Rectangular seat preference; null when anywhere is fine"),
     ],
-    radius_miles: Annotated[
-        float,
-        Field(ge=1, le=100, description="Search radius in miles; defaults to 25 when unspecified"),
-    ] = 25,
-    end_date: Annotated[
-        date | None,
-        Field(description="Last calendar date in YYYY-MM-DD form; omit for one day"),
-    ] = None,
+    radius_miles: RadiusMiles = 25,
+    end_date: EndDate = None,
     start_time: Annotated[
         str,
         Field(
             pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
-            description="Earliest time, HH:MM; defaults to 00:00",
+            description="Earliest start time, HH:MM; defaults to 00:00",
         ),
     ] = "00:00",
     end_time: Annotated[
         str,
         Field(
             pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
-            description="Latest time, HH:MM; defaults to 23:59",
+            description="Latest start time, HH:MM; defaults to 23:59",
         ),
     ] = "23:59",
     theatre: Annotated[
         str,
-        Field(max_length=120, description="Optional theatre filter; empty searches all theatres"),
+        Field(max_length=120, description="Optional partial theatre name; empty searches all"),
     ] = "",
+    sort: Annotated[
+        Literal["nearest", "earliest"],
+        Field(description='"nearest" theatres first (default), or "earliest" showtimes first'),
+    ] = "nearest",
     exclude_accessible: Annotated[
         bool,
-        Field(description="Exclude wheelchair and companion seats unless explicitly requested"),
+        Field(description="Exclude wheelchair and companion seats unless the user needs them"),
     ] = True,
     seat_cells: Annotated[
         tuple[GridCell, ...],
         Field(
             max_length=225,
-            description="Advanced arbitrary-shape override. Leave empty when using seat_region or accepting anywhere.",
+            description="Seat cells for a shape that isn't a rectangle; otherwise leave empty",
         ),
     ] = (),
 ) -> dict[str, Any]:
     """Find live showtimes with seats matching a conversational preference."""
     selected_cells = resolved_seat_cells(seat_region, seat_cells)
-    serialized_region = (
-        seat_region.model_dump() if isinstance(seat_region, SeatRegion) else seat_region
+    search = Search(
+        area=Area(
+            radius=radius_miles,
+            zip_code=zip_code,
+            start_date=start_date,
+            end_date=end_date or start_date,
+            theatre_query=theatre,
+        ),
+        movie=movie,
+        requested_format=",".join(movie_formats) or "any",
+        start_time=start_time,
+        end_time=end_time,
+        adjacent_seats=adjacent_seats,
+        seat_grid=internal_seat_grid(selected_cells),
+        exclude_accessible=exclude_accessible,
+        sort=sort,
     )
-    search_end_date = end_date or start_date
-    query = {
-        "movie": movie,
-        "dateRange": {"start": start_date.isoformat(), "end": search_end_date.isoformat()},
-        "zipCode": zip_code,
-        "formats": list(movie_formats),
-        "seatRegion": serialized_region,
-        "seatCells": list(seat_cells),
-        "adjacentSeats": adjacent_seats,
-        "radiusMiles": radius_miles,
-        "timeRange": {"start": start_time, "end": end_time},
-        "theatre": theatre,
-        "excludeAccessible": exclude_accessible,
-    }
     try:
-        search = Search(
-            area=Area(
-                radius=radius_miles,
-                zip_code=zip_code,
-                start_date=start_date,
-                end_date=search_end_date,
-                theatre_query=theatre,
-            ),
-            movie=movie,
-            requested_format=",".join(movie_formats) or "any",
-            start_time=start_time,
-            end_time=end_time,
-            adjacent_seats=adjacent_seats,
-            seat_grid=internal_seat_grid(selected_cells),
-            exclude_accessible=exclude_accessible,
-            sort="nearest",
-        )
         result = application.find_seat_matches(search, page_size=5)
     except HTTPException as error:
         raise ToolError(_public_error(error)) from error
-    seat_preferences = {
-        "seat_region": serialized_region,
-        "seat_cells": list(seat_cells),
-        "adjacent_seats": adjacent_seats,
-        "exclude_accessible": exclude_accessible,
-    }
-    return compact_search_results(result, query, seat_preferences)
+    return tool_result(compact_search_results(result, search))
+
+
+def share_token(url):
+    return url.rstrip("/").rsplit("/", 1)[-1]
 
 
 @movie_seat_mcp.tool(
     title="Show a live movie seat map",
     description=(
-        "Refresh one numbered result from find_movie_seats and return a user-facing image/png plus "
-        "structured matchingGroups and bestGroup fallback data. Copy the selected option's "
-        "seatMapRequest values and include the returned image in the response to the user."
+        "Refresh one find_movie_seats option and return its live seat map as an image, with the "
+        "matching seat groups. Pass the option's seatMapUrl."
     ),
     structured_output=True,
 )
 def show_movie_seat_map(
-    showtime_hash_code: Annotated[
+    seat_map_url: Annotated[
         str,
         Field(
-            pattern=r"^[A-Za-z0-9_-]{1,200}$",
-            description="Exact showtime hash copied from the selected option's seatMapRequest",
+            min_length=1,
+            max_length=4200,
+            description="seatMapUrl copied exactly from the chosen find_movie_seats option",
         ),
     ],
-    option_number: Annotated[int, Field(ge=1, le=5, description="Selected option number")],
-    movie: Annotated[str, Field(min_length=1, max_length=120, description="Selected movie title")],
-    theatre: Annotated[
-        str, Field(min_length=1, max_length=200, description="Selected theatre name")
-    ],
-    show_date: Annotated[date, Field(description="Selected calendar date in YYYY-MM-DD form")],
-    show_time: Annotated[
-        str, Field(min_length=1, max_length=40, description="Selected display time")
-    ],
-    movie_format: Annotated[
-        str, Field(min_length=1, max_length=120, description="Selected format")
-    ],
-    adjacent_seats: Annotated[int, Field(ge=1, le=10, description="Required adjacent seat count")],
-    exclude_accessible: Annotated[
-        bool, Field(description="Whether accessible seats remain excluded")
-    ],
-    seat_region: Annotated[
-        SeatRegion | None,
-        Field(description="Seat region copied from the selected option"),
-    ],
-    seat_cells: Annotated[
-        tuple[GridCell, ...],
-        Field(max_length=225, description="Advanced seat cells copied from the selected option"),
-    ] = (),
 ) -> SeatMapOutput:
     """Refresh only the selected showtime and return its live layout as MCP image content."""
-    selected_cells = resolved_seat_cells(seat_region, seat_cells)
+    token = share_token(seat_map_url)
+    try:
+        shared = decode_share_link(token)
+    except ValueError as error:
+        raise ToolError(
+            "That seatMapUrl is invalid. Copy it exactly from a find_movie_seats option."
+        ) from error
+    try:
+        raw_map = seat_map(shared.showtime)
+    except UPSTREAM_ERRORS as error:
+        raise ToolError("Fandango's seat map couldn't be loaded. Try again.") from error
     seat_match = seat_map_match(
-        seat_map(showtime_hash_code),
-        adjacent_seats,
-        parse_seat_grid(internal_seat_grid(selected_cells)),
-        exclude_accessible,
+        raw_map,
+        shared.adjacent_seats,
+        parse_seat_grid(shared.seat_grid),
+        shared.exclude_accessible,
     )
     if not seat_match:
         raise ToolError(
-            "Those seats are no longer available for that exact showtime. Run find_movie_seats again."
+            "Those seats are no longer available for that showtime. Run find_movie_seats again."
         )
 
-    matching_groups = seat_match["matchingGroups"][:12]
     best_group = seat_match["bestGroup"]
-    recommended_summary = "-".join(best_group)
+    if shared.exclude_accessible:
+        legend = "gray = unavailable or accessible (excluded from this search)"
+    else:
+        legend = "gray = unavailable, blue = accessible"
     caption = (
-        f"Display the attached seat-map image directly to the user. "
-        f"Live seat map for option {option_number}: {movie} at {theatre} — "
-        f"{show_date.isoformat()} at {show_time} ({movie_format}). "
-        f"Red = seats matching the request; white = available; gray = unavailable; "
-        f"blue = accessible. Best matching group: {recommended_summary}."
+        f"Live seat map for {shared.movie} at {shared.theatre}, {shared.show_date.isoformat()} at "
+        f"{shared.time} ({shared.format}). Rows carry the theatre's row letters. Red = matching "
+        f"seats, white = available, {legend}. Best matching group: {'-'.join(best_group)}. "
+        f"Live map link: {SHARE_URL_PREFIX}{token}"
     )
     image = render_svg_png(
         render_seat_map_svg(
             seat_match["layout"],
             available_count=seat_match["availableSeatCount"],
             total_count=seat_match["totalSeatCount"],
-            accessible_seats_excluded=exclude_accessible,
+            accessible_seats_excluded=shared.exclude_accessible,
         )
     )
     output = SeatMapOutput(
-        option=option_number,
-        movie=movie,
-        theatre=theatre,
-        date=show_date.isoformat(),
-        time=show_time,
-        format=movie_format,
-        matchingGroups=matching_groups,
+        movie=shared.movie,
+        theatre=shared.theatre,
+        date=shared.show_date.isoformat(),
+        time=shared.time,
+        format=shared.format,
         bestGroup=best_group,
+        matchingGroups=seat_match["matchingGroups"][:12],
         availableSeatCount=seat_match["availableSeatCount"],
         totalSeatCount=seat_match["totalSeatCount"],
-        seatMapAvailable=True,
+        seatMapUrl=f"{SHARE_URL_PREFIX}{token}",
     )
     image_content = (
         Image(data=image, format="png")
         .to_image_content()
-        .model_copy(
-            update={
-                "annotations": Annotations(audience=["user"], priority=1.0),
-            }
-        )
+        .model_copy(update={"annotations": Annotations(audience=["user"], priority=1.0)})
     )
     return CallToolResult(
         content=[image_content, TextContent(text=caption)],

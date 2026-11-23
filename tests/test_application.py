@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -206,6 +207,7 @@ def showtime_group(format_name, code, time):
 
 class SearchTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(application, "us_today", return_value=date(2026, 7, 1)))
         self.client = TestClient(application.app)
         self.params = {
             "zip": "10001",
