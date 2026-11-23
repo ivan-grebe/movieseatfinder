@@ -83,11 +83,6 @@ const search = createSearchFlow({
 function setGroupReady(group, ready) {
   group.classList.toggle("is-locked", !ready);
   group.toggleAttribute("inert", !ready);
-  if (ready) {
-    group.removeAttribute("aria-disabled");
-  } else {
-    group.setAttribute("aria-disabled", "true");
-  }
 }
 
 function syncPreferencesReady() {

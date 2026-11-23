@@ -23,7 +23,7 @@ def upstream_cache(maxsize):
     return cached(TTLCache(maxsize=maxsize, ttl=300), lock=condition, condition=condition)
 
 
-def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters", timeout=30):
+def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters"):
     response = http_session().get(
         f"{FANDANGO_ORIGIN}{path}",
         params=params,
@@ -33,7 +33,7 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
             "Referer": referer,
             "X-Requested-With": "XMLHttpRequest",
         },
-        timeout=timeout,
+        timeout=30,
     )
     response.raise_for_status()
     return response.json()
@@ -167,19 +167,15 @@ def showtime_format(format_header, group, showtime):
     showtime_names = [
         name
         for item in showtime.get("filmFormat") or []
-        if (name := clean_title(item.get("filterName", "")))
+        if (name := clean_title(item.get("filterName")))
     ]
     amenity_names = [
-        part.strip()
-        for part in clean_title(group.get("amenityString", "")).split(",")
-        if part.strip()
+        part.strip() for part in clean_title(group.get("amenityString")).split(",") if part.strip()
     ]
     amenity_names.extend(group_amenity_names(group))
     evidence = [*showtime_names, format_header, *amenity_names]
     labels_by_name = {
-        normalized_text(label): label
-        for value in evidence
-        if (label := canonical_format_label(value))
+        normalized_text(label): label for label in map(canonical_format_label, evidence)
     }
     if "imax 70mm" in labels_by_name:
         return "IMAX 70mm"
@@ -209,13 +205,13 @@ def showtime_format(format_header, group, showtime):
 def amenity_groups(movie):
     """Yield (format header, amenity group) for every showtime group of a movie."""
     for variant in movie.get("variants") or []:
-        format_name = clean_title(variant.get("filmFormatHeader", "Standard")) or "Standard"
+        format_name = clean_title(variant.get("filmFormatHeader")) or "Standard"
         for group in variant.get("amenityGroups") or []:
             yield format_name, group
 
 
 def group_amenity_names(group):
-    names = (clean_title(item.get("name", "")) for item in group.get("amenities") or [])
+    names = (clean_title(item.get("name")) for item in group.get("amenities") or [])
     return [name for name in names if name]
 
 
@@ -257,7 +253,7 @@ def fandango_theatres_by_date(zip_code, radius, dates, origin):
 
 
 @upstream_cache(maxsize=240)
-def _fetch_fandango_theatres(zip_code, radius, show_date=None):
+def _fetch_fandango_theatres(zip_code, radius, show_date):
     radius_value = int(radius) if float(radius).is_integer() else radius
     params = {"zipCode": zip_code, "radius": radius_value, "limit": 100}
     if show_date:
@@ -271,13 +267,12 @@ def _fetch_fandango_theatres(zip_code, radius, show_date=None):
             {
                 "name": theatre.get("name", ""),
                 "address": theatre.get("fullAddress") or ", ".join(filter(None, address_parts)),
-                "distanceMiles": float(theatre.get("distance") or 0),
                 "latitude": _optional_float(geo.get("latitude")),
                 "longitude": _optional_float(geo.get("longitude")),
                 "rawMovies": theatre.get("movies") or [],
             }
         )
-    return sorted(theatres, key=lambda item: item["distanceMiles"])
+    return theatres
 
 
 def _optional_float(value):
@@ -334,10 +329,10 @@ def display_showtime_time(value):
 def normalize_showtimes(movies):
     normalized = []
     for movie in movies:
-        movie_title = clean_title(movie.get("title", ""))
+        movie_title = clean_title(movie.get("title"))
         meta = movie_meta(movie)
         for format_name, group in amenity_groups(movie):
-            amenity_text = clean_title(group.get("amenityString", "")) or ", ".join(
+            amenity_text = clean_title(group.get("amenityString")) or ", ".join(
                 group_amenity_names(group)
             )
             for showtime in group.get("showtimes") or []:

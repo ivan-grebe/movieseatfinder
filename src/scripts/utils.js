@@ -79,7 +79,7 @@ export async function getJson(url) {
   if (!response.ok) {
     const error = new Error(data.error || "Request failed.");
 
-    error.code = data.code || "";
+    error.code = data.code;
     throw error;
   }
 

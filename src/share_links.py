@@ -1,7 +1,6 @@
 """Compressed showtime links contain public metadata and seat preferences only."""
 
 import base64
-import binascii
 import re
 import zlib
 from datetime import date
@@ -31,7 +30,7 @@ class SharedShowtime(BaseModel, extra="forbid"):
     genres: str = Field(default="", max_length=200)
     adjacent_seats: int = Field(default=2, alias="adjacentSeats", ge=1, le=10)
     exclude_accessible: bool = Field(default=True, alias="excludeAccessible")
-    seat_grid: str = Field(default="", alias="seatGrid", max_length=39)
+    seat_grid: str = Field(default="", alias="seatGrid")
 
 
 def unpack_seat_grid(area):
@@ -40,7 +39,7 @@ def unpack_seat_grid(area):
     if not re.fullmatch(r"[A-Za-z0-9_-]{39}", area):
         raise ValueError("Invalid seat area")
     bitmap = base64.urlsafe_b64decode(area + "=")
-    if len(bitmap) != 29 or bitmap[-1] > 1:
+    if bitmap[-1] > 1:
         raise ValueError("Invalid seat area")
     return ",".join(
         f"{index // 15}:{index % 15}"
@@ -62,7 +61,7 @@ def decode_share_link(token):
         shared = SharedShowtime.model_validate(params)
         shared.seat_grid = unpack_seat_grid(shared.seat_grid)
         return shared
-    except (ValueError, UnicodeError, binascii.Error, zlib.error) as error:
+    except (ValueError, zlib.error) as error:
         raise ValueError(
             "This shared showtime link is invalid. Please create a new link."
         ) from error
@@ -82,7 +81,6 @@ def pack_seat_grid(seat_grid):
 
 def encode_share_link(params):
     """Build the token the website's share button makes; `params` use the link's field names."""
-    values = dict(params)
-    if values.get("seatGrid"):
-        values["seatGrid"] = pack_seat_grid(values["seatGrid"])
-    return base64_url(zlib.compress(urlencode(values).encode("utf-8"), level=9))
+    if params.get("seatGrid"):
+        params["seatGrid"] = pack_seat_grid(params["seatGrid"])
+    return base64_url(zlib.compress(urlencode(params).encode("utf-8"), level=9))

@@ -4,17 +4,22 @@ import { inflateSync } from "node:zlib";
 import test from "node:test";
 
 const match = {
+  amenities: "",
   date: "2026-10-25",
   displayTime: "7 PM",
   format: "IMAX",
   genres: [],
   movieTitle: "Spirited Away — 千と千尋",
+  poster: "",
+  rating: "",
+  runtime: "",
   showtimeHashCode: "showtime-123",
   theatre: {
     address: "Main St",
     distanceMiles: 2.5,
     name: "Cinema",
   },
+  ticketUrl: "",
 };
 
 test("showtime links preserve public metadata and seat preferences without search location", () => {
@@ -60,7 +65,9 @@ test("showtime links preserve public metadata and seat preferences without searc
 
 test("a sender ZIP is not required to share a showtime", () => {
   assert.match(
-    new URL(compactShareUrl("https://movieseatfinder.com/?adjacentSeats=2", match)).pathname,
+    new URL(
+      compactShareUrl("https://movieseatfinder.com/?adjacentSeats=2&excludeAccessible=1", match),
+    ).pathname,
     /^\/s\//u,
   );
 });

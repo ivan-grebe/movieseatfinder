@@ -69,7 +69,7 @@ class SeatMapOutput(BaseModel):
     theatre: str
     date: str
     time: str
-    format: str  # noqa
+    format: str
     best_group: list[str] = Field(alias="bestGroup")
     matching_groups: list[list[str]] = Field(alias="matchingGroups")
     available_seat_count: int = Field(alias="availableSeatCount")  # noqa
@@ -106,8 +106,8 @@ def tool_result(data):
 def _public_error(error):
     detail = error.detail
     if isinstance(detail, dict):
-        return detail.get("error", "The seat search could not be completed.")
-    return str(detail)
+        return detail["error"]
+    return detail
 
 
 def compact_movie_info(result, area, movie_query, format_query):

@@ -11,7 +11,7 @@ MCP_BROWSER_PAGE = (Path(__file__).resolve().parents[1] / "templates" / "mcp.htm
 
 
 def _is_browser_navigation(scope):
-    if scope.get("method", "").upper() != "GET":
+    if scope["method"] != "GET":
         return False
     headers = Headers(scope=scope)
     return (
@@ -28,7 +28,7 @@ class BrowserPageMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and _is_browser_navigation(scope):
+        if _is_browser_navigation(scope):
             response = HTMLResponse(
                 MCP_BROWSER_PAGE,
                 headers={

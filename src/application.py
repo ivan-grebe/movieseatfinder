@@ -136,7 +136,7 @@ class ResolvedArea:
     area: Area
     zip_code: str
     origin: tuple[float, float]
-    place: dict
+    place: str
     dates: list[str]
 
 
@@ -160,8 +160,7 @@ class Search:
 
 
 LOGGER = logging.getLogger("movieseatfinder")
-if not LOGGER.handlers:
-    LOGGER.addHandler(logging.StreamHandler(sys.stdout))
+LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 LOGGER.setLevel(logging.INFO)
 LOGGER.propagate = False
 
@@ -203,7 +202,7 @@ def intent_query_matches(value, query):
     """Match a human hint without requiring an exact display string."""
     value_text = normalized_text(value)
     query_text = normalized_text(query)
-    return not query_text or query_text in value_text
+    return query_text in value_text
 
 
 def dated_theatres(resolved):
@@ -230,7 +229,7 @@ def available_movies(resolved):
     movies = []
     for _, theatre in dated_theatres(resolved):
         for movie in theatre["rawMovies"]:
-            title = clean_title(movie.get("title", ""))
+            title = clean_title(movie.get("title"))
             key = normalized_text(title)
             if not title or key in seen:
                 continue
@@ -243,7 +242,7 @@ def available_formats(resolved, movie_query):
     formats = set()
     for _, theatre in dated_theatres(resolved):
         for movie in theatre["rawMovies"]:
-            if not movie_matches(movie.get("title", ""), movie_query):
+            if not movie_matches(movie.get("title"), movie_query):
                 continue
             for format_name, group in amenity_groups(movie):
                 formats.update(group_formats(format_name, group))
@@ -364,16 +363,9 @@ def api_shared_showtime(token: str):
     }
     return {
         "matches": [match],
-        "checkedShowtimes": 1,
-        "checkedSeatMaps": 1,
-        "failedSeatMaps": 0,
-        "page": 1,
-        "pageSize": 1,
-        "hasNextPage": False,
-        "hasPreviousPage": False,
         "accessibleSeatsExcluded": shared.exclude_accessible,
         "preferences": {
-            "adjacentSeats": str(shared.adjacent_seats),
+            "adjacentSeats": shared.adjacent_seats,
             "excludeAccessible": "1" if shared.exclude_accessible else "0",
             "seatGrid": shared.seat_grid,
         },
@@ -502,7 +494,7 @@ def api_search_location(zip_code, lat, lon):
         ) from error
 
 
-def location_movie_info(area, movie_query="", format_query=""):
+def location_movie_info(area, movie_query, format_query):
     """Return canonical live theatre, movie, and format values for agents."""
     with api_errors("Could not load real theatre and movie data"):
         resolved = resolve_area(area)
@@ -513,11 +505,7 @@ def location_movie_info(area, movie_query="", format_query=""):
             theatre_name = theatre_item["name"]
             theatres.setdefault(
                 normalized_text(theatre_name),
-                {
-                    "name": theatre_name,
-                    "address": theatre_item["address"],
-                    "distanceMiles": theatre_item["distanceMiles"],
-                },
+                {"name": theatre_name, "distanceMiles": theatre_item["distanceMiles"]},
             )
             for movie in theatre_item["rawMovies"]:
                 title = clean_title(movie.get("title", ""))
@@ -545,7 +533,7 @@ def location_movie_info(area, movie_query="", format_query=""):
     filtered_movies = []
     relevant_theatres = set()
     for movie in movies.values():
-        if movie_query and not intent_query_matches(movie["title"], movie_query):
+        if not intent_query_matches(movie["title"], movie_query):
             continue
         formats = sorted(
             value
@@ -569,11 +557,8 @@ def location_movie_info(area, movie_query="", format_query=""):
 
     return {
         "place": resolved.place,
-        "zipCode": resolved.zip_code,
         "startDate": resolved.dates[0],
         "endDate": resolved.dates[-1],
-        "movieQuery": movie_query,
-        "formatQuery": format_query,
         "theatres": sorted(
             (
                 item
@@ -589,13 +574,11 @@ def location_movie_info(area, movie_query="", format_query=""):
 @app.post("/api/events/ticket-click", status_code=204)
 def ticket_click():
     LOGGER.info("event=ticket_click")
-    return Response(status_code=204)
 
 
 @app.post("/api/events/shared-link-visit", status_code=204)
 def shared_link_visit():
     LOGGER.info("event=shared_link_visit")
-    return Response(status_code=204)
 
 
 @app.get("/api/theatres")
@@ -606,9 +589,9 @@ def api_theatres(
     lon: Longitude = None,
 ):
     with api_errors("Could not load real theatre data"):
-        search_zip, origin, place = api_search_location(zip_code, lat, lon)
+        search_zip, origin, _ = api_search_location(zip_code, lat, lon)
         theatres = fandango_theatres(search_zip, radius, origin)
-    return {"place": place, "theatres": [{"name": theatre["name"]} for theatre in theatres]}
+    return {"theatres": [{"name": theatre["name"]} for theatre in theatres]}
 
 
 def area_criteria(
@@ -660,7 +643,7 @@ def collect_candidate_showtimes(resolved, search):
         movies = [
             movie
             for movie in theatre["rawMovies"]
-            if movie_matches(movie.get("title", ""), search.movie)
+            if movie_matches(movie.get("title"), search.movie)
         ]
         for showtime in normalize_showtimes(movies):
             if not format_matches(showtime["format"], search.requested_format):
@@ -764,7 +747,7 @@ def prepare_search(search):
     return resolved.zip_code, candidates, check
 
 
-def find_seat_matches(search, page=1, page_size=DEFAULT_PAGE_SIZE):
+def find_seat_matches(search, page_size, page=1):
     """Run the live showtime and seat-map search for one page of results, checking at most
     SEAT_MAP_LIMIT seat maps."""
     page_start = (page - 1) * page_size

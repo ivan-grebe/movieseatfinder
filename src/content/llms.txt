@@ -7,7 +7,7 @@ Movie Seat Finder is a free public web application. Showtime and seat availabili
 ## Pages
 
 - [Movie Seat Finder](https://movieseatfinder.com/): Search by ZIP code or browser location, movie, theatre, format, date, time, party size, and preferred seat-map region.
-- [FAQ](https://movieseatfinder.com/faq): Answers about search behavior, live data, theatre formats, seat maps, accessibility, privacy, and ticket links.
+- [FAQ](https://movieseatfinder.com/faq): Answers about what the site does, U.S. coverage, theatre formats, how current seat availability is, and buying tickets.
 
 ## MCP
 

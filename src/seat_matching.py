@@ -8,7 +8,7 @@ NEIGHBOR_KEYS = ("leftNeighbor", "rightNeighbor")
 
 def parse_seat_grid(value):
     cells = []
-    for part in (value or "").split(","):
+    for part in value.split(","):
         pieces = part.split(":")
         if len(pieces) != 2:
             continue
@@ -38,8 +38,8 @@ def normalized_seat_layout(data, matching_blocks):
     if background_svg and background_width and background_height:
         width = max(float(background_width), 1)
         height = max(float(background_height), 1)
-        offset_x = data.get("mapOffsetX", 0) or 0
-        offset_y = data.get("mapOffsetY", 0) or 0
+        offset_x = data.get("mapOffsetX") or 0
+        offset_y = data.get("mapOffsetY") or 0
     else:
         background_svg = ""
         min_left = min(seat.get("x", 0) for seat in seats)
@@ -150,7 +150,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
 
 def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     """Return exact-size adjacent groups, closest to the requested region first."""
-    seat_by_id = {seat.get("id", ""): seat for seat in seats if seat.get("id")}
+    seat_by_id = {seat["id"]: seat for seat in seats if seat.get("id")}
     position = seat_positioner(seats)
 
     if selected_cells:
@@ -174,7 +174,7 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
             distance = (row_position - target_row) ** 2 + (x_position - target_x) ** 2
             groups.append((distance, group))
 
-    groups.sort(key=lambda item: (item[0], item[1]))
+    groups.sort()
     return [group for _, group in groups]
 
 

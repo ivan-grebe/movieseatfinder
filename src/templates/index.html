@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Movie Seat Finder</title>
   <meta name="description" content="Find real Fandango showtimes with reserved seating and preview live seat maps before you buy movie tickets.">
-  <meta name="robots" content="index, follow">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff7f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0b0c">
   <link rel="canonical" href="https://movieseatfinder.com/">
@@ -293,13 +292,13 @@
     </section>
 
     <section id="results-section" class="results-section" aria-label="Search results" tabindex="-1">
-      <div id="summary" class="summary is-muted" role="status" aria-live="polite">__INITIAL_SUMMARY__</div>
+      <div id="summary" class="summary is-muted" role="status">__INITIAL_SUMMARY__</div>
       <div id="resultsToolbar" class="results-toolbar" hidden>
-        <span id="sortStatus" class="sort-status" role="status" aria-live="polite"></span>
+        <span id="sortStatus" class="sort-status" role="status"></span>
         <label class="sort-label" for="sortInput">Sort by</label>
         <span class="select-wrap sort-select-wrap">
           <select id="sortInput" aria-label="Sort results">
-            <option value="earliest" selected>Earliest showtime</option>
+            <option value="earliest">Earliest showtime</option>
             <option value="latest">Latest showtime</option>
             <option value="nearest">Nearest theatre</option>
           </select>

@@ -199,7 +199,6 @@ export function createSearchFlow({
       }
 
       rememberSearch(searchUrl, replaceHistory);
-      currentPage = data.page;
       resultsView.render(data, {
         searchUrl: searchUrl,
       });
@@ -358,9 +357,9 @@ export function createSearchFlow({
   }
 
   /** Start a new search from page one. */
-  function searchFromStart(options) {
+  function searchFromStart() {
     currentPage = 1;
-    return runNewSearch(options);
+    return runNewSearch();
   }
 
   function setPage(page) {

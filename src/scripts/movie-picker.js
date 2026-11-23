@@ -132,14 +132,10 @@ export function createMoviePicker({
 
       if (remembered) {
         select(remembered);
-        closeCombo(input, menu);
       } else if (input.value.trim()) {
         if (!resolveTyped() && document.activeElement === input) {
           combo.refresh();
         }
-      } else {
-        setStatus(status, "");
-        closeCombo(input, menu);
       }
     } catch (error) {
       if (!isCurrent()) {
