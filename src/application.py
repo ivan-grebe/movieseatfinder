@@ -161,12 +161,10 @@ def dated_theatres(zip_code, radius, dates, theatre_query, origin, included=(), 
             yield show_date, theatre
 
 
-def available_movies(zip_code, radius, dates, theatre_query, origin, included, excluded):
+def available_movies(zip_code, radius, dates, origin, included, excluded):
     seen = set()
     movies = []
-    for _, theatre in dated_theatres(
-        zip_code, radius, dates, theatre_query, origin, included, excluded
-    ):
+    for _, theatre in dated_theatres(zip_code, radius, dates, "", origin, included, excluded):
         for movie in theatre["rawMovies"]:
             title = clean_title(movie.get("title", ""))
             key = normalized_text(title)
@@ -177,13 +175,9 @@ def available_movies(zip_code, radius, dates, theatre_query, origin, included, e
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def available_formats(
-    zip_code, radius, dates, theatre_query, movie_query, origin, included, excluded
-):
+def available_formats(zip_code, radius, dates, movie_query, origin, included, excluded):
     formats = set()
-    for _, theatre in dated_theatres(
-        zip_code, radius, dates, theatre_query, origin, included, excluded
-    ):
+    for _, theatre in dated_theatres(zip_code, radius, dates, "", origin, included, excluded):
         for movie in theatre["rawMovies"]:
             if not movie_matches(movie.get("title", ""), movie_query):
                 continue
@@ -569,7 +563,6 @@ def area_criteria(
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     startDate: date | None = None,
     endDate: date | None = None,
-    theatre: ShortText = "",
     included_theatres: IncludedTheatres = [],
     excluded_theatres: ExcludedTheatres = [],
     lat: Latitude = None,
@@ -581,7 +574,6 @@ def area_criteria(
         "zip_code": zip_code,
         "start_date": startDate,
         "end_date": endDate,
-        "theatre": theatre,
         "included_theatres": included_theatres,
         "excluded_theatres": excluded_theatres,
         "lat": lat,
@@ -602,7 +594,6 @@ def api_movies(area: AreaCriteria):
             search_zip,
             area["radius"],
             dates,
-            area["theatre"].lower(),
             origin,
             area["included_theatres"],
             area["excluded_theatres"],
@@ -622,7 +613,6 @@ def api_formats(area: AreaCriteria, movie: ShortText = ""):
             search_zip,
             area["radius"],
             dates,
-            area["theatre"].lower(),
             movie,
             origin,
             area["included_theatres"],
