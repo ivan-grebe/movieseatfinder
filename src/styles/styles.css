@@ -119,10 +119,10 @@ main {
 }
 
 .region-notice {
-  width: min(100% - 32px, 520px);
+  width: min(100% - 32px, 400px);
   padding: 0;
   border: 0;
-  border-radius: 16px;
+  border-radius: 20px;
   color: var(--ink);
   background: var(--field);
   box-shadow:
@@ -152,12 +152,11 @@ main {
 }
 
 .region-notice-content {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 12px 12px 18px;
-  font-size: 13px;
-  line-height: 1.4;
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .region-notice p {
@@ -166,7 +165,8 @@ main {
 }
 
 .region-notice button {
-  flex: 0 0 auto;
+  justify-self: end;
+  padding-inline: 18px;
 }
 
 @keyframes region-notice-in {
