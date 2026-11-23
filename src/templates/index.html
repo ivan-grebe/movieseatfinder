@@ -153,6 +153,18 @@
                 <div id="theatreMenu" class="combo-menu" role="listbox" aria-label="Nearby theatres" hidden></div>
               </label>
               <div id="theatreStatus" class="status field-status" aria-live="polite"></div>
+              <div id="theatreExclusions" class="disclosure">
+                <button class="disclosure-toggle" type="button" aria-expanded="false" aria-controls="theatreExclusionsContent" disabled>
+                  <span>Exclude theatres</span>
+                  <span class="disclosure-count" aria-live="polite"></span>
+                  <svg class="disclosure-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                </button>
+                <div id="theatreExclusionsContent" class="disclosure-reveal" inert>
+                  <div class="disclosure-reveal-inner">
+                    <div class="theatre-exclusions-list" role="group" aria-label="Theatres to leave out of searches"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="hal-easter-egg" aria-hidden="true">
@@ -187,13 +199,13 @@
               </span>
               <div id="formatOptions" class="format-options"></div>
               <div id="formatStatus" class="status field-status" aria-live="polite"></div>
-              <div id="formatGuide" class="format-guide">
-                <button id="formatGuideButton" class="format-guide-toggle" type="button" aria-expanded="false" aria-controls="formatGuideContent">
+              <div id="formatGuide" class="format-guide disclosure">
+                <button class="disclosure-toggle" type="button" aria-expanded="false" aria-controls="formatGuideContent">
                   <span>Which format is best?</span>
-                  <svg class="format-guide-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                  <svg class="disclosure-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
                 </button>
-                <div id="formatGuideContent" class="format-guide-reveal" aria-hidden="true">
-                  <div class="format-guide-reveal-inner">
+                <div id="formatGuideContent" class="disclosure-reveal" inert>
+                  <div class="disclosure-reveal-inner">
                     <div class="format-guide-body">
                       <p class="format-guide-intro">For most movies, prioritize picture, sound, and auditorium quality in that order.</p>
                       <div class="format-tier-list">

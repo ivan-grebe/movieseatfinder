@@ -15,6 +15,23 @@ export function createLoadingIndicator(message) {
   return [createSpinner(), announcement];
 }
 
+/** Wire a `.disclosure` block's toggle button to expand and collapse its content. */
+export function setupDisclosure(container) {
+  const toggle = container.querySelector(".disclosure-toggle");
+  const content = container.querySelector(".disclosure-reveal");
+
+  function setExpanded(expanded) {
+    toggle.setAttribute("aria-expanded", String(expanded));
+    content.inert = !expanded;
+    container.classList.toggle("is-open", expanded);
+  }
+
+  toggle.addEventListener("click", () =>
+    setExpanded(toggle.getAttribute("aria-expanded") !== "true"),
+  );
+  return { setExpanded };
+}
+
 export function setStatus(element, text, state = "") {
   element.title = text;
   element.classList.remove(...STATE_CLASSES);

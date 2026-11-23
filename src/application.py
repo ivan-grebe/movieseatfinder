@@ -80,6 +80,8 @@ Radius = Annotated[float, Query(ge=1, le=100)]
 PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 AdjacentSeatCount = Annotated[int, Query(ge=1, le=10)]
+# Fandango returns at most 100 theatres per search, so a user can't exclude more than that.
+MAX_EXCLUDED_THEATRES = 100
 SearchSort = Literal["earliest", "latest", "nearest"]
 
 LOGGER = logging.getLogger("movieseatfinder")
@@ -126,20 +128,27 @@ def intent_query_matches(value, query):
     return not query_text or query_text in value_text
 
 
-def dated_theatres(zip_code, radius, dates, theatre_query, origin):
-    """Yield (date, theatre) pairs for every requested date, filtered by theatre name."""
+def dated_theatres(zip_code, radius, dates, theatre_query, origin, excluded=()):
+    """Yield (date, theatre) pairs for every requested date, filtered by theatre name.
+
+    `excluded` holds exact theatre names (any case) to leave out.
+    """
     theatres_by_date = fandango_theatres_by_date(zip_code, radius, dates, origin)
+    excluded_names = {name.lower() for name in excluded}
     for show_date in dates:
         for theatre in theatres_by_date[show_date]:
-            if theatre_query and theatre_query not in theatre["name"].lower():
+            name = theatre["name"].lower()
+            if theatre_query and theatre_query not in name:
+                continue
+            if name in excluded_names:
                 continue
             yield show_date, theatre
 
 
-def available_movies(zip_code, radius, dates, theatre_query, origin):
+def available_movies(zip_code, radius, dates, theatre_query, origin, excluded=()):
     seen = set()
     movies = []
-    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin):
+    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin, excluded):
         for movie in theatre["rawMovies"]:
             title = clean_title(movie.get("title", ""))
             key = normalized_text(title)
@@ -150,9 +159,9 @@ def available_movies(zip_code, radius, dates, theatre_query, origin):
     return sorted(movies, key=lambda movie: movie["title"])
 
 
-def available_formats(zip_code, radius, dates, theatre_query, movie_query, origin):
+def available_formats(zip_code, radius, dates, theatre_query, movie_query, origin, excluded=()):
     formats = set()
-    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin):
+    for _, theatre in dated_theatres(zip_code, radius, dates, theatre_query, origin, excluded):
         for movie in theatre["rawMovies"]:
             if not movie_matches(movie.get("title", ""), movie_query):
                 continue
@@ -535,6 +544,9 @@ def api_movies(
     startDate: date | None = None,
     endDate: date | None = None,
     theatre: ShortText = "",
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_EXCLUDED_THEATRES)
+    ] = [],
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -542,7 +554,9 @@ def api_movies(
         start_date = startDate or us_today()
         dates = date_range(start_date, endDate or start_date)
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        movies = available_movies(search_zip, radius, dates, theatre.lower(), origin)
+        movies = available_movies(
+            search_zip, radius, dates, theatre.lower(), origin, excluded_theatres
+        )
     return {"movies": movies}
 
 
@@ -554,6 +568,9 @@ def api_formats(
     startDate: date | None = None,
     endDate: date | None = None,
     theatre: ShortText = "",
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_EXCLUDED_THEATRES)
+    ] = [],
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
 ):
@@ -563,7 +580,9 @@ def api_formats(
         start_date = startDate or us_today()
         dates = date_range(start_date, endDate or start_date)
         search_zip, origin, _ = api_search_location(zip_code, lat, lon)
-        formats = available_formats(search_zip, radius, dates, theatre.lower(), movie, origin)
+        formats = available_formats(
+            search_zip, radius, dates, theatre.lower(), movie, origin, excluded_theatres
+        )
     return {"formats": formats}
 
 
@@ -577,10 +596,13 @@ def collect_candidate_showtimes(
     start_time,
     end_time,
     origin,
+    excluded_theatres=(),
 ):
     """Gather (theatre, showtime) pairs that pass every non-seat filter."""
     candidates = []
-    for _, theatre in dated_theatres(search_zip, radius, dates, theatre_query, origin):
+    for _, theatre in dated_theatres(
+        search_zip, radius, dates, theatre_query, origin, excluded_theatres
+    ):
         movies = [
             movie
             for movie in theatre["rawMovies"]
@@ -621,6 +643,7 @@ def find_seat_matches(
     movie: RequiredShortText,
     zip_code: ShortText = "",
     theatre: ShortText = "",
+    excluded_theatres: tuple[str, ...] | list[str] = (),
     requested_format: RequiredShortText = "any",
     start_date: date | None = None,
     end_date: date | None = None,
@@ -656,6 +679,7 @@ def find_seat_matches(
             start_time,
             end_time,
             origin,
+            excluded_theatres,
         )
         candidates.sort(
             key=lambda candidate: search_sort_key(
@@ -730,6 +754,9 @@ def api_search(
     movie: RequiredShortText,
     zip_code: Annotated[ShortText, Query(alias="zip")] = "",
     theatre: ShortText = "",
+    excluded_theatres: Annotated[
+        list[ShortText], Query(alias="excludeTheatre", max_length=MAX_EXCLUDED_THEATRES)
+    ] = [],
     requested_format: Annotated[RequiredShortText, Query(alias="format")] = "any",
     startDate: date | None = None,
     endDate: date | None = None,
@@ -749,6 +776,7 @@ def api_search(
         movie=movie,
         zip_code=zip_code,
         theatre=theatre,
+        excluded_theatres=excluded_theatres,
         requested_format=requested_format,
         start_date=startDate,
         end_date=endDate,

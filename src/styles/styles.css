@@ -552,7 +552,7 @@ select {
   background: var(--accent);
 }
 
-.format-guide {
+.disclosure {
   margin-top: 6px;
   color: var(--accent);
 }
@@ -613,7 +613,7 @@ select {
   line-height: 20px;
 }
 
-.format-guide-reveal {
+.disclosure-reveal {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
@@ -622,17 +622,17 @@ select {
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1), ease-out;
 }
 
-.format-guide.is-open .format-guide-reveal {
+.disclosure.is-open .disclosure-reveal {
   grid-template-rows: 1fr;
   opacity: 1;
 }
 
-.format-guide-reveal-inner {
+.disclosure-reveal-inner {
   min-height: 0;
   overflow: hidden;
 }
 
-.format-guide-toggle {
+.disclosure-toggle {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -652,25 +652,53 @@ select {
 }
 
 @media (hover: hover) {
-  .format-guide-toggle:hover {
+  .disclosure-toggle:hover {
     color: var(--accent-deep);
   }
 }
 
-.format-guide-toggle:focus-visible {
+.disclosure-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.13);
 }
 
-.format-guide-chevron {
+.disclosure-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.disclosure-count:empty {
+  display: none;
+}
+
+.theatre-exclusions-list {
+  display: grid;
+  gap: 2px;
+  max-height: 232px;
+  margin-top: 2px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 13px;
+  background: rgba(248, 251, 255, 0.72);
+  box-shadow: var(--shadow-border);
+}
+
+.theatre-exclusions-list .check {
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.disclosure-chevron {
   flex: 0 0 auto;
   width: 12px;
   height: 12px;
   transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
 }
 
-.format-guide.is-open .format-guide-chevron {
+.disclosure.is-open .disclosure-chevron {
   transform: rotate(180deg);
 }
 
@@ -2155,8 +2183,8 @@ input[type="time"] {
     transition-duration: 0ms;
   }
 
-  .format-guide-reveal,
-  .format-guide-chevron {
+  .disclosure-reveal,
+  .disclosure-chevron {
     transition-duration: 0ms;
   }
 
@@ -2567,7 +2595,8 @@ input[type="time"] {
     color: #cac7c4;
   }
 
-  .format-guide-body {
+  .format-guide-body,
+  .theatre-exclusions-list {
     color: #cac7c4;
     background: rgba(255, 255, 255, 0.035);
   }
@@ -2735,7 +2764,7 @@ input[type="time"] {
 }
 
 @media (prefers-color-scheme: dark) and (hover: hover) {
-  .format-guide-toggle:hover {
+  .disclosure-toggle:hover {
     color: var(--accent-deep);
   }
   .btn-small:hover:not(:disabled) {

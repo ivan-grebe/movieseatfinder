@@ -5,11 +5,13 @@ import {
   setButtonBusy,
   setStatus,
   setSummary,
+  setupDisclosure,
   startLoadingStages,
 } from "./ui.js";
 import { createFormatPicker } from "./format-picker.js";
 import { createResultsView } from "./results.js";
 import { createSeatGrid } from "./seat-grid.js";
+import { createTheatreExclusions } from "./theatre-exclusions.js";
 import { elements } from "./dom.js";
 import { logSharedLinkVisit } from "./tracking.js";
 
@@ -29,6 +31,7 @@ const {
   theatreStatus,
   theatreInput,
   theatreMenu,
+  theatreExclusionsContainer,
   movieGroup,
   movieMeta,
   movieStatus,
@@ -38,8 +41,6 @@ const {
   formatMeta,
   formatStatus,
   formatGuide,
-  formatGuideButton,
-  formatGuideContent,
   startTimeInput,
   endTimeInput,
   timeStatus,
@@ -100,6 +101,10 @@ const movieLoad = createRunGuard();
 const formatLoad = createRunGuard();
 
 const formatPicker = createFormatPicker(formatOptions);
+const theatreExclusions = createTheatreExclusions(
+  theatreExclusionsContainer,
+  queueExclusionRefresh,
+);
 const seatGrid = createSeatGrid(
   seatPreferenceGrid,
   gridStatus,
@@ -316,7 +321,7 @@ function locationParams(params) {
 }
 
 function baseParams() {
-  return locationParams(
+  const params = locationParams(
     new URLSearchParams({
       endDate: endDateInput.value,
       radius: radiusInput.value,
@@ -325,6 +330,8 @@ function baseParams() {
       zip: zipInput.value.trim(),
     }),
   );
+  theatreExclusions.values().forEach((name) => params.append("excludeTheatre", name));
+  return params;
 }
 
 function showLoaderError(error, status) {
@@ -365,6 +372,7 @@ async function loadTheatres() {
       return null;
     }
     theatres = data.theatres;
+    theatreExclusions.setTheatres(theatres.map((theatre) => theatre.name));
     setLocationReady(true);
     setComboLoading(theatreInput, theatreMenu, false);
     zipInput.setCustomValidity("");
@@ -696,6 +704,7 @@ function applyQueryParams() {
   if (params.has("theatre")) {
     selectedTheatreName = params.get("theatre").trim();
   }
+  theatreExclusions.select(params.getAll("excludeTheatre"));
   if (params.has("movie")) {
     selectedMovieTitle = params.get("movie").trim();
   }
@@ -753,6 +762,7 @@ async function refreshTheatresAndMovies() {
     movieLoad.cancel();
     formatLoad.cancel();
     theatres = [];
+    theatreExclusions.setTheatres([]);
     movies = [];
     clearTheatreSelection();
     setComboLoading(theatreInput, theatreMenu, true, false);
@@ -821,6 +831,26 @@ function queueCriteriaRefresh() {
   setComboLoading(theatreInput, theatreMenu, true);
   setComboLoading(movieInput, movieMenu, true);
   autoRefresh();
+}
+
+const exclusionRefresh = debounce(async () => {
+  await loadMovies();
+  if (selectedMovie) {
+    await loadFormats();
+  }
+}, 400);
+
+function queueExclusionRefresh() {
+  if (selectedTheatre && theatreExclusions.has(selectedTheatre.name)) {
+    clearTheatreSelection();
+    theatreInput.value = "";
+    closeCombo(theatreInput, theatreMenu);
+    setStatus(theatreStatus, "");
+  }
+  setStatus(movieMeta, "");
+  clearMovieSelection({ rememberTitle: true });
+  setComboLoading(movieInput, movieMenu, true);
+  exclusionRefresh();
 }
 
 function initializeHalReveal() {
@@ -926,16 +956,11 @@ function bindEvents() {
   });
   globalThis.addEventListener("popstate", () => globalThis.location.reload());
   window.addEventListener("pageshow", () => setLocationReady(locationReady));
-  formatGuideButton.addEventListener("click", () => {
-    const expanded = formatGuideButton.getAttribute("aria-expanded") !== "true";
-    formatGuideButton.setAttribute("aria-expanded", String(expanded));
-    formatGuideContent.setAttribute("aria-hidden", String(!expanded));
-    formatGuide.classList.toggle("is-open", expanded);
-  });
+  setupDisclosure(formatGuide);
   setupCombo(
     theatreInput,
     theatreMenu,
-    () => theatres,
+    () => theatres.filter((theatre) => !theatreExclusions.has(theatre.name)),
     (theatre) => theatre.name,
     async (theatre) => {
       selectTheatre(theatre);

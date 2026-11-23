@@ -204,6 +204,16 @@ class SearchTests(unittest.TestCase):
                     [(format_name, code)],
                 )
 
+    def test_excluded_theatres_are_left_out_of_movies_formats_and_search(self):
+        excluded = {**self.params, "format": "IMAX", "excludeTheatre": ["Other Place", "cinema"]}
+        self.assertEqual(self.client.get("/api/movies", params=excluded).json()["movies"], [])
+        self.assertEqual(self.client.get("/api/formats", params=excluded).json()["formats"], [])
+        search = self.client.get("/api/search", params=excluded)
+        self.assertEqual(search.status_code, 200)
+        self.assertEqual(search.json()["matches"], [])
+        kept = {**excluded, "excludeTheatre": ["Cinema Two"]}
+        self.assertEqual(len(self.client.get("/api/search", params=kept).json()["matches"]), 1)
+
 
 class LocationTests(unittest.TestCase):
     @patch("src.location.reverse_geocode_zip", return_value="10001")
