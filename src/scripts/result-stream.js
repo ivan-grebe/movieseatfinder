@@ -5,6 +5,7 @@
 
 /** Where a streamed search is in its life. */
 export const StreamState = Object.freeze({
+  Cancelled: "cancelled",
   // Finished at the seat-map cap without reaching every showtime.
   Capped: "capped",
   // Finished after checking every showtime.
@@ -127,7 +128,7 @@ export function streamSearch(params, sort) {
   const controller = new AbortController();
   const waiters = new Set();
   const results = {
-    abort: () => controller.abort(),
+    abort: abort,
     accessibleSeatsExcluded: true,
     checkedSeatMaps: 0,
     checkedShowtimes: 0,
@@ -145,11 +146,22 @@ export function streamSearch(params, sort) {
     waiters.forEach((waiter) => waiter());
   }
 
+  function abort() {
+    if (results.state !== StreamState.Streaming) {
+      return;
+    }
+
+    results.error = new DOMException("Search cancelled", "AbortError");
+    results.state = StreamState.Cancelled;
+    controller.abort(results.error);
+    notify();
+  }
+
   /** Resolve once `condition(results)` holds or the stream ends; reject on a stream error. */
   function until(condition) {
     return new Promise((resolve, reject) => {
       function check() {
-        if (results.state === StreamState.Failed) {
+        if (results.state === StreamState.Failed || results.state === StreamState.Cancelled) {
           waiters.delete(check);
           reject(results.error);
         } else if (results.state !== StreamState.Streaming || condition(results)) {
@@ -187,6 +199,8 @@ export function streamSearch(params, sort) {
       signal: controller.signal,
     });
 
+    controller.signal.throwIfAborted();
+
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "The search service is temporarily unavailable.");
@@ -199,6 +213,8 @@ export function streamSearch(params, sort) {
       // Events must be applied in order, so each read waits for the previous one.
       // oxlint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read();
+
+      controller.signal.throwIfAborted();
 
       if (done) {
         break;
@@ -218,6 +234,10 @@ export function streamSearch(params, sort) {
   }
 
   read().catch((error) => {
+    if (results.state === StreamState.Cancelled) {
+      return;
+    }
+
     if (error.name !== "AbortError") {
       results.error = error;
       results.state = StreamState.Failed;

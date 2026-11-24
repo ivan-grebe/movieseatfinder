@@ -158,7 +158,11 @@ export function createSearchFlow({
       .until(() => false)
       .catch(() => undefined)
       .finally(() => {
-        if (activity.kind === "idle" && sortStatus.textContent === LOADING_MORE) {
+        if (
+          loaded === results &&
+          activity.kind === "idle" &&
+          sortStatus.textContent === LOADING_MORE
+        ) {
           sortStatus.textContent = "";
         }
       });
