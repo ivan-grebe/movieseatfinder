@@ -185,6 +185,13 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
   /** Replace the options, keeping the selection for any that are still listed. */
   function setOptions(values) {
     options = [...new Set(values)];
+    button.disabled = options.length === 0;
+    if (options.length === 0) {
+      setOpen(false);
+      render();
+      return;
+    }
+
     excluded.forEach((option) => {
       if (!options.includes(option)) {
         excluded.delete(option);
@@ -195,11 +202,6 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
       if (included.size === 0 || included.size === options.length) {
         included = null;
       }
-    }
-
-    button.disabled = options.length === 0;
-    if (options.length === 0) {
-      setOpen(false);
     }
 
     render();

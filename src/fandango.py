@@ -3,11 +3,11 @@
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+from functools import lru_cache, wraps
 from urllib.parse import urlsplit
 
 import requests
-from cachetools import TTLCache, cached
+from cachetools import TLRUCache, cached
 
 from .location import HTTP_SESSION, filter_theatres_within_radius
 
@@ -17,10 +17,50 @@ FANDANGO_ORIGIN = "https://www.fandango.com"
 UPSTREAM_ERRORS = (requests.RequestException, KeyError, AttributeError, TypeError)
 
 
+CACHE_SECONDS = 300
+# Long enough for callers already waiting on a failed fetch to share its error.
+FAILURE_CACHE_SECONDS = 2
+
+
+class UpstreamFailure:
+    def __init__(self, error):
+        self.error = error
+
+
 def upstream_cache(maxsize):
-    """Cache upstream payloads for five minutes; concurrent calls for one key share a fetch."""
+    """Cache upstream payloads for five minutes; concurrent calls for one key share a fetch.
+
+    A failed fetch is shared too, so callers queued behind it fail together instead of each
+    retrying in turn. `uncached` fetches without the cache.
+    """
     condition = threading.Condition()
-    return cached(TTLCache(maxsize=maxsize, ttl=300), lock=condition, condition=condition)
+    cache = TLRUCache(
+        maxsize=maxsize,
+        ttu=lambda _key, value, now: (
+            now + (FAILURE_CACHE_SECONDS if isinstance(value, UpstreamFailure) else CACHE_SECONDS)
+        ),
+    )
+
+    def decorate(fetch):
+        @cached(cache, lock=condition, condition=condition)
+        def shared(*args):
+            try:
+                return fetch(*args)
+            except UPSTREAM_ERRORS as error:
+                return UpstreamFailure(error)
+
+        @wraps(fetch)
+        def call(*args):
+            result = shared(*args)
+            if isinstance(result, UpstreamFailure):
+                raise result.error
+            return result
+
+        call.cache_clear = shared.cache_clear
+        call.uncached = fetch
+        return call
+
+    return decorate
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters"):

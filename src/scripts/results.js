@@ -201,14 +201,7 @@ function pluralSuffix(count) {
   return count === 1 ? "" : "s";
 }
 
-export function createResultsView({
-  results,
-  summary,
-  resultsToolbar,
-  pagination,
-  getPage,
-  onPageChange,
-}) {
+export function createResultsView({ results, summary, resultsToolbar, pagination, onPageChange }) {
   let lastPaginationData = null;
 
   function beginReorder() {
@@ -243,7 +236,7 @@ export function createResultsView({
     previous.textContent = "Previous";
     previous.setAttribute("aria-label", "Previous page of results");
     previous.disabled = !hasPrevious;
-    previous.addEventListener("click", () => onPageChange(getPage() - 1));
+    previous.addEventListener("click", () => onPageChange(data.page - 1));
 
     const label = document.createElement("span");
 
@@ -258,7 +251,7 @@ export function createResultsView({
     next.textContent = "Next";
     next.setAttribute("aria-label", "Next page of results");
     next.disabled = !hasNext;
-    next.addEventListener("click", () => onPageChange(getPage() + 1));
+    next.addEventListener("click", () => onPageChange(data.page + 1));
     pagination.append(previous, label, next);
   }
 
@@ -269,6 +262,13 @@ export function createResultsView({
     pagination
       .querySelector(".pagination-label")
       .prepend(...createLoadingIndicator("Loading results. "));
+    pagination.querySelectorAll("button").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+
+  /** Keep the page buttons from acting on results that are being replaced. */
+  function lockPagination() {
     pagination.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
     });
@@ -486,6 +486,7 @@ export function createResultsView({
     endPageLoading: endPageLoading,
     endReorder: endReorder,
     focusShowtime: focusShowtime,
+    lockPagination: lockPagination,
     render: render,
     renderError: renderError,
     setPageLoading: setPageLoading,

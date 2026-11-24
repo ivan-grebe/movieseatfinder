@@ -9,7 +9,8 @@ from geopy.distance import geodesic
 USER_AGENT = "MovieSeatFinder/1.0 (location lookup)"
 # One process-wide session so upstream connections are reused.
 HTTP_SESSION = requests.Session()
-HTTP_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_maxsize=32))
+# Room for every seat-map worker plus the per-search theatre fetches.
+HTTP_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_maxsize=48))
 
 
 class ZipNotFoundError(ValueError):
