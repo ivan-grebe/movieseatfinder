@@ -1,6 +1,8 @@
 import json
 import os
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from unittest.mock import Mock, patch
 
@@ -106,7 +108,6 @@ def search_with_candidates(candidates, matching):
     def check(candidate):
         return {"candidate": candidate} if matching(candidate) else None
 
-    check.failed = 0
     check.exclude_accessible = True
     return patch.object(application, "prepare_search", return_value=("10001", candidates, check))
 
@@ -134,11 +135,34 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertEqual(result["checkedSeatMaps"], application.SEAT_MAP_LIMIT)
         self.assertTrue(result["capped"])
 
-    def stream(self, candidate_count):
+    def stream(self, candidate_count, matching=lambda value: True):
         client = TestClient(application.app)
-        with search_with_candidates(list(range(candidate_count)), lambda value: True):
+        with search_with_candidates(list(range(candidate_count)), matching):
             response = client.get("/api/search/stream", params={"radius": 5, "movie": "Test"})
         return [json.loads(line) for line in response.text.splitlines()]
+
+    def test_failures_past_the_last_needed_check_are_not_counted(self):
+        def check(candidate):
+            return {"candidate": candidate} if candidate < 6 else application.SEAT_MAP_FAILED
+
+        check.exclude_accessible = True
+        with patch.object(
+            application, "prepare_search", return_value=("10001", list(range(40)), check)
+        ):
+            result = application.find_seat_matches(
+                application.Search(application.Area(radius=5), movie="Test"), page_size=5
+            )
+
+        self.assertEqual(result["checkedSeatMaps"], 6)
+        self.assertEqual(result["failedSeatMaps"], 0)
+        self.assertTrue(result["hasNextPage"])
+
+    def test_stream_reports_progress_for_every_check(self):
+        events = self.stream(4, lambda value: value % 2 == 0)
+        self.assertEqual(
+            [event["type"] for event in events],
+            ["start", "match", "progress", "match", "progress", "done"],
+        )
 
     def test_stream_sends_matches_in_order_then_reports_full_coverage(self):
         events = self.stream(30)
@@ -306,6 +330,30 @@ class SeatMapAvailabilityTests(unittest.TestCase):
     def test_other_upstream_errors_still_fail(self):
         with self.assertRaises(requests.HTTPError):
             self.upstream_status(400, '[{"id":"BadRequest"}]')
+
+
+class UpstreamCacheTests(unittest.TestCase):
+    def test_concurrent_callers_share_one_failed_fetch(self):
+        calls = []
+
+        @fandango.upstream_cache(maxsize=4)
+        def fetch(key):
+            calls.append(key)
+            time.sleep(0.2)
+            raise requests.Timeout("slow upstream")
+
+        def outcome(_):
+            try:
+                fetch("same key")
+            except requests.Timeout:
+                return "failed"
+            return "succeeded"
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            outcomes = list(pool.map(outcome, range(4)))
+
+        self.assertEqual(outcomes, ["failed"] * 4)
+        self.assertEqual(calls, ["same key"])
 
 
 class RegionNoticeTests(unittest.TestCase):

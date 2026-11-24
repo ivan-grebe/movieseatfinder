@@ -6,8 +6,8 @@ import {
   streamSearch,
 } from "./result-stream.js";
 import { createLoadingIndicator, setSummary, startLoadingStages } from "./ui.js";
+import { createRunGuard, getJson } from "./utils.js";
 import { createResultsView } from "./results.js";
-import { getJson } from "./utils.js";
 
 const PAGE_SIZE = 20;
 const LOADING_MORE = "Checking more showtimes…";
@@ -61,10 +61,11 @@ export function createSearchFlow({
   let activity = {
     kind: "idle",
   };
+  // Aborts the last activity's requests when another activity starts or `stop()` runs.
+  const activityRun = createRunGuard();
   // The current search's results: streaming, or derived locally from a finished stream.
   let loaded = null;
   const resultsView = createResultsView({
-    getPage: () => currentPage,
     onPageChange: (page) => runPageChange(page),
     pagination: pagination,
     results: results,
@@ -93,6 +94,7 @@ export function createSearchFlow({
       resultsView.endPageLoading(pageError);
     } else if (finished.kind === "reordering") {
       resultsView.endReorder();
+      resultsView.endPageLoading();
       if (restoreScroll) {
         globalThis.requestAnimationFrame(() => window.scrollTo(window.scrollX, finished.scrollY));
       }
@@ -102,28 +104,32 @@ export function createSearchFlow({
     sortStatus.textContent = sortMessage;
   }
 
-  /** Start an activity, returning a check for whether it is still the current one. */
+  /** Start an activity, returning a signal that aborts once another activity replaces it. */
   function startActivity(next) {
     finishActivity();
+    const signal = activityRun.start();
+
     activity = next;
     sortInput.disabled = true;
     sortStatus.replaceChildren();
     if (next.kind === "searching") {
       resultsView.endPageLoading();
+      resultsView.lockPagination();
       next.stopLoadingStages = startLoadingStages((stage) => setSearchBusy(true, stage));
     } else if (next.kind === "paging") {
       resultsView.setPageLoading();
       showSpinner("Loading page");
     } else if (next.kind === "reordering") {
+      resultsView.lockPagination();
       resultsView.beginReorder();
       showSpinner("Reordering results");
     }
 
-    return () => activity === next;
+    return signal;
   }
 
   /** A page of the current search: from loaded results when they cover it, else the server. */
-  async function loadPage(page) {
+  async function loadPage(page, signal) {
     const results = loaded;
 
     await results.until((current) => current.matches.length > page * PAGE_SIZE);
@@ -138,7 +144,7 @@ export function createSearchFlow({
       query.set("page", page);
       query.set("pageSize", PAGE_SIZE);
       query.set("sort", results.sort);
-      data = await getJson(`/api/search?${query}`);
+      data = await getJson(`/api/search?${query}`, signal);
     }
 
     return {
@@ -190,15 +196,21 @@ export function createSearchFlow({
     }
 
     startResults(searchParams(), sortInput.value);
-    const isCurrent = startActivity({
+    const signal = startActivity({
       kind: "searching",
     });
 
     setSummary(summary, "", false);
     try {
-      const { data, searchUrl } = await loadPage(currentPage);
+      let { data, searchUrl } = await loadPage(currentPage, signal);
 
-      if (!isCurrent()) {
+      if (data.matches.length === 0 && currentPage > 1) {
+        // A link's page can be past the end of the live results; show the first page instead.
+        currentPage = 1;
+        ({ data, searchUrl } = await loadPage(1, signal));
+      }
+
+      if (signal.aborted) {
         return;
       }
 
@@ -207,7 +219,7 @@ export function createSearchFlow({
         searchUrl: searchUrl,
       });
     } catch (error) {
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return;
       }
 
@@ -231,12 +243,12 @@ export function createSearchFlow({
 
   /** Replace the results on screen with another page of the current search. */
   async function showPage(page, nextActivity, { onFailure, onShown }) {
-    const isCurrent = startActivity(nextActivity);
+    const signal = startActivity(nextActivity);
 
     try {
-      const { data, searchUrl } = await loadPage(page);
+      const { data, searchUrl } = await loadPage(page, signal);
 
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return;
       }
 
@@ -248,7 +260,7 @@ export function createSearchFlow({
       onShown();
       showLoadingMore(loaded);
     } catch {
-      if (isCurrent()) {
+      if (!signal.aborted) {
         onFailure();
       }
     }
@@ -287,14 +299,17 @@ export function createSearchFlow({
     );
   }
 
-  /** Show the current search from page one in a new sort order. */
+  /**
+   * Show the current search from page one in a new sort order. The previous results stay
+   * current until the new order loads, so a failed re-sort leaves the old page usable.
+   */
   function runReorder() {
-    currentPage = 1;
+    const previous = loaded;
+    const previousPage = currentPage;
     const sort = sortInput.value;
-    const resorted = resortedResults(loaded, sort);
 
-    loaded.abort();
-    loaded = resorted ?? streamSearch(loaded.params, sort);
+    currentPage = 1;
+    loaded = resortedResults(previous, sort) ?? streamSearch(previous.params, sort);
     return showPage(
       1,
       {
@@ -302,29 +317,36 @@ export function createSearchFlow({
         scrollY: window.scrollY,
       },
       {
-        onFailure: () =>
+        onFailure: () => {
+          loaded.abort();
+          loaded = previous;
+          currentPage = previousPage;
+          sortInput.value = previous.sort;
           finishActivity({
             restoreScroll: true,
-            sortMessage: "Try again",
-          }),
-        onShown: () =>
+            sortMessage: "Couldn't reorder. Try again",
+          });
+        },
+        onShown: () => {
+          previous.abort();
           finishActivity({
             restoreScroll: true,
-          }),
+          });
+        },
       },
     );
   }
 
   /** Show one shared showtime; `applyShared` copies its details into the form. */
   async function loadSharedShowtime(token, applyShared) {
-    const isCurrent = startActivity({
+    const signal = startActivity({
       kind: "loadingShared",
     });
 
     try {
-      const data = await getJson(`/api/shared-showtime/${token}`);
+      const data = await getJson(`/api/shared-showtime/${token}`, signal);
 
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return;
       }
 
@@ -340,12 +362,12 @@ export function createSearchFlow({
       });
       resultsView.focusShowtime(match.showtimeHashCode);
     } catch (error) {
-      if (isCurrent()) {
+      if (!signal.aborted) {
         resultsView.renderError(error.message);
       }
     }
 
-    if (isCurrent()) {
+    if (!signal.aborted) {
       finishActivity();
       document.body.classList.remove("shared-loading");
     }
@@ -353,6 +375,7 @@ export function createSearchFlow({
 
   /** Stop whatever the results area is doing, as when leaving the shared view. */
   function stop() {
+    activityRun.cancel();
     finishActivity();
     if (results.childElementCount === 0) {
       setSummary(summary, "", true);

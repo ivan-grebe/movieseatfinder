@@ -5,6 +5,8 @@ import { setStatus } from "./ui.js";
 /** The Format dropdown, filled with the formats the picked movie shows in nearby. */
 export function createFormatPicker({ container, meta, status, onLoadError }) {
   const load = createRunGuard();
+  // The movie the options were last loaded for; its format choice survives a reload.
+  let loadedMovie = "";
   const filter = createFilterDropdown(container, {
     allLabel: () => "Any format",
     noun: "formats",
@@ -19,30 +21,42 @@ export function createFormatPicker({ container, meta, status, onLoadError }) {
     setStatus(status, "");
   }
 
-  /** Load the formats a movie shows in. Picking another movie resets and cancels this. */
+  /**
+   * Load the formats a movie shows in. Picking another movie resets and cancels this.
+   * Resolves true when listed, false on failure, or null when a newer load replaced this one.
+   */
   async function loadFor(criteriaParams, movieTitle) {
-    const isCurrent = load.start();
+    const signal = load.start();
 
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     criteriaParams.set("movie", movieTitle);
     try {
-      const data = await getJson(`/api/formats?${criteriaParams}`);
+      const data = await getJson(`/api/formats?${criteriaParams}`, signal);
 
-      if (!isCurrent()) {
-        return;
+      if (signal.aborted) {
+        return null;
+      }
+
+      if (movieTitle !== loadedMovie) {
+        filter.select({
+          include: [],
+        });
+        loadedMovie = movieTitle;
       }
 
       filter.setOptions(data.formats);
       setStatus(meta, "");
+      return true;
     } catch (error) {
-      if (!isCurrent()) {
-        return;
+      if (signal.aborted) {
+        return null;
       }
 
       filter.setOptions([]);
       setStatus(meta, "");
       onLoadError(error, status);
+      return false;
     }
   }
 

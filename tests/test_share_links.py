@@ -33,7 +33,9 @@ class ShareLinkTests(unittest.TestCase):
     def test_shared_view_refreshes_one_seat_map_without_a_location_search(self):
         token = token_for(urlencode(self.details))
         with (
-            patch.object(application, "seat_map", return_value=seat_map(self.seats)) as fetch,
+            patch.object(
+                application.seat_map, "uncached", return_value=seat_map(self.seats)
+            ) as fetch,
             patch.object(application, "api_search_location") as location,
             patch.object(application, "collect_candidate_showtimes") as search,
         ):
@@ -84,7 +86,7 @@ class ShareLinkTests(unittest.TestCase):
     def test_no_matching_seats_still_returns_the_live_map(self):
         for unavailable in self.seats:
             unavailable["status"] = "U"
-        with patch.object(application, "seat_map", return_value=seat_map(self.seats)):
+        with patch.object(application.seat_map, "uncached", return_value=seat_map(self.seats)):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(self.details))}")
         self.assertEqual(response.status_code, 200)
         preview = response.json()["matches"][0]["seatMap"]
@@ -92,7 +94,7 @@ class ShareLinkTests(unittest.TestCase):
         self.assertEqual(len(preview["layout"]["seats"]), 2)
 
     def test_unavailable_seat_map_is_an_error_instead_of_a_match(self):
-        with patch.object(application, "seat_map", side_effect=requests.Timeout()):
+        with patch.object(application.seat_map, "uncached", side_effect=requests.Timeout()):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(self.details))}")
         self.assertEqual(response.status_code, 502)
 
@@ -102,7 +104,7 @@ class ShareLinkTests(unittest.TestCase):
             "ticket": "https://evil.test/pay",
             "poster": "https://evil.test/track",
         }
-        with patch.object(application, "seat_map", return_value=seat_map(self.seats)):
+        with patch.object(application.seat_map, "uncached", return_value=seat_map(self.seats)):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(details))}")
         match = response.json()["matches"][0]
         self.assertEqual(match["ticketUrl"], "")

@@ -155,15 +155,15 @@ async function loadMovies() {
   }
 }
 
-async function loadFormats() {
+function loadFormats() {
   const movie = movies.selected();
 
   if (!movie || !locationFields.hasSearchBasics()) {
     formats.reset();
-    return;
+    return false;
   }
 
-  await formats.loadFor(criteriaParams(), movie.title);
+  return formats.loadFor(criteriaParams(), movie.title);
 }
 
 async function loadMoviesAndFormats() {
@@ -251,11 +251,10 @@ async function loadSearchOptions() {
   }
 
   await loadMovies();
-  if (!movies.selected()) {
+  if (!movies.selected() || !(await loadFormats())) {
     return false;
   }
 
-  await loadFormats();
   formats.restore(new URLSearchParams(globalThis.location.search));
   return true;
 }
@@ -302,6 +301,7 @@ function bindEvents() {
       behavior: "instant",
       top: 0,
     });
+    locationFields.restore(new URLSearchParams());
     await loadSearchOptions();
   });
   globalThis.addEventListener("popstate", () => globalThis.location.reload());

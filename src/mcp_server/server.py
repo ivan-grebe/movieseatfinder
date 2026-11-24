@@ -441,7 +441,7 @@ def show_movie_seat_map(
             "That seatMapUrl is invalid. Copy it exactly from a find_movie_seats option."
         ) from error
     try:
-        raw_map = seat_map(shared.showtime)
+        raw_map = seat_map.uncached(shared.showtime)
     except UPSTREAM_ERRORS as error:
         raise ToolError("Fandango's seat map couldn't be loaded. Try again.") from error
     seat_match = seat_map_match(

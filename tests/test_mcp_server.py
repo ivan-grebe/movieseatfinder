@@ -251,7 +251,7 @@ class McpProtocolTests(unittest.TestCase):
         self.assertTrue(base64.b64decode(result["content"][0]["data"]).startswith(b"\x89PNG"))
         self.assertIn("Best matching group: H10-H11", result["content"][1]["text"])
         self.assertEqual(result["structuredContent"]["matchingGroups"], [["H10", "H11"]])
-        _match.assert_called_once_with(_seat_map.return_value, 2, [(6, 6), (6, 7)], True)
+        _match.assert_called_once_with(_seat_map.uncached.return_value, 2, [(6, 6), (6, 7)], True)
 
     def test_an_invalid_seat_map_url_asks_for_the_exact_link(self):
         request = {

@@ -29,17 +29,18 @@ export function formatNiceDate(dateString) {
 }
 
 /** Track the latest run of an async task, so stale results can be ignored. */
+/** One run at a time: starting or cancelling a run aborts the previous run's signal. */
 export function createRunGuard() {
-  let current = 0;
+  let controller = new AbortController();
 
   return {
     cancel() {
-      current += 1;
+      controller.abort();
     },
     start() {
-      const id = ++current;
-
-      return () => id === current;
+      controller.abort();
+      controller = new AbortController();
+      return controller.signal;
     },
   };
 }
@@ -53,8 +54,10 @@ export function debounce(fn, ms) {
   };
 }
 
-export async function getJson(url) {
-  const response = await fetch(url).catch(() => {
+export async function getJson(url, signal) {
+  const response = await fetch(url, {
+    signal: signal,
+  }).catch(() => {
     throw new Error("Couldn't reach the search service. Check your connection and try again.");
   });
   const data = await response.json().catch(() => {

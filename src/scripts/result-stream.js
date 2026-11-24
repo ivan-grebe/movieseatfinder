@@ -186,7 +186,7 @@ export function streamSearch(params, sort) {
       results.failedSeatMaps = event.failedSeatMaps;
       if (event.type === "match") {
         results.matches.push(event.match);
-      } else {
+      } else if (event.type === "done") {
         results.state = event.complete ? StreamState.Complete : StreamState.Capped;
       }
     }

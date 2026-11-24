@@ -3,10 +3,9 @@
 import json
 import logging
 import sys
-import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from itertools import islice
@@ -333,7 +332,7 @@ def shared_showtime():
 def api_shared_showtime(token: str):
     with api_errors("Could not refresh this showtime’s seat map"):
         shared = decode_share_link(token)
-        raw_map = seat_map(shared.showtime)
+        raw_map = seat_map.uncached(shared.showtime)
     if not raw_map["seats"]:
         raise HTTPException(
             status_code=404, detail="This showtime’s seat map is no longer available."
@@ -648,15 +647,20 @@ def collect_candidate_showtimes(resolved, search):
     return candidates
 
 
+# Seat-map checks from every search share one pool, so concurrent searches can't each start
+# their own threads; each search keeps SEAT_MAP_WINDOW of its checks in flight.
+SEAT_MAP_POOL = ThreadPoolExecutor(max_workers=32)
+SEAT_MAP_WINDOW = 12
+SEAT_MAP_FAILED = object()
+
+
 class SeatCheck:
-    """Checks one (theatre, showtime) candidate's seat map, counting upstream failures."""
+    """Checks one (theatre, showtime) candidate's seat map: a match, None, or SEAT_MAP_FAILED."""
 
     def __init__(self, adjacent_seats, selected_cells, exclude_accessible):
         self.adjacent_seats = adjacent_seats
         self.selected_cells = selected_cells
         self.exclude_accessible = exclude_accessible
-        self.failed = 0
-        self._lock = threading.Lock()
 
     def __call__(self, candidate):
         theatre_item, showtime = candidate
@@ -668,9 +672,7 @@ class SeatCheck:
                 self.exclude_accessible,
             )
         except UPSTREAM_ERRORS:
-            with self._lock:
-                self.failed += 1
-            return None
+            return SEAT_MAP_FAILED
         if not seat_match:
             return None
         return {
@@ -696,29 +698,32 @@ class SeatCheck:
 
 
 def checked_candidates(candidates, check):
-    """Seat-check candidates in parallel, yielding (match or None, number checked) in candidate
-    order.
+    """Seat-check candidates in parallel, yielding (match or None, checked, failed) in candidate
+    order, where the counts cover exactly the candidates yielded so far.
 
     A rolling window keeps requests in flight, so one slow seat map doesn't stall a whole batch.
     Candidates must be pre-sorted, so stopping early never skips a better match.
     """
-    worker_count = min(12, max(1, len(candidates)))
     remaining = iter(candidates)
-    executor = ThreadPoolExecutor(max_workers=worker_count)
+    in_flight = deque(
+        SEAT_MAP_POOL.submit(check, item) for item in islice(remaining, SEAT_MAP_WINDOW)
+    )
+    checked = 0
+    failed = 0
     try:
-        in_flight = deque(
-            executor.submit(check, item) for item in islice(remaining, worker_count * 2)
-        )
-        checked = 0
         while in_flight:
             match = in_flight.popleft().result()
             checked += 1
+            if match is SEAT_MAP_FAILED:
+                failed += 1
+                match = None
             for item in islice(remaining, 1):
-                in_flight.append(executor.submit(check, item))
-            yield match, checked
+                in_flight.append(SEAT_MAP_POOL.submit(check, item))
+            yield match, checked, failed
     finally:
-        # A caller that stops early shouldn't wait on slow seat maps it no longer needs.
-        executor.shutdown(wait=False, cancel_futures=True)
+        # A caller that stops early shouldn't keep queued checks it no longer needs.
+        for future in in_flight:
+            future.cancel()
 
 
 def prepare_search(search):
@@ -750,13 +755,15 @@ def find_seat_matches(search, page_size, page=1):
         search_zip, candidates, check = prepare_search(search)
         matches = []
         checked_seat_maps = 0
-        for match, checked_seat_maps in checked_candidates(candidates[:SEAT_MAP_LIMIT], check):
-            if match:
-                matches.append(match)
-                if len(matches) > page_end:
-                    break
+        failed_seat_maps = 0
+        with closing(checked_candidates(candidates[:SEAT_MAP_LIMIT], check)) as checks:
+            for match, checked_seat_maps, failed_seat_maps in checks:
+                if match:
+                    matches.append(match)
+                    if len(matches) > page_end:
+                        break
 
-    if check.failed and check.failed == checked_seat_maps:
+    if failed_seat_maps and failed_seat_maps == checked_seat_maps:
         raise HTTPException(
             status_code=502,
             detail="Seat availability could not be checked. Please try again.",
@@ -770,7 +777,7 @@ def find_seat_matches(search, page_size, page=1):
         "hasNextPage": len(matches) > page_end,
         "checkedShowtimes": len(candidates),
         "checkedSeatMaps": checked_seat_maps,
-        "failedSeatMaps": check.failed,
+        "failedSeatMaps": failed_seat_maps,
         "capped": len(matches) <= page_end and len(candidates) > SEAT_MAP_LIMIT,
         "accessibleSeatsExcluded": check.exclude_accessible,
     }
@@ -813,6 +820,24 @@ def api_search(
     return find_seat_matches(search, page=page, page_size=pageSize)
 
 
+class EventStreamResponse(StreamingResponse):
+    """Newline-delimited JSON events that stop being produced as soon as the response ends,
+    including when the client disconnects mid-stream."""
+
+    def __init__(self, events):
+        self.events = events
+        super().__init__(
+            (json.dumps(event, separators=(",", ":")) + "\n" for event in events),
+            media_type="application/x-ndjson",
+        )
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.events.close()
+
+
 @app.get("/api/search/stream")
 def api_search_stream(search: SearchCriteria):
     """Stream matches as newline-delimited JSON events, in result order, so the first page can
@@ -828,25 +853,22 @@ def api_search_stream(search: SearchCriteria):
             "accessibleSeatsExcluded": search.exclude_accessible,
         }
         checked = 0
-        for match, checked in checked_candidates(candidates[:SEAT_MAP_LIMIT], check):
-            if match:
-                yield {
-                    "type": "match",
-                    "match": match,
-                    "checkedSeatMaps": checked,
-                    "failedSeatMaps": check.failed,
-                }
+        failed = 0
+        with closing(checked_candidates(candidates[:SEAT_MAP_LIMIT], check)) as checks:
+            for match, checked, failed in checks:
+                # A line per check lets the server notice a client that has gone away.
+                event = {"type": "progress", "checkedSeatMaps": checked, "failedSeatMaps": failed}
+                if match:
+                    event = {**event, "type": "match", "match": match}
+                yield event
         yield {
             "type": "done",
             "complete": len(candidates) <= SEAT_MAP_LIMIT,
             "checkedSeatMaps": checked,
-            "failedSeatMaps": check.failed,
+            "failedSeatMaps": failed,
         }
 
-    return StreamingResponse(
-        (json.dumps(event, separators=(",", ":")) + "\n" for event in events()),
-        media_type="application/x-ndjson",
-    )
+    return EventStreamResponse(events())
 
 
 # `npm run build` puts bundles, fonts and images in dist/. Vercel promotes a plain StaticFiles

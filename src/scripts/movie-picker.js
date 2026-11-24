@@ -101,6 +101,7 @@ export function createMoviePicker({
 
   /** Show the input as waiting for a lookup, keeping the picked title to re-pick after. */
   function waitForReload() {
+    load.cancel();
     setStatus(meta, "");
     clearSelection({
       rememberTitle: true,
@@ -109,7 +110,7 @@ export function createMoviePicker({
   }
 
   async function loadFor(criteriaParams) {
-    const isCurrent = load.start();
+    const signal = load.start();
 
     setLoading(true);
     setStatus(meta, "Loading…", "loading");
@@ -119,9 +120,9 @@ export function createMoviePicker({
       rememberTitle: true,
     });
     try {
-      const data = await getJson(`/api/movies?${criteriaParams}`);
+      const data = await getJson(`/api/movies?${criteriaParams}`, signal);
 
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return;
       }
 
@@ -138,7 +139,7 @@ export function createMoviePicker({
         }
       }
     } catch (error) {
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return;
       }
 

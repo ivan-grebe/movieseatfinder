@@ -41,15 +41,15 @@ export function createTheatrePicker({
    * a newer lookup replaced this one.
    */
   async function loadNear(areaParams) {
-    const isCurrent = load.start();
+    const signal = load.start();
 
     setBusy(true);
     setStatus(meta, "Loading…", "loading");
     setStatus(status, "");
     try {
-      const data = await getJson(`/api/theatres?${areaParams}`);
+      const data = await getJson(`/api/theatres?${areaParams}`, signal);
 
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return null;
       }
 
@@ -58,7 +58,7 @@ export function createTheatrePicker({
       setStatus(meta, `${data.theatres.length} nearby`);
       return true;
     } catch (error) {
-      if (!isCurrent()) {
+      if (signal.aborted) {
         return null;
       }
 
@@ -72,6 +72,7 @@ export function createTheatrePicker({
 
   /** Show the dropdown as waiting while ZIP, radius or date edits settle. */
   function waitForReload() {
+    load.cancel();
     setStatus(meta, "");
     setBusy(true);
   }

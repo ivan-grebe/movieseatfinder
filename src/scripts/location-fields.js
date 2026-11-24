@@ -23,6 +23,8 @@ export function createLocationFields({
   onLocationInvalidated,
 }) {
   let preciseLocation = null;
+  // Bumped when the user types a ZIP, so a location answer that arrives later is ignored.
+  let locationRequest = 0;
   // Fields the user edited since theatres last loaded; saved once they load for them.
   const unsavedEdits = new Set();
 
@@ -171,10 +173,16 @@ export function createLocationFields({
   }
 
   function requestLocation() {
+    const request = ++locationRequest;
+
     setStatus(locationStatus, "Requesting your location…", "loading");
     useLocationButton.disabled = true;
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (request !== locationRequest) {
+          return;
+        }
+
         preciseLocation = position.coords;
         zipInput.value = "";
         zipInput.setCustomValidity("");
@@ -183,7 +191,12 @@ export function createLocationFields({
         onLocated();
       },
       () => {
+        if (request !== locationRequest) {
+          return;
+        }
+
         preciseLocation = null;
+        onLocationInvalidated();
         setStatus(locationStatus, "Location blocked — use ZIP.", "error");
         useLocationButton.disabled = false;
       },
@@ -208,6 +221,8 @@ export function createLocationFields({
 
   useLocationButton.addEventListener("click", requestLocation);
   zipInput.addEventListener("input", () => {
+    locationRequest += 1;
+    useLocationButton.disabled = false;
     onLocationInvalidated();
     zipInput.setCustomValidity("");
     const zip = zipInput.value.trim();
