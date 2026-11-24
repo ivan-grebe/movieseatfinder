@@ -2,8 +2,9 @@ import json
 import os
 import unittest
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import requests
 from fandango_payloads import amenity_group, movie, seat, seat_map, showtime, theatre
 from fastapi.testclient import TestClient
 
@@ -264,6 +265,47 @@ class LocationTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["theatres"], [{"name": "Nearby"}])
+
+
+class SeatMapAvailabilityTests(unittest.TestCase):
+    def test_general_admission_showtimes_are_not_searched(self):
+        reserved = amenity_group(["Standard Format"], [showtime("reserved", "19:00")])
+        general = amenity_group(["Standard Format"], [showtime("general", "20:00")], reserved=False)
+        payload = {
+            "theaters": [
+                {
+                    **theatre("Mixed", 40, -75),
+                    "movies": [
+                        movie("Both", "Standard", [reserved, general]),
+                        movie("General only", "Standard", [general]),
+                    ],
+                }
+            ]
+        }
+        fandango._fetch_fandango_theatres.cache_clear()
+        with patch.object(fandango, "fandango_json", return_value=payload):
+            theatres = fandango._fetch_fandango_theatres("10001", 25, "2026-07-20")
+
+        movies = theatres[0]["rawMovies"]
+        self.assertEqual([item["title"] for item in movies], ["Both"])
+        codes = [item["showtimeHashCode"] for item in fandango.normalize_showtimes(movies)]
+        self.assertEqual(codes, ["reserved"])
+
+    def upstream_status(self, status, body=""):
+        error = requests.HTTPError(response=Mock(status_code=status, text=body))
+        fandango.seat_map.cache_clear()
+        with patch.object(fandango, "fandango_json", side_effect=error):
+            return fandango.seat_map(f"showtime-{status}")
+
+    def test_sold_out_unmapped_and_general_admission_showtimes_have_no_seats(self):
+        general_admission = '[{"id":"GeneralAdmissionShowtimeError"}]'
+        for status, body in [(404, ""), (410, ""), (400, general_admission)]:
+            with self.subTest(status=status):
+                self.assertEqual(self.upstream_status(status, body), {"seats": []})
+
+    def test_other_upstream_errors_still_fail(self):
+        with self.assertRaises(requests.HTTPError):
+            self.upstream_status(400, '[{"id":"BadRequest"}]')
 
 
 class RegionNoticeTests(unittest.TestCase):
