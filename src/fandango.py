@@ -192,11 +192,15 @@ def showtime_format(format_header, group, showtime):
 
 
 def amenity_groups(movie):
-    """Yield (format header, amenity group) for every showtime group of a movie."""
+    """Yield (format header, amenity group) for every reserved-seating showtime group of a movie.
+
+    General-admission showtimes have no seat map: Fandango rejects seat-map requests for them.
+    """
     for variant in movie["variants"]:
         format_name = clean_title(variant["filmFormatHeader"])
         for group in variant["amenityGroups"]:
-            yield format_name, group
+            if "Reserved seating" in group_amenity_names(group):
+                yield format_name, group
 
 
 def group_amenity_names(group):
@@ -245,8 +249,9 @@ def _fetch_fandango_theatres(zip_code, radius, show_date):
                 "address": theatre["fullAddress"],
                 "latitude": theatre["geo"]["latitude"],
                 "longitude": theatre["geo"]["longitude"],
-                # Theatres with no showtimes that day have no movies key.
-                "rawMovies": theatre.get("movies") or [],
+                "rawMovies": [
+                    movie for movie in theatre.get("movies", []) if any(amenity_groups(movie))
+                ],
             }
         )
     return theatres
@@ -311,4 +316,12 @@ def normalize_showtimes(movies):
 
 @upstream_cache(maxsize=200)
 def seat_map(showtime_hash):
-    return fandango_json(f"/napi/seatMap/{showtime_hash}", referer="https://www.fandango.com/")
+    """A showtime's seat map. General-admission and sold-out showtimes, and auditoriums Fandango
+    has no map for, have none; a few theatres list general-admission showtimes as reserved."""
+    try:
+        return fandango_json(f"/napi/seatMap/{showtime_hash}", referer="https://www.fandango.com/")
+    except requests.HTTPError as error:
+        response = error.response
+        if response.status_code in {404, 410} or "GeneralAdmissionShowtimeError" in response.text:
+            return {"seats": []}
+        raise

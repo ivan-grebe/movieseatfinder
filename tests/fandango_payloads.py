@@ -41,10 +41,11 @@ def showtime(code, time, film_formats=(), date="2026-07-20"):
     }
 
 
-def amenity_group(amenities, showtimes):
+def amenity_group(amenities, showtimes, reserved=True):
+    names = ["Reserved seating", *amenities] if reserved else list(amenities)
     return {
-        "amenityString": ", ".join(amenities),
-        "amenities": [{"name": name} for name in amenities],
+        "amenityString": ", ".join(names),
+        "amenities": [{"name": name} for name in names],
         "showtimes": showtimes,
     }
 
