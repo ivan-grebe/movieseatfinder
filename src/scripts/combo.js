@@ -39,7 +39,6 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
   function pick(item) {
     input.value = getLabel(item);
     closeCombo(input, menu);
-    activeIndex = -1;
     onPick(item);
   }
 
@@ -107,7 +106,6 @@ export function setupCombo(input, menu, source, getLabel, onPick) {
       event.preventDefault();
       event.stopPropagation();
       closeCombo(input, menu);
-      activeIndex = -1;
     }
   });
   input.addEventListener("blur", () => {

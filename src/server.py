@@ -22,5 +22,3 @@ app = Starlette(
     ],
     lifespan=lifespan,
 )
-
-__all__ = ["app"]

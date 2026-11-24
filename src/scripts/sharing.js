@@ -11,20 +11,20 @@ function base64Url(bytes) {
 export function compactShareUrl(searchUrl, match) {
   const source = new URL(searchUrl);
   const params = new URLSearchParams({
-    address: match.theatre.address || "",
-    adjacentSeats: source.searchParams.get("adjacentSeats") || "2",
-    amenities: match.amenities || "",
+    address: match.theatre.address,
+    adjacentSeats: source.searchParams.get("adjacentSeats"),
+    amenities: match.amenities,
     date: match.date,
-    excludeAccessible: source.searchParams.get("excludeAccessible") || "1",
+    excludeAccessible: source.searchParams.get("excludeAccessible"),
     format: match.format,
     genres: match.genres.join(", "),
     movie: match.movieTitle,
-    poster: match.poster || "",
-    rating: match.rating || "",
-    runtime: match.runtime || "",
+    poster: match.poster,
+    rating: match.rating,
+    runtime: match.runtime,
     showtime: match.showtimeHashCode,
     theatre: match.theatre.name,
-    ticket: match.ticketUrl || "",
+    ticket: match.ticketUrl,
     time: match.displayTime,
   });
 
@@ -36,10 +36,6 @@ export function compactShareUrl(searchUrl, match) {
     const bitmap = new Uint8Array(29);
 
     for (const cell of params.get("seatGrid").split(",")) {
-      if (!/^(?:[0-9]|1[0-4]):(?:[0-9]|1[0-4])$/u.test(cell)) {
-        throw new Error("Invalid seat area.");
-      }
-
       const [row, column] = cell.split(":").map(Number);
       const index = row * 15 + column;
 
@@ -99,7 +95,6 @@ export function createShareButton(searchUrl, match) {
 
   feedback.className = "share-feedback";
   feedback.setAttribute("role", "status");
-  feedback.setAttribute("aria-live", "polite");
   feedback.setAttribute("aria-hidden", "true");
   button.append(label, feedback);
   button.setAttribute("aria-label", defaultLabel);

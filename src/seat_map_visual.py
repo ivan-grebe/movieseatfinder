@@ -19,23 +19,18 @@ WRAPPER_PADDING = 10
 _FONT_PATH = Path(__file__).with_name("assets") / "inter-variable.ttf"
 _RENDER_STATE = threading.local()
 TITLE_TEXT_STYLE = (
-    "display:inline;visibility:visible;opacity:1;fill:#f1f5f9;"
-    "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:850"
+    "fill:#f1f5f9;font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:850"
 )
 COUNT_TEXT_STYLE = (
-    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
+    "fill:#aebacd;"
     "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums"
 )
 LEGEND_TEXT_STYLE = (
-    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
-    "font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:400"
+    "fill:#aebacd;font-family:'Inter Variable',sans-serif;font-size:11px;font-weight:400"
 )
-ROW_LABEL_TEXT_STYLE = (
-    "display:inline;visibility:visible;opacity:1;fill:#aebacd;"
-    "font-family:'Inter Variable',sans-serif;font-weight:750"
-)
+ROW_LABEL_TEXT_STYLE = "fill:#aebacd;font-family:'Inter Variable',sans-serif;font-weight:750"
 SCREEN_TEXT_STYLE = (
-    "display:inline;visibility:visible;opacity:1;fill:#e8b4bd;"
+    "fill:#e8b4bd;"
     "font-family:'Inter Variable',sans-serif;font-size:9px;font-weight:900;letter-spacing:1.44px"
 )
 
@@ -44,7 +39,6 @@ def _render_options():
     options = getattr(_RENDER_STATE, "options", None)
     if options is None:
         options = usvg.Options.default()
-        setattr(options, "font_family", "Inter Variable")
         options.load_font_file(str(_FONT_PATH))
         _RENDER_STATE.options = options
     return options
@@ -59,7 +53,7 @@ def _number(value, fallback=0.0):
 
 
 def _text(value):
-    return escape(str(value or ""), quote=True)
+    return escape(value, quote=True)
 
 
 def _embedded_svg(svg):
@@ -78,7 +72,7 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
     accessible = str(seat.get("type") or "").lower() in ACCESSIBLE_SEAT_TYPES
     excluded = source_available and accessible and accessible_seats_excluded
     available = source_available and not excluded
-    matched = bool(seat.get("matched"))
+    matched = seat.get("matched")
 
     if matched and accessible:
         fill = "url(#matched-accessible)"
@@ -110,17 +104,6 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
         f"H{x + bottom_radius:g} Q{x:g},{bottom:g} {x:g},{bottom - bottom_radius:g} "
         f"V{y + top_radius:g} Q{x:g},{y:g} {x + top_radius:g},{y:g} Z"
     )
-    description = " - ".join(
-        value
-        for value in [
-            str(seat.get("id") or "Seat"),
-            "available" if source_available else "unavailable",
-            str(seat.get("type") or "") if accessible else "",
-            "excluded by filter" if excluded else "",
-            "matching" if matched else "",
-        ]
-        if value
-    )
     glow = (
         f'<path d="{seat_path}" fill="{glow_fill}" stroke="{glow_fill}" stroke-width="{stroke_width * 4:g}" '
         f'filter="url(#seat-glow)"/>'
@@ -129,7 +112,7 @@ def _seat_svg(seat, stroke_width, accessible_seats_excluded):
     )
     return (
         glow + f'<path d="{seat_path}" fill="{fill}" stroke="{stroke}" '
-        f'stroke-width="{stroke_width:g}"><title>{_text(description)}</title></path>'
+        f'stroke-width="{stroke_width:g}"/>'
     )
 
 
@@ -184,7 +167,7 @@ def _legend_svg(accessible_seats_excluded):
     for label, fill, stroke in items:
         nodes.append(_legend_item(cursor, label, fill, stroke))
         cursor += 17 + len(label) * 6.1 + gap
-    return f'<g id="seat-map-legend">{"".join(nodes)}</g>'
+    return f"<g>{''.join(nodes)}</g>"
 
 
 def render_seat_map_svg(layout, available_count, total_count, accessible_seats_excluded):
@@ -194,12 +177,10 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
     layout_width = max(
         _number(layout.get("width"), 1),
         max(_number(seat.get("x")) + _number(seat.get("width")) for seat in seats),
-        1,
     )
     layout_height = max(
         _number(layout.get("height"), 1),
         max(_number(seat.get("y")) + _number(seat.get("height")) for seat in seats),
-        1,
     )
     background_svg = str(layout.get("backgroundSvg") or "")
 
@@ -225,9 +206,9 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
         ""
         if background_svg
         else (
-            f'<g><rect x="91" y="{screen_y}" width="460" height="18" rx="9" fill="url(#screen)"/>'
+            f'<rect x="91" y="{screen_y}" width="460" height="18" rx="9" fill="url(#screen)"/>'
             f'<text x="321" y="{screen_y + 12}" style="{SCREEN_TEXT_STYLE}" '
-            f'text-anchor="middle">SCREEN</text></g>'
+            f'text-anchor="middle">SCREEN</text>'
         )
     )
 
@@ -265,7 +246,7 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
       <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#64748b" stroke-opacity=".5"/>
       {screen_node}
       <g clip-path="url(#stage-clip)">
-        <svg x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none" overflow="hidden">
+        <svg x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none">
           {background_node}{seat_nodes}{_row_labels_svg(seats[:2500])}
         </svg>
       </g>

@@ -115,9 +115,6 @@ function sameOtherParams(before, after) {
 function derived(results, overrides) {
   const finished = {
     ...results,
-    abort: () => undefined,
-    error: null,
-    state: StreamState.Complete,
     ...overrides,
   };
 
@@ -192,10 +189,7 @@ export function streamSearch(params, sort) {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      const error = new Error(data.error || "The search service is temporarily unavailable.");
-
-      error.code = data.code || "";
-      throw error;
+      throw new Error(data.error || "The search service is temporarily unavailable.");
     }
 
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -214,7 +208,7 @@ export function streamSearch(params, sort) {
       const lines = buffer.split("\n");
 
       buffer = lines.pop();
-      lines.filter(Boolean).forEach((line) => apply(JSON.parse(line)));
+      lines.forEach((line) => apply(JSON.parse(line)));
       notify();
     }
 

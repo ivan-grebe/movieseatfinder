@@ -96,7 +96,6 @@ export function setButtonBusy(button, busy, busyLabel) {
     return;
   }
 
-  button.disabled = false;
   button.removeAttribute("aria-busy");
   button.textContent = button.dataset.label;
 }

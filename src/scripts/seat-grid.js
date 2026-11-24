@@ -24,7 +24,7 @@ function cellKey(row, col) {
 function cellFromEvent(event) {
   const element = document.elementFromPoint(event.clientX, event.clientY);
 
-  return element?.closest?.(".seat-cell") || null;
+  return element?.closest(".seat-cell");
 }
 
 export function createSeatGrid(
@@ -124,15 +124,7 @@ export function createSeatGrid(
   }
 
   function setRovingCell(row, col) {
-    focus = {
-      col: col,
-      row: row,
-    };
-    const focusedKey = cellKey(row, col);
-
-    cells.forEach((cell) => {
-      cell.tabIndex = cell.dataset.cell === focusedKey ? 0 : -1;
-    });
+    // The grid's focusin handler moves the roving tabIndex.
     cells.get(cellKey(row, col)).focus();
   }
 
@@ -140,11 +132,11 @@ export function createSeatGrid(
     const locked = mobileInteractionLocked();
 
     grid.classList.toggle("is-mobile-locked", locked);
-    grid.classList.toggle("is-mobile-editing", isMobileLayout && isMobileEditing);
-    grid.toggleAttribute("aria-disabled", locked);
+    grid.classList.toggle("is-mobile-editing", isMobileEditing);
+    grid.setAttribute("aria-disabled", String(locked));
 
     cells.forEach((cell) => {
-      cell.toggleAttribute("aria-disabled", locked);
+      cell.setAttribute("aria-disabled", String(locked));
       cell.tabIndex = -1;
       if (!locked && cell.dataset.cell === cellKey(focus.row, focus.col)) {
         cell.tabIndex = 0;
@@ -154,10 +146,8 @@ export function createSeatGrid(
     editButton.hidden = !locked;
     centerButton.hidden = locked;
     clearButton.hidden = locked;
-    cancelButton.hidden = !isMobileLayout || !isMobileEditing;
-    doneButton.hidden = !isMobileLayout || !isMobileEditing;
-    centerButton.disabled = locked;
-    clearButton.disabled = locked;
+    cancelButton.hidden = !isMobileEditing;
+    doneButton.hidden = !isMobileEditing;
     if (!isMobileLayout) {
       help.textContent = DESKTOP_HELP;
     } else if (isMobileEditing) {
@@ -168,10 +158,6 @@ export function createSeatGrid(
   }
 
   function beginMobileEditing() {
-    if (!isMobileLayout || isMobileEditing) {
-      return;
-    }
-
     selectionBeforeMobileEdit = new Set(selected);
     isMobileEditing = true;
     syncMobileInteraction();
@@ -179,11 +165,7 @@ export function createSeatGrid(
   }
 
   function finishMobileEditing(restorePreviousSelection) {
-    if (!isMobileEditing) {
-      return;
-    }
-
-    if (restorePreviousSelection && selectionBeforeMobileEdit) {
+    if (restorePreviousSelection) {
       restoreSelection(selectionBeforeMobileEdit);
       updateStatus();
     }
@@ -220,8 +202,6 @@ export function createSeatGrid(
   }
 
   function build() {
-    grid.replaceChildren();
-    cells.clear();
     for (let row = 0; row < GRID_SIZE; row += 1) {
       for (let col = 0; col < GRID_SIZE; col += 1) {
         const button = document.createElement("button");
@@ -232,9 +212,7 @@ export function createSeatGrid(
         button.dataset.row = row;
         button.dataset.col = col;
         button.title = `Row ${row + 1} of ${GRID_SIZE} from the screen, column ${col + 1} of ${GRID_SIZE}`;
-        button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-pressed", "false");
-        button.tabIndex = row === 0 && col === 0 ? 0 : -1;
         button.addEventListener("click", handleCellClick);
         cells.set(button.dataset.cell, button);
         grid.append(button);
@@ -328,9 +306,6 @@ export function createSeatGrid(
     gesture = {
       kind: "released",
     };
-    if (grid.hasPointerCapture(event.pointerId)) {
-      grid.releasePointerCapture(event.pointerId);
-    }
   });
 
   grid.addEventListener("pointercancel", () => {

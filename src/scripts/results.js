@@ -138,10 +138,10 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
     }
 
     node.title = titleParts.join(" - ");
-    node.style.left = `${((Number(seat.x) || 0) / width) * 100}%`;
-    node.style.top = `${((Number(seat.y) || 0) / height) * 100}%`;
-    node.style.width = `${(Math.max(Number(seat.width) || 1, 1) / width) * 100}%`;
-    node.style.height = `${(Math.max(Number(seat.height) || 1, 1) / height) * 100}%`;
+    node.style.left = `${(seat.x / width) * 100}%`;
+    node.style.top = `${(seat.y / height) * 100}%`;
+    node.style.width = `${(Math.max(seat.width, 1) / width) * 100}%`;
+    node.style.height = `${(Math.max(seat.height, 1) / height) * 100}%`;
     stage.append(node);
   });
   wrapper.append(stage);
@@ -249,7 +249,6 @@ export function createResultsView({
 
     label.className = "pagination-label";
     label.setAttribute("role", "status");
-    label.setAttribute("aria-live", "polite");
     label.textContent = `Page ${data.page}`;
 
     const next = document.createElement("button");
@@ -264,7 +263,6 @@ export function createResultsView({
   }
 
   function setPageLoading() {
-    pagination.hidden = false;
     pagination.classList.add("is-loading");
     pagination.classList.remove("has-error");
     pagination.setAttribute("aria-busy", "true");
@@ -291,7 +289,7 @@ export function createResultsView({
     label.textContent = errorMessage;
   }
 
-  function render(data, { isUpdate = false, searchUrl, shared = false } = {}) {
+  function render(data, { isUpdate = false, searchUrl, shared = false }) {
     const matches = data.matches;
 
     results.replaceChildren();
@@ -306,7 +304,6 @@ export function createResultsView({
 
       hint.className = "empty-state";
       hint.setAttribute("role", "status");
-      hint.setAttribute("aria-live", "polite");
       const title = document.createElement("strong");
 
       title.textContent = "No matching showtimes";
@@ -324,19 +321,21 @@ export function createResultsView({
       return;
     }
 
-    const showingStart = (data.page - 1) * data.pageSize + 1;
-    const showingEnd = showingStart + matches.length - 1;
-    const pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
-    let summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
-
-    if (incomplete) {
-      summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
-    }
+    let summaryText = "";
 
     if (shared) {
       summaryText = "Live seat availability for this shared showtime.";
       if (matches[0].seatMap.bestGroup.length === 0) {
         summaryText = "No seats currently match the shared seat preferences.";
+      }
+    } else {
+      const showingStart = (data.page - 1) * data.pageSize + 1;
+      const showingEnd = showingStart + matches.length - 1;
+      const pageText = `Showing ${showingStart}-${showingEnd} matching showtime${pluralSuffix(matches.length)}`;
+
+      summaryText = `${pageText} - checked ${data.checkedSeatMaps} seat map${pluralSuffix(data.checkedSeatMaps)} from ${data.checkedShowtimes} candidate showtime${pluralSuffix(data.checkedShowtimes)}.`;
+      if (incomplete) {
+        summaryText = `${pageText}. Results are incomplete: ${data.failedSeatMaps} seat map${pluralSuffix(data.failedSeatMaps)} could not be checked. Please retry the search.`;
       }
     }
 
@@ -469,10 +468,6 @@ export function createResultsView({
     const card = [...results.querySelectorAll(".result")].find(
       (item) => item.dataset.showtime === showtime,
     );
-
-    if (!card) {
-      return;
-    }
 
     card.tabIndex = -1;
     card.focus({

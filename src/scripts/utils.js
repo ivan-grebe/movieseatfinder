@@ -21,10 +21,6 @@ export function addDays(dateString, days) {
 export function formatNiceDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
 
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
-
   return date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
@@ -79,7 +75,7 @@ export async function getJson(url) {
   if (!response.ok) {
     const error = new Error(data.error || "Request failed.");
 
-    error.code = data.code || "";
+    error.code = data.code;
     throw error;
   }
 

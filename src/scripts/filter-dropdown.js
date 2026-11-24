@@ -206,7 +206,7 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
   }
 
   /** Restore a selection (for example from the URL) before or after options load. */
-  function select({ include = [], exclude = [] }) {
+  function select({ include, exclude = [] }) {
     if (include.length > 0) {
       included = new Set(include);
     } else {
@@ -257,7 +257,6 @@ export function createFilterDropdown(container, { allLabel, noun, onChange, plac
       setOpen(false);
     }
   });
-  render();
 
   return {
     checked: checkedOptions,

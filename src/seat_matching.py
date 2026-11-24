@@ -8,7 +8,7 @@ NEIGHBOR_KEYS = ("leftNeighbor", "rightNeighbor")
 
 def parse_seat_grid(value):
     cells = []
-    for part in (value or "").split(","):
+    for part in value.split(","):
         pieces = part.split(":")
         if len(pieces) != 2:
             continue
@@ -38,8 +38,8 @@ def normalized_seat_layout(data, matching_blocks):
     if background_svg and background_width and background_height:
         width = max(float(background_width), 1)
         height = max(float(background_height), 1)
-        offset_x = data.get("mapOffsetX", 0) or 0
-        offset_y = data.get("mapOffsetY", 0) or 0
+        offset_x = data.get("mapOffsetX") or 0
+        offset_y = data.get("mapOffsetY") or 0
     else:
         background_svg = ""
         min_left = min(seat.get("x", 0) for seat in seats)
@@ -66,7 +66,7 @@ def normalized_seat_layout(data, matching_blocks):
         "seats": [
             {
                 "id": seat.get("id", ""),
-                "type": seat.get("type", "standard"),
+                "type": seat.get("type"),
                 "status": seat.get("status", ""),
                 "x": seat.get("x", 0) + offset_x,
                 "y": seat.get("y", 0) + offset_y,
@@ -119,9 +119,6 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
         if seat.get("status") == "A"
         and not (exclude_accessible and seat.get("type") in ACCESSIBLE_SEAT_TYPES)
     ]
-    if not available:
-        return []
-
     # Maps without any neighbor links fall back to consecutive columns alone.
     use_links = any(seat.get(key) for seat in seats for key in NEIGHBOR_KEYS)
     position = seat_positioner(seats)
@@ -150,7 +147,7 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
 
 def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
     """Return exact-size adjacent groups, closest to the requested region first."""
-    seat_by_id = {seat.get("id", ""): seat for seat in seats if seat.get("id")}
+    seat_by_id = {seat["id"]: seat for seat in seats if seat.get("id")}
     position = seat_positioner(seats)
 
     if selected_cells:
@@ -174,7 +171,7 @@ def ranked_adjacent_groups(seats, blocks, group_size, selected_cells):
             distance = (row_position - target_row) ** 2 + (x_position - target_x) ** 2
             groups.append((distance, group))
 
-    groups.sort(key=lambda item: (item[0], item[1]))
+    groups.sort()
     return [group for _, group in groups]
 
 
@@ -192,9 +189,7 @@ def seat_map_match(data, min_adjacent, selected_cells, exclude_accessible):
 def seat_map_preview(data, blocks, min_adjacent, selected_cells):
     """`blocks` are the seat map's `adjacent_blocks` for this search."""
     seats = data["seats"]
-    matching_groups = (
-        ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells) if blocks else []
-    )
+    matching_groups = ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells)
     available_count = data.get("totalAvailableSeatCount")
     if available_count is None:
         available_count = sum(1 for seat in seats if seat.get("status") == "A")
