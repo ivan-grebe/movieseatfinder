@@ -28,7 +28,7 @@ const {
   sortInput,
 } = elements;
 
-const sharedToken = /^\/s\/([^/]+)$/u.exec(globalThis.location.pathname)?.[1] || "";
+const sharedToken = /^\/s\/([^/]+)$/u.exec(globalThis.location.pathname)?.[1];
 const sharedSearch = Boolean(sharedToken);
 let locationReady = false;
 
@@ -271,10 +271,7 @@ function applyQueryParams() {
     movies.remember(params.get("movie"));
   }
 
-  if (params.has("sort")) {
-    sortInput.value = params.get("sort");
-  }
-
+  sortInput.value = params.get("sort");
   if (sortInput.selectedIndex === -1) {
     sortInput.value = "earliest";
   }

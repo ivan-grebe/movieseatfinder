@@ -12,7 +12,7 @@ import { getJson } from "./utils.js";
 const PAGE_SIZE = 20;
 const LOADING_MORE = "Checking more showtimes…";
 
-function rememberSearch(searchUrl, replaceHistory = false) {
+function rememberSearch(searchUrl, replaceHistory) {
   const url = new URL(searchUrl);
 
   if (globalThis.location.href === url.href) {
@@ -76,7 +76,7 @@ export function createSearchFlow({
     sortStatus.replaceChildren(...createLoadingIndicator(message));
   }
 
-  function finishActivity({ pageError = "", restoreScroll = false, sortMessage = "" } = {}) {
+  function finishActivity({ pageError, restoreScroll, sortMessage = "" } = {}) {
     const finished = activity;
 
     if (finished.kind === "idle") {
@@ -180,7 +180,7 @@ export function createSearchFlow({
     }
   }
 
-  async function runNewSearch({ replaceHistory = false, scrollToResults = false } = {}) {
+  async function runNewSearch({ replaceHistory, scrollToResults } = {}) {
     if (!validate()) {
       return;
     }

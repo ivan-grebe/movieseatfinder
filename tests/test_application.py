@@ -4,6 +4,7 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
+from fandango_payloads import amenity_group, movie, seat, seat_map, showtime, theatre
 from fastapi.testclient import TestClient
 
 from src import application, fandango, seat_matching
@@ -11,14 +12,7 @@ from src import application, fandango, seat_matching
 
 def linked_seat(seat_id, column, left, right):
     """An available row-0 seat with Fandango's neighbor links ("" means none)."""
-    return {
-        "id": seat_id,
-        "row": 0,
-        "column": column,
-        "status": "A",
-        "leftNeighbor": left,
-        "rightNeighbor": right,
-    }
+    return seat(seat_id, 0, column, column * 10, left=left, right=right)
 
 
 class TicketUrlTests(unittest.TestCase):
@@ -56,36 +50,12 @@ class MovieAndFormatTests(unittest.TestCase):
 class SeatSelectionTests(unittest.TestCase):
     def setUp(self):
         self.seats = [
-            {"id": "A1", "row": 0, "column": 1, "x": 10, "y": 0, "status": "A", "type": "standard"},
-            {"id": "A2", "row": 0, "column": 2, "x": 20, "y": 0, "status": "A", "type": "standard"},
-            {"id": "A3", "row": 0, "column": 3, "x": 30, "y": 0, "status": "U", "type": "standard"},
-            {
-                "id": "B1",
-                "row": 1,
-                "column": 1,
-                "x": 10,
-                "y": 10,
-                "status": "A",
-                "type": "wheelchair",
-            },
-            {
-                "id": "B2",
-                "row": 1,
-                "column": 2,
-                "x": 20,
-                "y": 10,
-                "status": "A",
-                "type": "standard",
-            },
-            {
-                "id": "B3",
-                "row": 1,
-                "column": 3,
-                "x": 30,
-                "y": 10,
-                "status": "A",
-                "type": "companion",
-            },
+            seat("A1", 0, 1, 10),
+            seat("A2", 0, 2, 20),
+            seat("A3", 0, 3, 30, status="U"),
+            seat("B1", 1, 1, 10, kind="wheelchair"),
+            seat("B2", 1, 2, 20),
+            seat("B3", 1, 3, 30, kind="companion"),
         ]
 
     def test_adjacent_blocks_require_available_contiguous_seats(self):
@@ -119,10 +89,7 @@ class SeatSelectionTests(unittest.TestCase):
         self.assertEqual(blocks, [["B2"]])
 
     def test_groups_have_the_requested_party_size(self):
-        seats = [
-            {"id": f"A{column}", "row": 0, "column": column, "x": column * 10, "status": "A"}
-            for column in range(1, 5)
-        ]
+        seats = [seat(f"A{column}", 0, column, column * 10) for column in range(1, 5)]
         groups = seat_matching.ranked_adjacent_groups(
             seats,
             [["A1", "A2", "A3", "A4"]],
@@ -191,17 +158,7 @@ class CandidateSearchTests(unittest.TestCase):
 
 
 def showtime_group(format_name, code, time):
-    return {
-        "amenities": [{"name": format_name}],
-        "showtimes": [
-            {
-                "type": "available",
-                "ticketingDate": f"2026-07-20+{time}",
-                "showtimeHashCode": code,
-                "filmFormat": [{"filterName": "IMAX"}],
-            }
-        ],
-    }
+    return amenity_group([format_name], [showtime(code, time, film_formats=["IMAX"])])
 
 
 class SearchTests(unittest.TestCase):
@@ -221,24 +178,20 @@ class SearchTests(unittest.TestCase):
             "address": "Main St",
             "distanceMiles": 1,
             "rawMovies": [
-                {
-                    "title": "Test Movie",
-                    "variants": [
-                        {
-                            "filmFormatHeader": "Premium Format",
-                            "amenityGroups": [
-                                showtime_group("IMAX", "plain", "19:00"),
-                                showtime_group("IMAX with Laser", "laser", "20:00"),
-                            ],
-                        }
+                movie(
+                    "Test Movie",
+                    "Premium Format",
+                    [
+                        showtime_group("IMAX", "plain", "19:00"),
+                        showtime_group("IMAX with Laser", "laser", "20:00"),
                     ],
-                }
+                )
             ],
         }
         seats = [
-            {"id": "A1", "row": 0, "column": 1, "x": 0, "status": "A", "type": "standard"},
-            {"id": "A2", "row": 0, "column": 2, "x": 10, "status": "A", "type": "standard"},
-            {"id": "A3", "row": 0, "column": 3, "x": 20, "status": "A", "type": "wheelchair"},
+            seat("A1", 0, 1, 0),
+            seat("A2", 0, 2, 10),
+            seat("A3", 0, 3, 20, kind="wheelchair"),
         ]
         patches = [
             patch.object(
@@ -249,7 +202,7 @@ class SearchTests(unittest.TestCase):
             patch.object(
                 application, "fandango_theatres_by_date", return_value={"2026-07-20": [theatre]}
             ),
-            patch.object(application, "seat_map", return_value={"seats": seats}),
+            patch.object(application, "seat_map", return_value=seat_map(seats)),
         ]
         for mock in patches:
             mock.start()
@@ -302,10 +255,7 @@ class LocationTests(unittest.TestCase):
     @patch.object(fandango, "fandango_json")
     def test_radius_uses_coordinates_instead_of_upstream_distance(self, upstream, _zip):
         upstream.return_value = {
-            "theaters": [
-                {"name": "Nearby", "distance": 0, "geo": {"latitude": 40.03, "longitude": -75}},
-                {"name": "Too far", "distance": 0, "geo": {"latitude": 40.10, "longitude": -75}},
-            ]
+            "theaters": [theatre("Nearby", 40.03, -75.0), theatre("Too far", 40.10, -75.0)]
         }
         fandango._fetch_fandango_theatres.cache_clear()
         response = TestClient(application.app).get(

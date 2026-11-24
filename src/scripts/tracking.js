@@ -1,16 +1,12 @@
 function logEvent(endpoint) {
-  try {
-    if (navigator.sendBeacon?.(endpoint)) {
-      return;
-    }
-
-    void fetch(endpoint, {
-      keepalive: true,
-      method: "POST",
-    }).catch(() => undefined);
-  } catch {
+  if (navigator.sendBeacon?.(endpoint)) {
     return;
   }
+
+  void fetch(endpoint, {
+    keepalive: true,
+    method: "POST",
+  }).catch(() => undefined);
 }
 
 export function logTicketClick() {

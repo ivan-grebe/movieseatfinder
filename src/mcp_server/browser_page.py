@@ -15,9 +15,9 @@ def _is_browser_navigation(scope):
         return False
     headers = Headers(scope=scope)
     return (
-        headers.get("sec-fetch-mode", "").lower() == "navigate"
-        or headers.get("sec-fetch-dest", "").lower() == "document"
-        or "text/html" in headers.get("accept", "").lower()
+        headers.get("sec-fetch-mode") == "navigate"
+        or headers.get("sec-fetch-dest") == "document"
+        or "text/html" in headers.get("accept", "")
     )
 
 

@@ -31,7 +31,7 @@ export function createMoviePicker({
   function movieWithTitle(title) {
     const normalized = normalizedTitle(title);
 
-    return movies.find((movie) => normalizedTitle(movie.title) === normalized) || null;
+    return movies.find((movie) => normalizedTitle(movie.title) === normalized);
   }
 
   /** Disable the input while there is nothing to pick, or mark it busy while loading. */
@@ -74,7 +74,7 @@ export function createMoviePicker({
   }
 
   function resolveTyped() {
-    const exactMovie = movieWithTitle(input.value.trim());
+    const exactMovie = movieWithTitle(input.value);
 
     if (exactMovie) {
       select(exactMovie);
@@ -150,7 +150,7 @@ export function createMoviePicker({
 
   /** Pick this title once movies load (from a link or a shared showtime). */
   function remember(title) {
-    rememberedTitle = title.trim();
+    rememberedTitle = title;
     input.value = title;
   }
 
@@ -183,7 +183,7 @@ export function createMoviePicker({
   input.addEventListener("input", () => {
     input.setCustomValidity("");
     clearSelection();
-    const exactMovie = movieWithTitle(input.value.trim());
+    const exactMovie = movieWithTitle(input.value);
 
     if (exactMovie) {
       select(exactMovie);

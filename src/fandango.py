@@ -2,14 +2,14 @@
 
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from urllib.parse import urlsplit
 
 import requests
 from cachetools import TTLCache, cached
 
-from .location import filter_theatres_within_radius, http_session
+from .location import HTTP_SESSION, filter_theatres_within_radius
 
 FANDANGO_USER_AGENT = "Mozilla/5.0 MovieSeatFinder/1.0"
 FANDANGO_ORIGIN = "https://www.fandango.com"
@@ -24,7 +24,7 @@ def upstream_cache(maxsize):
 
 
 def fandango_json(path, params=None, referer="https://www.fandango.com/movie-theaters"):
-    response = http_session().get(
+    response = HTTP_SESSION.get(
         f"{FANDANGO_ORIGIN}{path}",
         params=params,
         headers={
@@ -40,8 +40,6 @@ def fandango_json(path, params=None, referer="https://www.fandango.com/movie-the
 
 
 def safe_fandango_url(value):
-    if not value:
-        return ""
     try:
         parts = urlsplit(value)
     except ValueError:
@@ -54,16 +52,15 @@ def safe_fandango_url(value):
 
 
 def clean_title(value):
-    return re.sub(r"\s+", " ", value or "").strip()
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def normalized_text(value):
-    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
 def movie_matches(title, query):
-    normalized_title = normalized_text(title)
-    return bool(normalized_title) and normalized_title == normalized_text(query)
+    return normalized_text(title) == normalized_text(query)
 
 
 FORMAT_LABEL_ALIASES = {
@@ -114,9 +111,7 @@ def canonical_format_label(value):
 @lru_cache(maxsize=256)
 def requested_format_names(requested):
     return frozenset(
-        normalized_text(canonical_format_label(value))
-        for value in requested.split(",")
-        if normalized_text(value)
+        normalized_text(canonical_format_label(value)) for value in requested.split(",")
     )
 
 
@@ -164,14 +159,8 @@ def is_format_amenity(value):
 
 def showtime_format(format_header, group, showtime):
     """Resolve Fandango's overlapping format fields to one public label."""
-    showtime_names = [
-        name
-        for item in showtime.get("filmFormat") or []
-        if (name := clean_title(item.get("filterName")))
-    ]
-    amenity_names = [
-        part.strip() for part in clean_title(group.get("amenityString")).split(",") if part.strip()
-    ]
+    showtime_names = [clean_title(item["filterName"]) for item in showtime["filmFormat"]]
+    amenity_names = [part.strip() for part in clean_title(group["amenityString"]).split(",")]
     amenity_names.extend(group_amenity_names(group))
     evidence = [*showtime_names, format_header, *amenity_names]
     labels_by_name = {
@@ -204,21 +193,19 @@ def showtime_format(format_header, group, showtime):
 
 def amenity_groups(movie):
     """Yield (format header, amenity group) for every showtime group of a movie."""
-    for variant in movie.get("variants") or []:
-        format_name = clean_title(variant.get("filmFormatHeader")) or "Standard"
-        for group in variant.get("amenityGroups") or []:
+    for variant in movie["variants"]:
+        format_name = clean_title(variant["filmFormatHeader"])
+        for group in variant["amenityGroups"]:
             yield format_name, group
 
 
 def group_amenity_names(group):
-    names = (clean_title(item.get("name")) for item in group.get("amenities") or [])
-    return [name for name in names if name]
+    return [clean_title(item["name"]) for item in group["amenities"]]
 
 
 def group_formats(format_name, group):
     """The resolved format labels exposed by a single amenity group."""
-    group_showtimes = group.get("showtimes") or [{}]
-    return {showtime_format(format_name, group, showtime) for showtime in group_showtimes}
+    return {showtime_format(format_name, group, showtime) for showtime in group["showtimes"]}
 
 
 def fandango_theatres(zip_code, radius, origin, show_date=None):
@@ -235,64 +222,37 @@ def fandango_theatres(zip_code, radius, origin, show_date=None):
 
 def fandango_theatres_by_date(zip_code, radius, dates, origin):
     """Fetch (and cache) theatre+showtime payloads for many dates in parallel."""
-    results = {}
     with ThreadPoolExecutor(max_workers=min(8, len(dates))) as executor:
-        future_map = {
-            executor.submit(fandango_theatres, zip_code, radius, origin, show_date): show_date
-            for show_date in dates
-        }
-        for future in as_completed(future_map):
-            show_date = future_map[future]
-            try:
-                results[show_date] = future.result()
-            except (*UPSTREAM_ERRORS, ValueError) as error:
-                raise requests.RequestException(
-                    "Could not load showtimes for every selected date. Please try again."
-                ) from error
-    return results
+        theatres = executor.map(
+            lambda show_date: fandango_theatres(zip_code, radius, origin, show_date), dates
+        )
+        return dict(zip(dates, theatres, strict=True))
 
 
 @upstream_cache(maxsize=240)
 def _fetch_fandango_theatres(zip_code, radius, show_date):
-    radius_value = int(radius) if float(radius).is_integer() else radius
+    radius_value = int(radius) if radius.is_integer() else radius
     params = {"zipCode": zip_code, "radius": radius_value, "limit": 100}
     if show_date:
         params["date"] = show_date
     data = fandango_json("/napi/theaterswithshowtimes", params)
     theatres = []
+    # With no theatres near the ZIP, Fandango sends an error payload without a theaters key.
     for theatre in data.get("theaters", []):
-        geo = theatre.get("geo") or {}
-        address_parts = [theatre.get(key, "") for key in ("address1", "city", "state", "zip")]
         theatres.append(
             {
-                "name": theatre.get("name", ""),
-                "address": theatre.get("fullAddress") or ", ".join(filter(None, address_parts)),
-                "latitude": _optional_float(geo.get("latitude")),
-                "longitude": _optional_float(geo.get("longitude")),
+                "name": theatre["name"],
+                "address": theatre["fullAddress"],
+                "latitude": theatre["geo"]["latitude"],
+                "longitude": theatre["geo"]["longitude"],
+                # Theatres with no showtimes that day have no movies key.
                 "rawMovies": theatre.get("movies") or [],
             }
         )
     return theatres
 
 
-def _optional_float(value):
-    return None if value is None else float(value)
-
-
-def poster_url(movie):
-    poster = movie.get("poster")
-    if isinstance(poster, dict):
-        sizes = poster.get("size")
-        if isinstance(sizes, dict):
-            return sizes.get("300") or sizes.get("200") or sizes.get("full") or ""
-    return ""
-
-
-def format_runtime(minutes):
-    try:
-        total = int(minutes)
-    except TypeError, ValueError:
-        return ""
+def format_runtime(total):
     if total <= 0:
         return ""
     hours, mins = divmod(total, 60)
@@ -302,25 +262,21 @@ def format_runtime(minutes):
 
 
 def format_rating(rating):
-    value = (rating or "").strip()
-    return {"PG13": "PG-13", "NC17": "NC-17"}.get(value, value)
+    return {"PG13": "PG-13", "NC17": "NC-17"}.get(rating, rating)
 
 
 def movie_meta(movie):
     return {
-        "poster": poster_url(movie),
-        "rating": format_rating(movie.get("rating")),
-        "runtime": format_runtime(movie.get("runtime")),
-        "genres": [genre for genre in (movie.get("genres") or []) if genre][:2],
+        "poster": movie["poster"]["size"]["300"],
+        "rating": format_rating(movie["rating"]),
+        "runtime": format_runtime(movie["runtime"]),
+        "genres": movie["genres"][:2],
     }
 
 
 def display_showtime_time(value):
     """Turn Fandango's 24-hour ticketing time into a compact display time."""
-    try:
-        hour, minute = (int(part) for part in value.split(":", 1))
-    except ValueError:
-        return value
+    hour, minute = (int(part) for part in value.split(":", 1))
     suffix = "AM" if hour < 12 else "PM"
     hour = hour % 12 or 12
     return f"{hour}:{minute:02d} {suffix}"
@@ -329,19 +285,14 @@ def display_showtime_time(value):
 def normalize_showtimes(movies):
     normalized = []
     for movie in movies:
-        movie_title = clean_title(movie.get("title"))
+        movie_title = clean_title(movie["title"])
         meta = movie_meta(movie)
         for format_name, group in amenity_groups(movie):
-            amenity_text = clean_title(group.get("amenityString")) or ", ".join(
-                group_amenity_names(group)
-            )
-            for showtime in group.get("showtimes") or []:
-                if showtime.get("type") != "available" or showtime.get("expired"):
+            amenity_text = clean_title(group["amenityString"])
+            for showtime in group["showtimes"]:
+                if showtime["type"] != "available" or showtime["expired"]:
                     continue
-                ticketing_date = showtime.get("ticketingDate") or ""
-                if "+" not in ticketing_date:
-                    continue
-                show_date, show_time = ticketing_date.split("+", 1)
+                show_date, show_time = showtime["ticketingDate"].split("+", 1)
                 normalized.append(
                     {
                         "movieTitle": movie_title,
@@ -350,20 +301,14 @@ def normalize_showtimes(movies):
                         "displayTime": display_showtime_time(show_time),
                         "format": showtime_format(format_name, group, showtime),
                         "amenities": amenity_text,
-                        "showtimeHashCode": showtime.get("showtimeHashCode"),
-                        "ticketUrl": showtime.get("ticketingJumpPageURL"),
+                        "showtimeHashCode": showtime["showtimeHashCode"],
+                        "ticketUrl": showtime["ticketingJumpPageURL"],
                         **meta,
                     }
                 )
     return normalized
 
 
-def seat_map(showtime_hash):
-    if not showtime_hash:
-        return None
-    return _fetch_seat_map(showtime_hash)
-
-
 @upstream_cache(maxsize=200)
-def _fetch_seat_map(showtime_hash):
+def seat_map(showtime_hash):
     return fandango_json(f"/napi/seatMap/{showtime_hash}", referer="https://www.fandango.com/")
