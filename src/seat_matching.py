@@ -66,7 +66,7 @@ def normalized_seat_layout(data, matching_blocks):
         "seats": [
             {
                 "id": seat.get("id", ""),
-                "type": seat.get("type", "standard"),
+                "type": seat.get("type"),
                 "status": seat.get("status", ""),
                 "x": seat.get("x", 0) + offset_x,
                 "y": seat.get("y", 0) + offset_y,
@@ -119,9 +119,6 @@ def adjacent_blocks(seats, min_adjacent, selected_cells, exclude_accessible):
         if seat.get("status") == "A"
         and not (exclude_accessible and seat.get("type") in ACCESSIBLE_SEAT_TYPES)
     ]
-    if not available:
-        return []
-
     # Maps without any neighbor links fall back to consecutive columns alone.
     use_links = any(seat.get(key) for seat in seats for key in NEIGHBOR_KEYS)
     position = seat_positioner(seats)
@@ -192,9 +189,7 @@ def seat_map_match(data, min_adjacent, selected_cells, exclude_accessible):
 def seat_map_preview(data, blocks, min_adjacent, selected_cells):
     """`blocks` are the seat map's `adjacent_blocks` for this search."""
     seats = data["seats"]
-    matching_groups = (
-        ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells) if blocks else []
-    )
+    matching_groups = ranked_adjacent_groups(seats, blocks, min_adjacent, selected_cells)
     available_count = data.get("totalAvailableSeatCount")
     if available_count is None:
         available_count = sum(1 for seat in seats if seat.get("status") == "A")

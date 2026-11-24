@@ -115,7 +115,6 @@ function sameOtherParams(before, after) {
 function derived(results, overrides) {
   const finished = {
     ...results,
-    abort: () => undefined,
     ...overrides,
   };
 
@@ -209,7 +208,7 @@ export function streamSearch(params, sort) {
       const lines = buffer.split("\n");
 
       buffer = lines.pop();
-      lines.filter(Boolean).forEach((line) => apply(JSON.parse(line)));
+      lines.forEach((line) => apply(JSON.parse(line)));
       notify();
     }
 

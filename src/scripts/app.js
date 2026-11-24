@@ -324,7 +324,6 @@ function bindEvents() {
 }
 
 async function initialize() {
-  setLocationReady(false);
   bindEvents();
   let shouldSearchFromUrl = false;
 

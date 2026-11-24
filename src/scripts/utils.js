@@ -21,10 +21,6 @@ export function addDays(dateString, days) {
 export function formatNiceDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
 
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
-
   return date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",

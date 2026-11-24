@@ -350,7 +350,6 @@ export function createSearchFlow({
   /** Stop whatever the results area is doing, as when leaving the shared view. */
   function stop() {
     finishActivity();
-    resultsView.endPageLoading();
     if (results.childElementCount === 0) {
       setSummary(summary, "", true);
     }

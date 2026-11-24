@@ -708,7 +708,7 @@ def checked_candidates(candidates, check):
     A rolling window keeps requests in flight, so one slow seat map doesn't stall a whole batch.
     Candidates must be pre-sorted, so stopping early never skips a better match.
     """
-    worker_count = min(12, max(4, len(candidates)))
+    worker_count = min(12, max(1, len(candidates)))
     remaining = iter(candidates)
     executor = ThreadPoolExecutor(max_workers=worker_count)
     try:
