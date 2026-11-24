@@ -229,9 +229,9 @@ def available_movies(resolved):
     movies = []
     for _, theatre in dated_theatres(resolved):
         for movie in theatre["rawMovies"]:
-            title = clean_title(movie.get("title"))
+            title = clean_title(movie["title"])
             key = normalized_text(title)
-            if not title or key in seen:
+            if key in seen:
                 continue
             seen.add(key)
             movies.append({"title": title})
@@ -242,7 +242,7 @@ def available_formats(resolved, movie_query):
     formats = set()
     for _, theatre in dated_theatres(resolved):
         for movie in theatre["rawMovies"]:
-            if not movie_matches(movie.get("title"), movie_query):
+            if not movie_matches(movie["title"], movie_query):
                 continue
             for format_name, group in amenity_groups(movie):
                 formats.update(group_formats(format_name, group))
@@ -334,7 +334,7 @@ def api_shared_showtime(token: str):
     with api_errors("Could not refresh this showtime’s seat map"):
         shared = decode_share_link(token)
         raw_map = seat_map(shared.showtime)
-    if not raw_map or not raw_map.get("seats"):
+    if not raw_map["seats"]:
         raise HTTPException(
             status_code=404, detail="This showtime’s seat map is no longer available."
         )
@@ -508,9 +508,7 @@ def location_movie_info(area, movie_query, format_query):
                 {"name": theatre_name, "distanceMiles": theatre_item["distanceMiles"]},
             )
             for movie in theatre_item["rawMovies"]:
-                title = clean_title(movie.get("title", ""))
-                if not title:
-                    continue
+                title = clean_title(movie["title"])
                 movie_info = movies.setdefault(
                     normalized_text(title),
                     {
@@ -628,9 +626,7 @@ def api_movies(area: AreaCriteria):
 
 
 @app.get("/api/formats")
-def api_formats(area: AreaCriteria, movie: ShortText = ""):
-    if not movie:
-        return {"formats": []}
+def api_formats(area: AreaCriteria, movie: RequiredShortText):
     with api_errors("Could not load real format data"):
         formats = available_formats(resolve_area(area), movie)
     return {"formats": formats}
@@ -641,9 +637,7 @@ def collect_candidate_showtimes(resolved, search):
     candidates = []
     for _, theatre in dated_theatres(resolved):
         movies = [
-            movie
-            for movie in theatre["rawMovies"]
-            if movie_matches(movie.get("title"), search.movie)
+            movie for movie in theatre["rawMovies"] if movie_matches(movie["title"], search.movie)
         ]
         for showtime in normalize_showtimes(movies):
             if not format_matches(showtime["format"], search.requested_format):
@@ -673,7 +667,7 @@ class SeatCheck:
                 self.selected_cells,
                 self.exclude_accessible,
             )
-        except (*UPSTREAM_ERRORS, ValueError):
+        except UPSTREAM_ERRORS:
             with self._lock:
                 self.failed += 1
             return None

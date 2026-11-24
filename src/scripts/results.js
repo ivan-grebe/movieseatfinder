@@ -114,7 +114,7 @@ function renderRealSeatMap(seatMap, accessibleSeatsExcluded) {
       accessibilityType = seat.type;
     }
 
-    const isExcluded = Boolean(isAvailable && accessibilityType && accessibleSeatsExcluded);
+    const isExcluded = isAvailable && accessibilityType && accessibleSeatsExcluded;
     const isSelectable = isAvailable && !isExcluded;
 
     node.className = isSelectable ? "real-seat available" : "real-seat unavailable";
@@ -274,7 +274,7 @@ export function createResultsView({
     });
   }
 
-  function endPageLoading(errorMessage = "") {
+  function endPageLoading(errorMessage) {
     if (lastPaginationData) {
       renderPagination(lastPaginationData);
     }
@@ -289,7 +289,7 @@ export function createResultsView({
     label.textContent = errorMessage;
   }
 
-  function render(data, { isUpdate = false, searchUrl, shared = false }) {
+  function render(data, { isUpdate, searchUrl, shared }) {
     const matches = data.matches;
 
     results.replaceChildren();

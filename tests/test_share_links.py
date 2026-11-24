@@ -5,6 +5,7 @@ from unittest.mock import patch
 from urllib.parse import urlencode
 
 import requests
+from fandango_payloads import seat, seat_map
 from fastapi.testclient import TestClient
 
 from src import application
@@ -27,15 +28,12 @@ class ShareLinkTests(unittest.TestCase):
             "format": "IMAX",
             "showtime": "showtime-1",
         }
-        self.seats = [
-            {"id": "A1", "row": 0, "column": 1, "x": 0, "status": "A"},
-            {"id": "A2", "row": 0, "column": 2, "x": 10, "status": "A"},
-        ]
+        self.seats = [seat("A1", 0, 1, 0), seat("A2", 0, 2, 10)]
 
     def test_shared_view_refreshes_one_seat_map_without_a_location_search(self):
         token = token_for(urlencode(self.details))
         with (
-            patch.object(application, "seat_map", return_value={"seats": self.seats}) as seat_map,
+            patch.object(application, "seat_map", return_value=seat_map(self.seats)) as fetch,
             patch.object(application, "api_search_location") as location,
             patch.object(application, "collect_candidate_showtimes") as search,
         ):
@@ -49,7 +47,7 @@ class ShareLinkTests(unittest.TestCase):
         self.assertEqual(match["seatMap"]["bestGroup"], ["A1", "A2"])
         self.assertEqual(match["theatre"], {"name": "Cinema", "address": "Main St"})
         self.assertNotIn("zipCode", response.json())
-        seat_map.assert_called_once_with("showtime-1")
+        fetch.assert_called_once_with("showtime-1")
         location.assert_not_called()
         search.assert_not_called()
 
@@ -84,9 +82,9 @@ class ShareLinkTests(unittest.TestCase):
                 decode_share_link(token)
 
     def test_no_matching_seats_still_returns_the_live_map(self):
-        for seat in self.seats:
-            seat["status"] = "U"
-        with patch.object(application, "seat_map", return_value={"seats": self.seats}):
+        for unavailable in self.seats:
+            unavailable["status"] = "U"
+        with patch.object(application, "seat_map", return_value=seat_map(self.seats)):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(self.details))}")
         self.assertEqual(response.status_code, 200)
         preview = response.json()["matches"][0]["seatMap"]
@@ -104,7 +102,7 @@ class ShareLinkTests(unittest.TestCase):
             "ticket": "https://evil.test/pay",
             "poster": "https://evil.test/track",
         }
-        with patch.object(application, "seat_map", return_value={"seats": self.seats}):
+        with patch.object(application, "seat_map", return_value=seat_map(self.seats)):
             response = self.client.get(f"/api/shared-showtime/{token_for(urlencode(details))}")
         match = response.json()["matches"][0]
         self.assertEqual(match["ticketUrl"], "")

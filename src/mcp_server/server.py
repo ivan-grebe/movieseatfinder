@@ -435,7 +435,7 @@ def show_movie_seat_map(
 ) -> SeatMapOutput:
     """Refresh only the selected showtime and return its live layout as MCP image content."""
     try:
-        shared = decode_share_link(seat_map_url.rstrip("/").rsplit("/", 1)[-1])
+        shared = decode_share_link(seat_map_url.rsplit("/", 1)[-1])
     except ValueError as error:
         raise ToolError(
             "That seatMapUrl is invalid. Copy it exactly from a find_movie_seats option."

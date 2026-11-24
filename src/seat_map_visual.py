@@ -4,7 +4,6 @@ import base64
 import math
 import re
 import threading
-from html import escape
 from pathlib import Path
 
 from resvg import render, usvg
@@ -44,35 +43,23 @@ def _render_options():
     return options
 
 
-def _number(value, fallback=0.0):
-    try:
-        parsed = float(value)
-    except TypeError, ValueError:
-        return fallback
-    return parsed if math.isfinite(parsed) else fallback
-
-
-def _text(value):
-    return escape(value, quote=True)
-
-
 def _embedded_svg(svg):
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
 
 
 def _seat_svg(seat, stroke_width, accessible_seats_excluded):
-    x = _number(seat.get("x"))
-    y = _number(seat.get("y"))
-    width = max(_number(seat.get("width")), 1)
-    height = max(_number(seat.get("height")), 1)
+    x = seat["x"]
+    y = seat["y"]
+    width = seat["width"]
+    height = seat["height"]
     top_radius = min(3 * stroke_width, width / 2, height / 2)
     bottom_radius = min(5 * stroke_width, width / 2, height / 2)
-    source_available = seat.get("status") == "A"
-    accessible = str(seat.get("type") or "").lower() in ACCESSIBLE_SEAT_TYPES
+    source_available = seat["status"] == "A"
+    accessible = seat["type"] in ACCESSIBLE_SEAT_TYPES
     excluded = source_available and accessible and accessible_seats_excluded
     available = source_available and not excluded
-    matched = seat.get("matched")
+    matched = seat["matched"]
 
     if matched and accessible:
         fill = "url(#matched-accessible)"
@@ -120,21 +107,19 @@ def _row_labels_svg(seats):
     """Write each row's letters beside its leftmost seat, so seat labels like E8 can be found."""
     leftmost = {}
     for seat in seats:
-        label = re.match(r"[A-Za-z]+", str(seat.get("id") or ""))
+        label = re.match(r"[A-Za-z]+", seat["id"])
         if not label:
             continue
         current = leftmost.get(label[0])
-        if current is None or _number(seat.get("x")) < _number(current.get("x")):
+        if current is None or seat["x"] < current["x"]:
             leftmost[label[0]] = seat
 
     nodes = []
     for label, seat in leftmost.items():
-        width = max(_number(seat.get("width")), 1)
-        height = max(_number(seat.get("height")), 1)
         nodes.append(
-            f'<text x="{_number(seat.get("x")) - width * 0.25:g}" '
-            f'y="{_number(seat.get("y")) + height * 0.75:g}" text-anchor="end" '
-            f'style="{ROW_LABEL_TEXT_STYLE};font-size:{height * 0.7:g}px">{_text(label)}</text>'
+            f'<text x="{seat["x"] - seat["width"] * 0.25:g}" '
+            f'y="{seat["y"] + seat["height"] * 0.75:g}" text-anchor="end" '
+            f'style="{ROW_LABEL_TEXT_STYLE};font-size:{seat["height"] * 0.7:g}px">{label}</text>'
         )
     return "".join(nodes)
 
@@ -143,7 +128,7 @@ def _legend_item(x, label, fill, stroke):
     return (
         f'<rect x="{x:g}" y="0" width="12" height="12" rx="3" '
         f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>'
-        + f'<text x="{x + 17:g}" y="10" style="{LEGEND_TEXT_STYLE}">{_text(label)}</text>'
+        + f'<text x="{x + 17:g}" y="10" style="{LEGEND_TEXT_STYLE}">{label}</text>'
     )
 
 
@@ -174,15 +159,9 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
     """Create a dark MCP image using the website seat map's layout."""
     seats = layout["seats"]
 
-    layout_width = max(
-        _number(layout.get("width"), 1),
-        max(_number(seat.get("x")) + _number(seat.get("width")) for seat in seats),
-    )
-    layout_height = max(
-        _number(layout.get("height"), 1),
-        max(_number(seat.get("y")) + _number(seat.get("height")) for seat in seats),
-    )
-    background_svg = str(layout.get("backgroundSvg") or "")
+    layout_width = max(layout["width"], max(seat["x"] + seat["width"] for seat in seats))
+    layout_height = max(layout["height"], max(seat["y"] + seat["height"] for seat in seats))
+    background_svg = layout.get("backgroundSvg")
 
     layout_aspect = layout_width / layout_height
     stage_width = CONTENT_WIDTH
@@ -193,9 +172,7 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
     legend_y = stage_y + stage_height + 8
     canvas_height = math.ceil(legend_y + 12 + WRAPPER_PADDING + 1)
     stroke_width = max(layout_width / CONTENT_WIDTH, 0.01)
-    seat_nodes = "".join(
-        _seat_svg(seat, stroke_width, accessible_seats_excluded) for seat in seats[:2500]
-    )
+    seat_nodes = "".join(_seat_svg(seat, stroke_width, accessible_seats_excluded) for seat in seats)
     background_node = (
         f'<image x="0" y="0" width="{layout_width:g}" height="{layout_height:g}" '
         f'preserveAspectRatio="none" href="{_embedded_svg(background_svg)}"/>'
@@ -242,12 +219,12 @@ def render_seat_map_svg(layout, available_count, total_count, accessible_seats_e
       </defs>
       <rect x="0.5" y="0.5" width="641" height="{canvas_height - 1}" rx="22" fill="#111827" stroke="#475569" stroke-opacity=".72"/>
       <text x="11" y="20" style="{TITLE_TEXT_STYLE}">Live Fandango seat map</text>
-      <text x="631" y="20" style="{COUNT_TEXT_STYLE}" text-anchor="end">{int(available_count)} available / {int(total_count)} total</text>
+      <text x="631" y="20" style="{COUNT_TEXT_STYLE}" text-anchor="end">{available_count} available / {total_count} total</text>
       <rect x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" rx="12" fill="{stage_fill}" stroke="#64748b" stroke-opacity=".5"/>
       {screen_node}
       <g clip-path="url(#stage-clip)">
         <svg x="{stage_x:g}" y="{stage_y:g}" width="{stage_width:g}" height="{stage_height:g}" viewBox="0 0 {layout_width:g} {layout_height:g}" preserveAspectRatio="none">
-          {background_node}{seat_nodes}{_row_labels_svg(seats[:2500])}
+          {background_node}{seat_nodes}{_row_labels_svg(seats)}
         </svg>
       </g>
       <g transform="translate(0 {legend_y:g})">{legend}</g>

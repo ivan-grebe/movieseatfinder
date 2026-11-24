@@ -75,7 +75,7 @@ export function createSeatPreferences({
     }
 
     if (params.has("seatGrid")) {
-      seatGrid.select(params.get("seatGrid").split(",").filter(Boolean));
+      seatGrid.select(params.get("seatGrid").split(","));
     }
   }
 

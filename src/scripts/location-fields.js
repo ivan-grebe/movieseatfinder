@@ -37,9 +37,7 @@ export function createLocationFields({
   function hasValidRadius() {
     const radius = Number(radiusInput.value);
 
-    return (
-      radiusInput.value.trim() !== "" && Number.isFinite(radius) && radius >= 1 && radius <= 100
-    );
+    return radius >= 1 && radius <= 100;
   }
 
   function enforceRadius(report = false) {
@@ -87,7 +85,7 @@ export function createLocationFields({
       endDateInput.value = startDateInput.value;
     }
 
-    if (endDateInput.value && endDateInput.value > endDateInput.max) {
+    if (endDateInput.value > endDateInput.max) {
       endDateInput.value = endDateInput.max;
     }
   }
@@ -165,23 +163,6 @@ export function createLocationFields({
         input.value = params.get(name);
       }
     });
-    if (params.has("lat") && params.has("lon")) {
-      const latitude = Number(params.get("lat"));
-      const longitude = Number(params.get("lon"));
-
-      if (
-        Number.isFinite(latitude) &&
-        Math.abs(latitude) <= 90 &&
-        Number.isFinite(longitude) &&
-        Math.abs(longitude) <= 180
-      ) {
-        preciseLocation = {
-          latitude: latitude,
-          longitude: longitude,
-        };
-        setStatus(locationStatus, "Using location");
-      }
-    }
   }
 
   function setDates(startDate, endDate) {
@@ -190,11 +171,6 @@ export function createLocationFields({
   }
 
   function requestLocation() {
-    if (!navigator.geolocation) {
-      setStatus(locationStatus, "Location unavailable — use ZIP.", "error");
-      return;
-    }
-
     setStatus(locationStatus, "Requesting your location…", "loading");
     useLocationButton.disabled = true;
     navigator.geolocation.getCurrentPosition(

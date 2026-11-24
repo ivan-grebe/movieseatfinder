@@ -39,8 +39,6 @@ def unpack_seat_grid(area):
     if not re.fullmatch(r"[A-Za-z0-9_-]{39}", area):
         raise ValueError("Invalid seat area")
     bitmap = base64.urlsafe_b64decode(area + "=")
-    if bitmap[-1] > 1:
-        raise ValueError("Invalid seat area")
     return ",".join(
         f"{index // 15}:{index % 15}"
         for index in range(225)
@@ -81,6 +79,6 @@ def pack_seat_grid(seat_grid):
 
 def encode_share_link(params):
     """Build the token the website's share button makes; `params` use the link's field names."""
-    if params.get("seatGrid"):
+    if params["seatGrid"]:
         params["seatGrid"] = pack_seat_grid(params["seatGrid"])
     return base64_url(zlib.compress(urlencode(params).encode("utf-8"), level=9))

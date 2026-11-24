@@ -3,6 +3,7 @@ from datetime import date
 from unittest.mock import patch
 
 import requests
+from fandango_payloads import seat, seat_map
 from fastapi.testclient import TestClient
 
 from src import application, fandango
@@ -74,7 +75,7 @@ class SearchFailureTests(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
 
     def test_successful_checks_with_no_matches_are_not_failures(self):
-        response = self.search_with_seat_check(lambda *_args: None)
+        response = self.search_with_seat_check(lambda *_args: seat_map([]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["matches"], [])
         self.assertEqual(response.json()["failedSeatMaps"], 0)
@@ -83,7 +84,7 @@ class SearchFailureTests(unittest.TestCase):
         def check(showtime_hash):
             if showtime_hash == "first":
                 raise requests.Timeout("upstream timeout")
-            return {"seats": [{"id": "H1", "row": 0, "column": 1, "x": 0, "status": "A"}]}
+            return seat_map([seat("H1", 0, 1, 0)])
 
         response = self.search_with_seat_check(check)
         self.assertEqual(response.status_code, 200)

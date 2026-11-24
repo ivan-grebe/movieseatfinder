@@ -28,14 +28,12 @@ export function compactShareUrl(searchUrl, match) {
     time: match.displayTime,
   });
 
-  if (source.searchParams.has("seatGrid")) {
-    params.set("seatGrid", source.searchParams.get("seatGrid"));
-  }
+  const seatGrid = source.searchParams.get("seatGrid");
 
-  if (params.get("seatGrid")) {
+  if (seatGrid) {
     const bitmap = new Uint8Array(29);
 
-    for (const cell of params.get("seatGrid").split(",")) {
+    for (const cell of seatGrid.split(",")) {
       const [row, column] = cell.split(":").map(Number);
       const index = row * 15 + column;
 
@@ -61,13 +59,13 @@ function getSearchShareData(searchUrl, match) {
 
   if (seats > 1) {
     details.push(`${seats} seats together`);
-  } else if (seats === 1) {
+  } else {
     details.push("1 seat");
   }
 
   details.push(formatNiceDate(match.date), match.displayTime, match.format, match.theatre.name);
   return {
-    text: [movie, details.filter(Boolean).join(" · ")].join("\n"),
+    text: [movie, details.join(" · ")].join("\n"),
     title: `${movie} — Movie Seat Finder`,
   };
 }
@@ -80,7 +78,7 @@ export function createShareButton(searchUrl, match) {
     ...getSearchShareData(searchUrl, match),
     url: compactShareUrl(searchUrl, match),
   };
-  const nativeShare = mobile && typeof navigator.share === "function" && navigator.canShare?.(data);
+  const nativeShare = mobile && navigator.canShare?.(data);
   const button = document.createElement("button");
 
   button.type = "button";

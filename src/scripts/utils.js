@@ -57,23 +57,16 @@ export async function getJson(url) {
   const response = await fetch(url).catch(() => {
     throw new Error("Couldn't reach the search service. Check your connection and try again.");
   });
-  const body = await response.text();
-  let data = {};
-
-  try {
-    if (body) {
-      data = JSON.parse(body);
-    }
-  } catch {
+  const data = await response.json().catch(() => {
     if (response.ok) {
       throw new Error("The server returned an unreadable response. Please try again.");
     }
 
     throw new Error("The search service is temporarily unavailable. Please try again.");
-  }
+  });
 
   if (!response.ok) {
-    const error = new Error(data.error || "Request failed.");
+    const error = new Error(data.error);
 
     error.code = data.code;
     throw error;
