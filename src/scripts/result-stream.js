@@ -5,6 +5,7 @@
 
 /** Where a streamed search is in its life. */
 export const StreamState = Object.freeze({
+  // Replaced by a newer search or sort before finishing; waiters reject with an AbortError.
   Cancelled: "cancelled",
   // Finished at the seat-map cap without reaching every showtime.
   Capped: "capped",
@@ -238,11 +239,8 @@ export function streamSearch(params, sort) {
       return;
     }
 
-    if (error.name !== "AbortError") {
-      results.error = error;
-      results.state = StreamState.Failed;
-    }
-
+    results.error = error;
+    results.state = StreamState.Failed;
     notify();
   });
   return results;
